@@ -1,0 +1,70 @@
+# Cloud Run service descriptor — clawdog-calculator-api Phase 3a.
+#
+# Standing Rule #4 (Fano-Constraint API immutables, rev 16+):
+#   - region: australia-southeast1 (matches Fano)
+#   - locale: en_AU.UTF-8 (handled in the runtime Dockerfile)
+#   - no training inside Cloud Run (this service is invocation-only)
+#
+# Deploy via `make deploy` (which Andrew runs locally; subagents do NOT
+# execute gcloud commands). See deploy/README.md for the manual runbook.
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: fbt-calculator-api
+  labels:
+    cloud.googleapis.com/location: australia-southeast1
+    lodgeit.org/component: calculator-constellation
+    lodgeit.org/phase: "3a"
+    lodgeit.org/canon: "clawdog-109-110"
+  annotations:
+    run.googleapis.com/launch-stage: GA
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "10"
+        run.googleapis.com/cpu-throttling: "true"
+        run.googleapis.com/startup-cpu-boost: "true"
+    spec:
+      timeoutSeconds: 60
+      serviceAccountName: clawdog-calculator-api@lodgeit-calculator-constellation.iam.gserviceaccount.com
+      containers:
+        - name: api
+          image: australia-southeast1-docker.pkg.dev/lodgeit-calculator-constellation/clawdog/clawdog-calculator-api:latest
+          ports:
+            - name: http1
+              containerPort: 8000
+          resources:
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          env:
+            - name: FBT_PROLOG_URL
+              # The Phase 3a target also runs the Prolog FBT engine on a
+              # sibling Cloud Run service in the same region. Phase 3b/3c
+              # may consolidate into a sidecar; for now the URL is wired
+              # via a deploy-time substitution.
+              value: "https://fbt-engine-XXXX-an.a.run.app"
+            - name: LANG
+              value: "en_AU.UTF-8"
+            - name: LC_ALL
+              value: "en_AU.UTF-8"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            timeoutSeconds: 5
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            timeoutSeconds: 5
+            periodSeconds: 30
+  traffic:
+    - percent: 100
+      latestRevision: true

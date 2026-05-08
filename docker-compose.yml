@@ -1,0 +1,69 @@
+# docker-compose.yml — local development stack for clawdog-calculator-api.
+#
+# Andrew runs `make run` locally to bring this stack up on his Windows-host
+# Docker Desktop (or, for Linux dev, plain docker-compose). Subagents do NOT
+# execute docker-compose — the Phase 3a brief constrains agent execution to
+# author-only; CI runs the binary-failure tests against the FastAPI app
+# directly via TestClient with a mocked Prolog backend.
+#
+# Two services:
+#   fbt-engine  — the SWI-Prolog FBT_Engine.pl, mounted from the sibling
+#                 LodgeiT_FBT working tree, listening on internal port 8081.
+#   api         — the FastAPI bridge, listening on host port 8000, talking
+#                 to fbt-engine via the docker-network alias.
+#
+# Standing Rule #4 (locale en_AU.UTF-8): inherited from the runtime image.
+# Standing Rule #6 (period-scoped statutes): the FBT engine reads its
+# rate-tables from the mounted SBRM_RATE_TABLE/ tree at startup; nothing here
+# inlines a statutory constant.
+
+version: "3.9"
+
+services:
+  fbt-engine:
+    image: swipl:9.2.5
+    container_name: clawdog-fbt-engine
+    working_dir: /srv/lodgeit_fbt
+    volumes:
+      # Adjust LODGEIT_FBT_REPO to wherever Andrew's LodgeiT_FBT checkout lives.
+      - "${LODGEIT_FBT_REPO:-../LodgeiT_FBT}:/srv/lodgeit_fbt:ro"
+    command:
+      - "swipl"
+      - "-g"
+      - "consult('FBT_Engine.pl'), start_server(8081)"
+      - "-t"
+      - "halt"
+    expose:
+      - "8081"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "swipl -g 'use_module(library(http/http_client)), http_get(\"http://localhost:8081/health\", _, []), halt(0)' -t 'halt(1)'"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: clawdog-calculator-api:dev
+    container_name: clawdog-calculator-api
+    depends_on:
+      fbt-engine:
+        condition: service_healthy
+    environment:
+      FBT_PROLOG_URL: "http://fbt-engine:8081"
+      LODGEIT_FBT_REPO: "/srv/lodgeit_fbt"
+      LANG: "en_AU.UTF-8"
+      LC_ALL: "en_AU.UTF-8"
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount the rate-tables read-only so the bridge's manifest-fidelity
+      # helper hashes the LIVE bytes (Lesson #38 anchor — not a baked snapshot).
+      - "${LODGEIT_FBT_REPO:-../LodgeiT_FBT}:/srv/lodgeit_fbt:ro"
+    restart: unless-stopped
+# Andrew runs `make run` locally; subagents do not execute docker-compose.

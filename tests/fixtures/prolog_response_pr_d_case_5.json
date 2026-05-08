@@ -1,0 +1,70 @@
+{
+  "_fixture_provenance": {
+    "case_label": "PR-D 5th case (Phase 2l-OC-integrate, owned + deemed, full-year)",
+    "engine_source": "lodgeit-labs/LodgeiT_FBT FBT_Engine.pl PR #12 (Phase 2l-OC-integrate)",
+    "input_summary": {
+      "carPrice": 50000,
+      "accessories": 5000,
+      "businessUsePercentage": 75,
+      "employeeContribution": 200,
+      "formOfFinance": "owned",
+      "leasePayments": 0,
+      "fuelRepairsServicing": 3000,
+      "registrationInsurance": 1500,
+      "noPrivateUseReduction": 0,
+      "acquisitionDate": "2024-04-01",
+      "openingDepreciatedValue": 55000,
+      "daysHeldInFBTYear": 365
+    },
+    "computation_notes": [
+      "tier_modern (acquisition 2024-04-01 ≥ 2006-05-10) → dep_rate 0.25",
+      "deemed_depreciation = 55000 * 0.25 * 365/365 = 13750",
+      "deemed_interest     = 55000 * 0.0862 * 365/365 = 4741",
+      "deemed_total        = 13750 + 4741 = 18491",
+      "operating_total     = 0 + 3000 + 1500 + 18491 - 0 = 22991",
+      "BUR                 = round(22991 * 75/100, 2) = 17243.25",
+      "tv_before_operating = 22991 - 17243.25 = 5747.75",
+      "tv_net (= taxable)  = 5747.75 - 200 = 5547.75"
+    ],
+    "binding": "tests/test_phase3a_e2e.py — production-surface contract test (Lesson #37)."
+  },
+  "taxable_value": 5547.75,
+  "operating_expenses_total": 22991,
+  "business_use_reduction": 17243.25,
+  "taxable_value_before_operating": 5747.75,
+  "taxable_value_net_operating_pre_clamp": 5547.75,
+  "deemed_total": 18491,
+  "no_private_use_reduction": 0,
+  "business_use_percentage_clamped": 75,
+  "employee_contribution": 200,
+  "form_of_finance": "owned",
+  "nil_cost_guard_triggered": false,
+  "rate_uris_consumed": [
+    "urn:sbrm:rate:fbt:fy2026:deemed-depreciation-rates",
+    "urn:sbrm:rate:fbt:fy2026:benchmark-interest",
+    "urn:sbrm:rate:fbt:fy2026:days-in-year"
+  ],
+  "trace": {
+    "lease_payments": 0,
+    "fuel_repairs_servicing": 3000,
+    "registration_insurance": 1500,
+    "deemed_total": 18491,
+    "no_private_use_reduction": 0,
+    "total_after_npur": 22991,
+    "business_use_pct": 75,
+    "business_use_reduction": 17243.25,
+    "tv_before_operating": 5747.75,
+    "employee_contribution": 200,
+    "tv_net_pre_clamp": 5547.75,
+    "tv_final": 5547.75,
+    "form_of_finance": "owned",
+    "deemed_dispatch": "computed",
+    "deemed_depreciation": 13750,
+    "deemed_interest": 4741,
+    "applied_rate_table_uris": [
+      "urn:sbrm:rate:fbt:fy2026:deemed-depreciation-rates",
+      "urn:sbrm:rate:fbt:fy2026:benchmark-interest",
+      "urn:sbrm:rate:fbt:fy2026:days-in-year"
+    ]
+  }
+}
