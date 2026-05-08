@@ -1,0 +1,75 @@
+#!/bin/sh
+# Repo pre-push hook — mechanical enforcement of Standing Rule #1
+# (ClawDog Git Protocol: never push to master / main; use clawdog/* branches
+# and human sign-off via PR).
+#
+# This hook converts Standing Rule #1 from a recall-rule into a binary-failure
+# boundary (per Lesson #35 — behavioural recall rules drift; binary-failure
+# rules don't). Mirrored from clawdog-brain's mc25 hardening
+# (`scripts/hooks/pre-push`); CLAWDOG/110 §3.5 Non-Negotiable #5 inheritance.
+#
+# Bypass is the standard `git push --no-verify`. Git skips ALL pre-push hooks
+# when --no-verify is passed, which is the native, audit-trail-leaving signal
+# of "I am deliberately bypassing." Administrative pushes (e.g. emergency
+# rollback) should use --no-verify and surface that fact in the commit thread.
+#
+# Mode-B exit-code contract (mirroring Standing Rule #8):
+#   0  🟢 CLEAN          — push targets only non-protected refs; proceed.
+#   1  🔴 RULE #1 VIOLATION — push targets a protected ref; halt.
+#   2  🟡 INFRA BROKEN    — repo or environment unreadable; halt and alert.
+#
+# Protected refs are configurable via env var:
+#   CLAWDOG_PRE_PUSH_PROTECTED_REFS="refs/heads/master refs/heads/main"
+# (space-separated; default shown above).
+#
+# Stdin protocol (per githooks(5)):
+#   <local_ref> <local_sha> <remote_ref> <remote_sha>
+# One line per ref being pushed. We only inspect <remote_ref>.
+#
+# Install: ln -sf ../../scripts/hooks/pre-push .git/hooks/pre-push
+# (or run `make install-hooks` from the repo root).
+
+set -u
+
+PROTECTED_REFS="${CLAWDOG_PRE_PUSH_PROTECTED_REFS:-refs/heads/master refs/heads/main}"
+
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    echo "pre-push: 🟡 INFRA BROKEN — not inside a git working tree (git rev-parse failed)" >&2
+    exit 2
+fi
+
+violation_found=0
+violating_refs=""
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ -z "${remote_ref:-}" ] && continue
+
+    for protected in $PROTECTED_REFS; do
+        if [ "$remote_ref" = "$protected" ]; then
+            violation_found=1
+            violating_refs="${violating_refs}  - ${remote_ref} (local: ${local_ref:-<deletion>} ${local_sha:-<none>})\n"
+            break
+        fi
+    done
+done
+
+if [ "$violation_found" -eq 1 ]; then
+    printf '\n' >&2
+    printf '🔴 STANDING RULE #1 VIOLATION — push to protected ref refused.\n' >&2
+    printf '\n' >&2
+    printf 'Standing Rule #1 (ClawDog Git Protocol):\n' >&2
+    printf '  Never commit or push to main / master. All writes go through a\n' >&2
+    printf '  clawdog/* branch + PR + human sign-off.\n' >&2
+    printf '\n' >&2
+    printf 'Refused push targets:\n' >&2
+    printf "$violating_refs" >&2
+    printf '\n' >&2
+    printf 'If this is a deliberate, audit-trail-leaving administrative push,\n' >&2
+    printf 'bypass with:  git push --no-verify\n' >&2
+    printf '\n' >&2
+    printf 'Otherwise: open a PR from a clawdog/* branch and let Andrew merge.\n' >&2
+    printf '\n' >&2
+    exit 1
+fi
+
+exit 0

@@ -1,0 +1,593 @@
+{
+  "components": {
+    "schemas": {
+      "AdvisoryBlock": {
+        "additionalProperties": true,
+        "description": "``advisory`` block \u2014 CLAWDOG/109 \u00a76 / CLAWDOG/110 \u00a73.2.",
+        "properties": {
+          "disclaimer": {
+            "minLength": 1,
+            "title": "Disclaimer",
+            "type": "string"
+          },
+          "jurisdiction": {
+            "title": "Jurisdiction",
+            "type": "string"
+          },
+          "registered_agent_required": {
+            "title": "Registered Agent Required",
+            "type": "boolean"
+          },
+          "statutory_basis": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Statutory Basis",
+            "type": "array"
+          }
+        },
+        "required": [
+          "disclaimer",
+          "registered_agent_required",
+          "statutory_basis",
+          "jurisdiction"
+        ],
+        "title": "AdvisoryBlock",
+        "type": "object"
+      },
+      "CalculatorInvocationResponse": {
+        "additionalProperties": true,
+        "description": "Standard wire shape for any calculator invocation response.",
+        "properties": {
+          "advisory": {
+            "$ref": "#/components/schemas/AdvisoryBlock"
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/Manifest"
+          },
+          "taxable_value": {
+            "title": "Taxable Value",
+            "type": "number"
+          },
+          "trace": {
+            "additionalProperties": true,
+            "title": "Trace",
+            "type": "object"
+          }
+        },
+        "required": [
+          "taxable_value",
+          "trace",
+          "manifest",
+          "advisory"
+        ],
+        "title": "CalculatorInvocationResponse",
+        "type": "object"
+      },
+      "CalculatorListing": {
+        "additionalProperties": false,
+        "description": "One entry in the calculator-discovery listing (GET /v1/calculators).",
+        "properties": {
+          "calc_uri": {
+            "title": "Calc Uri",
+            "type": "string"
+          },
+          "input_schema_ref": {
+            "title": "Input Schema Ref",
+            "type": "string"
+          },
+          "jurisdiction": {
+            "title": "Jurisdiction",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "supported_periods": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Periods",
+            "type": "array"
+          }
+        },
+        "required": [
+          "calc_uri",
+          "label",
+          "method",
+          "supported_periods",
+          "input_schema_ref",
+          "jurisdiction"
+        ],
+        "title": "CalculatorListing",
+        "type": "object"
+      },
+      "FBTCarOperatingCostInput": {
+        "additionalProperties": false,
+        "description": "Input for the FBT Car Operating Cost method (Phase 3a Cut A).\n\nField naming mirrors the upstream Prolog engine's request shape (snake_case\nvia FastAPI's alias mapping, accepting both snake_case and the camelCase\nused by the existing fbt_tester.py compatibility surface).",
+        "properties": {
+          "acquisitionDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO date string (e.g. 2024-04-01); drives deemed-depreciation tier dispatch.",
+            "title": "Acquisitiondate"
+          },
+          "businessUsePercentage": {
+            "description": "Business-use % of total operating costs. Clamped to [0, 100] by the engine.",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Businessusepercentage",
+            "type": "number"
+          },
+          "daysHeldInFBTYear": {
+            "anyOf": [
+              {
+                "maximum": 366.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Days the car was held during the FBT year [0..366].",
+            "title": "Daysheldinfbtyear"
+          },
+          "deemedTotal": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional explicit deemed_total (AUD) override.",
+            "title": "Deemedtotal"
+          },
+          "employeeContribution": {
+            "default": 0,
+            "description": "Post-tax employee contribution toward the benefit (AUD).",
+            "minimum": 0.0,
+            "title": "Employeecontribution",
+            "type": "number"
+          },
+          "formOfFinance": {
+            "description": "One of: owned | hire_purchase | leased | unspecified.",
+            "title": "Formoffinance",
+            "type": "string"
+          },
+          "fuelRepairsServicing": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fuel + repairs + servicing for the period (AUD).",
+            "title": "Fuelrepairsservicing"
+          },
+          "leasePayments": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lease payments for the period (AUD); null/absent if not leased.",
+            "title": "Leasepayments"
+          },
+          "noPrivateUseReduction": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "No-private-use reduction (AUD).",
+            "title": "Noprivateusereduction"
+          },
+          "openingDepreciatedValue": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Opening depreciated value at start of FBT year (AUD).",
+            "title": "Openingdepreciatedvalue"
+          },
+          "registrationInsurance": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Registration + insurance for the period (AUD).",
+            "title": "Registrationinsurance"
+          }
+        },
+        "required": [
+          "businessUsePercentage",
+          "formOfFinance"
+        ],
+        "title": "FBTCarOperatingCostInput",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Manifest": {
+        "additionalProperties": false,
+        "description": "``manifest`` block \u2014 CLAWDOG/109 \u00a77.1 Manifest-Fidelity Contract.",
+        "properties": {
+          "rate_table_uris": {
+            "items": {
+              "$ref": "#/components/schemas/ManifestRateTableEntry"
+            },
+            "title": "Rate Table Uris",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rate_table_uris"
+        ],
+        "title": "Manifest",
+        "type": "object"
+      },
+      "ManifestRateTableEntry": {
+        "additionalProperties": false,
+        "description": "One entry in the manifest's ``rate_table_uris`` block (CLAWDOG/109 \u00a77.1).",
+        "properties": {
+          "content_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "hash_algorithm": {
+            "default": "sha256",
+            "title": "Hash Algorithm",
+            "type": "string"
+          },
+          "uri": {
+            "title": "Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uri",
+          "content_hash"
+        ],
+        "title": "ManifestRateTableEntry",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "name": "LodgeiT Labs",
+      "url": "https://lodgeit.org/"
+    },
+    "description": "**Architectural canon:** [CLAWDOG/109](https://github.com/futureWA/clawdog-brain/blob/master/GLOBAL_NOTES/CLAWDOG/109_CALCULATOR_CONSTELLATION.md)\n\n**Outsource-boundary canon:** [CLAWDOG/110](https://github.com/futureWA/clawdog-brain/blob/master/GLOBAL_NOTES/CLAWDOG/110_OUTSOURCE_BOUNDARY_DISCIPLINE.md)\n\nPhase 3a wires a single calculator (FBT Car Operating Cost). Phase 3c is the second-instance test of whether the abstraction holds.",
+    "license": {
+      "name": "MIT"
+    },
+    "summary": "Phase 3a Egress Interface over the LodgeiT calculator pool. Implements the REST surface of CLAWDOG/109's tri-surface exposure model. Governed by CLAWDOG/110's five non-negotiables (manifest-fidelity, advisory-boundary, atom-vs-bridge, OpenAPI drift, Standing Rule #1).",
+    "title": "ClawDog Calculator-Constellation REST API",
+    "version": "0.1.0a0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/healthz": {
+      "get": {
+        "description": "Return a minimal liveness response for the Cloud Run / Docker HEALTHCHECK.\n\nDoes NOT call into the upstream Prolog engine \u2014 that would couple the\nREST liveness signal to the engine's readiness, which is a deliberately\nindependent dimension.",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Healthz Healthz Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness probe.",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/calculators": {
+      "get": {
+        "description": "Return a manifest of the calculators wired into this Phase 3a deployment.\n\nPhase 3a hardcodes one entry (FBT Car Operating Cost). Phase 3c onboards a\nsecond calculator; the registry above grows but the route signature does not.",
+        "operationId": "list_calculators_v1_calculators_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CalculatorListing"
+                  },
+                  "title": "Response List Calculators V1 Calculators Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List calculators available through the REST surface.",
+        "tags": [
+          "calculators"
+        ]
+      }
+    },
+    "/v1/calculators/{calc_uri}/{period_uri}": {
+      "post": {
+        "description": "Phase 3a Cut A \u2014 bare math + manifest + advisory. URL-encoded URN path params; the bridge re-validates them against the atom-vs-bridge boundary (CLAWDOG/110 \u00a73.3) before forwarding to the Prolog engine. Response carries the calculator's native trace block, plus the manifest-fidelity block (live content_hashes per CLAWDOG/109 \u00a77) and the advisory block (CLAWDOG/109 \u00a76 / CLAWDOG/110 \u00a73.2).",
+        "operationId": "invoke_calculator_v1_calculators__calc_uri___period_uri__post",
+        "parameters": [
+          {
+            "description": "URL-encoded calculator URN.",
+            "in": "path",
+            "name": "calc_uri",
+            "required": true,
+            "schema": {
+              "description": "URL-encoded calculator URN.",
+              "title": "Calc Uri",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL-encoded period URN.",
+            "in": "path",
+            "name": "period_uri",
+            "required": true,
+            "schema": {
+              "description": "URL-encoded period URN.",
+              "title": "Period Uri",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FBTCarOperatingCostInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalculatorInvocationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Invoke a calculator for the given URN-encoded period.",
+        "tags": [
+          "calculators"
+        ]
+      }
+    },
+    "/v1/rates/{period_uri}": {
+      "get": {
+        "operationId": "list_rates_v1_rates__period_uri__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "period_uri",
+            "required": true,
+            "schema": {
+              "title": "Period Uri",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Rates V1 Rates  Period Uri  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List rate-table fact-nodes for a period (URN-encoded period URI).",
+        "tags": [
+          "rates"
+        ]
+      }
+    },
+    "/v1/rates/{period_uri}/{rate_id}": {
+      "get": {
+        "operationId": "get_rate_v1_rates__period_uri___rate_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "period_uri",
+            "required": true,
+            "schema": {
+              "title": "Period Uri",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "rate_id",
+            "required": true,
+            "schema": {
+              "title": "Rate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Rate V1 Rates  Period Uri   Rate Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Return a single rate-table fact-node body + content_hash.",
+        "tags": [
+          "rates"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "description": "Calculator invocation + discovery (CLAWDOG/109 \u00a73, \u00a74).",
+      "name": "calculators"
+    },
+    {
+      "description": "Rate-table provenance surface (CLAWDOG/109 \u00a77).",
+      "name": "rates"
+    },
+    {
+      "description": "Liveness / readiness probes.",
+      "name": "system"
+    }
+  ]
+}

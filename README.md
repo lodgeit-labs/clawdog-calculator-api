@@ -1,28 +1,124 @@
 # clawdog-calculator-api
 
-**Calculator-Constellation REST API — Egress Interface for the LodgeiT calculator pool.**
+**Calculator-Constellation REST API — Egress Interface for the LodgeiT calculator pool (Phase 3a).**
 
-This repository implements the **REST surface** of the calculator constellation defined in [CLAWDOG/109 — Calculator Constellation](https://github.com/futureWA/clawdog-brain/blob/master/GLOBAL_NOTES/CLAWDOG/109_CALCULATOR_CONSTELLATION.md): a stateless HTTP wrapper over a deterministic SWI-Prolog substrate, projecting period-scoped statutory rate-tables, regression-anchored math, and content-addressable provenance through three coordinated surfaces (MCP, REST, direct Prolog HTTP). This repo is the **REST surface**; the MCP server (Phase 3b) and direct Prolog substrate (`lodgeit-labs/LodgeiT_FBT`, `lodgeit-labs/Depreciation_Transforms`, etc.) live elsewhere.
+This repository implements the **REST surface** of the calculator constellation defined in [CLAWDOG/109 — Calculator Constellation](https://github.com/futureWA/clawdog-brain/blob/master/GLOBAL_NOTES/CLAWDOG/109_CALCULATOR_CONSTELLATION.md): a stateless HTTP wrapper over a deterministic SWI-Prolog substrate, projecting period-scoped statutory rate-tables, regression-anchored math, and content-addressable provenance through three coordinated surfaces (MCP, REST, direct Prolog HTTP). This repo is the **REST surface**; the MCP server (Phase 3b) and direct Prolog substrate (`lodgeit-labs/LodgeiT_FBT`, etc.) live elsewhere.
 
-Per Standing Rule #7 (Repository Topology Discipline), this repo is classified as an **Egress Interface** — a transport buffer over the Brain-owned canonical substrate. Statutory authoring lives in the calculator repos and the Brain (`futureWA/clawdog-brain`); this repo contains no inlined statutory constants.
+Authoring discipline is governed by [CLAWDOG/110 — Outsource Boundary Discipline](https://github.com/futureWA/clawdog-brain/blob/master/GLOBAL_NOTES/CLAWDOG/110_OUTSOURCE_BOUNDARY_DISCIPLINE.md), even for in-house work — the five non-negotiables (manifest-fidelity, advisory-boundary, atom-vs-bridge, OpenAPI drift, Standing Rule #1) are binary-failure gates wired into CI. Per Standing Rule #7, this repo is classified as an **Egress Interface** (transport buffer); statutory authoring lives in the calculator repos and the Brain.
 
-## Quick start
+## Quick start (Andrew's local box)
 
 ```bash
-# Local dev: API + Prolog FBT engine together
-make run
+# One-time: install client-side mechanical enforcement of Standing Rule #1.
+make install-hooks
 
-# In another shell:
-curl -sS -X POST http://localhost:8000/v1/calculators/urn%3Asbrm%3Acalculator%3Afbt%3Acar-operating-cost/urn%3Asbrm%3Aperiod%3Afbt%3Afy2026 \
-  -H 'Content-Type: application/json' \
-  -d '{"form_of_finance":"owned","lease_payments":0,"fuel_repairs_servicing":3000,"registration_insurance":1500,"no_private_use_reduction":0,"business_use_percentage":75,"employee_contribution":200,"acquisition_date":"2024-04-01","opening_depreciated_value":55000,"days_held_in_fbt_year":365}'
-# → {"taxable_value": 5547.75, "trace": {...}, "manifest": {...}, "advisory": "..."}
+# Install Python deps + dev extras.
+pip install -e ".[dev]"
+
+# Run the binary-failure gate test suite locally (CI runs the same).
+make test
+
+# Bring the local stack up (API + Prolog FBT engine via docker-compose).
+# Adjust LODGEIT_FBT_REPO if your LodgeiT_FBT checkout lives elsewhere.
+LODGEIT_FBT_REPO=../LodgeiT_FBT make run
 ```
 
-## Status
+Once `make run` is up, the canonical PR-D 5th case (Phase 2l-OC-integrate)
+exercises the bridge end-to-end:
 
-**Phase 3a** (CLAWDOG/109 §8.1) — REST API in front of `LodgeiT_FBT/FBT_Engine.pl`.
+```bash
+curl -sS -X POST \
+  "http://localhost:8000/v1/calculators/urn%3Asbrm%3Acalculator%3Afbt%3Acar-operating-cost/urn%3Asbrm%3Aperiod%3Afbt%3Afy2026" \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "businessUsePercentage": 75,
+        "employeeContribution": 200,
+        "formOfFinance": "owned",
+        "leasePayments": 0,
+        "fuelRepairsServicing": 3000,
+        "registrationInsurance": 1500,
+        "noPrivateUseReduction": 0,
+        "acquisitionDate": "2024-04-01",
+        "openingDepreciatedValue": 55000,
+        "daysHeldInFBTYear": 365
+      }' | jq .
+# →  taxable_value: 5547.75
+#    trace.deemed_dispatch: "computed"
+#    trace.deemed_total: 18491
+#    manifest.rate_table_uris: [3 entries with live content_hashes]
+#    advisory: <TAA 1953 + TASA 2009 disclaimer>
+```
+
+## Architectural surfaces
+
+### REST endpoints (Phase 3a Cut A — minimum viable)
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/v1/calculators/{calc_uri}/{period_uri}` | Calculator invocation — pydantic-validated input → Prolog engine → `{taxable_value, trace, manifest, advisory}` envelope. URN path params are URL-encoded. |
+| `GET`  | `/v1/calculators` | Discovery listing — Phase 3a hardcodes one entry (FBT car operating cost); Phase 3c onboards a second. |
+| `GET`  | `/v1/rates/{period_uri}` | Rate-table snapshot for a period — every fact-node listed with its live content_hash. |
+| `GET`  | `/v1/rates/{period_uri}/{rate_id}` | Single rate-table fact-node — parsed frontmatter + body + content_hash. |
+| `GET`  | `/healthz` | Liveness probe (no upstream coupling). |
+
+OpenAPI: see [`openapi.json`](./openapi.json) (regenerated from the live FastAPI
+app via `make openapi`; CI fails on drift).
+
+### The four binary-failure gates (CI-enforced)
+
+CLAWDOG/110 §3 codifies five non-negotiables. Four of them have wired binary-failure tests in this repo; the fifth (Standing Rule #1 inheritance) is a pre-push hook installed by `make install-hooks`.
+
+| # | Gate | Test file | Anchor lesson |
+|---|---|---|---|
+| 1 | **Manifest-Fidelity Contract** | `tests/test_manifest_fidelity.py` | Lesson #38 (file existence ≠ content fidelity) |
+| 2 | **Advisory-Boundary Contract** | `tests/test_advisory_boundary.py` | Lesson #34 (reconcile-then-surface) |
+| 3 | **PR-D Case 5 Production Surface** | `tests/test_phase3a_e2e.py` | Lesson #37 (production surface, not wind tunnel) |
+| 4 | **OpenAPI Drift Gate** | `tests/test_openapi_drift.py` | Lesson #35 (binary-failure rules don't drift) |
+| 5 | **Standing Rule #1 Inheritance** | `scripts/hooks/pre-push` (installed via `make install-hooks`) | Lesson #39 (canonical Lesson #35 vulnerability) |
+
+All four pytest gates are wired into CI ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)) and run on every push to `clawdog/*` and every PR to `master` / `main`.
+
+### What lives where (Phase 3a topology)
+
+```
+clawdog-calculator-api/                  ← THIS repo (Egress Interface)
+├── api/                                 ← FastAPI bridge layer
+│   ├── main.py                          ← app entrypoint
+│   ├── manifest_fidelity.py             ← Lesson #38 byte-content discipline
+│   ├── prolog_client.py                 ← async HTTP client to FBT_Engine.pl
+│   ├── lib/advisory_boundary.py         ← TAA 1953 + TASA disclaimer
+│   ├── routes/calculators.py            ← invocation + listing
+│   ├── routes/rates.py                  ← rate-table provenance surface
+│   └── schemas/                         ← pydantic input/output (atom-vs-bridge)
+├── tests/                               ← four binary-failure gates + fixtures
+│   ├── fixtures/sbrm_rate_table_fy2026/ ← vendored snapshot (10 fact-nodes)
+│   └── fixtures/prolog_response_pr_d_case_5.json
+├── deploy/                              ← Cloud Run service descriptor + runbook
+├── scripts/hooks/pre-push               ← Standing Rule #1 mechanical enforcement
+├── Dockerfile                           ← multi-stage; locale-gen en_AU.UTF-8
+├── docker-compose.yml                   ← local-dev stack (Andrew runs)
+└── .github/workflows/ci.yml             ← four binary-failure gates in CI
+```
+
+## Standing Rules in scope
+
+| Rule | How this repo honours it |
+|---|---|
+| **#1 ClawDog Git Protocol** | `scripts/hooks/pre-push` (installed via `make install-hooks`); branch protection visual layer is Andrew's responsibility. |
+| **#4 Fano-Constraint API immutables** | Cloud Run target `australia-southeast1`; `locale-gen en_AU.UTF-8` in the runtime image; **no training inside Cloud Run** (this service is invocation-only). |
+| **#6 Hoffman Temporal-Dimension Discipline** | No statutory constants in any Python source; the bridge is rate-table-blind, the upstream Prolog engine reads `SBRM_RATE_TABLE/<calc>/<period>/`. |
+| **#7 Repository Topology Discipline** | This repo is an **Egress Interface**; provenance lives in the Brain and the calculator repos. |
+| **#11 Verbatim-Claim Byte-Diff Discipline** | The advisory disclaimer is paraphrased + cites by section (TAA 1953 s284-15, TASA 2009 s50-5, FA 2008 Sch41). No verbatim transcription from statute or canon nodes; no `verbatim_claims:` declarations needed. |
+
+## Cross-references
+
+- **Architecture canon:** [CLAWDOG/109 — Calculator Constellation](https://github.com/futureWA/clawdog-brain/blob/master/GLOBAL_NOTES/CLAWDOG/109_CALCULATOR_CONSTELLATION.md) (§3 tri-surface model, §6 advisory-boundary framing, §7 manifest-fidelity contract, §8 phased runway).
+- **Outsource-boundary canon:** [CLAWDOG/110 — Outsource Boundary Discipline](https://github.com/futureWA/clawdog-brain/blob/master/GLOBAL_NOTES/CLAWDOG/110_OUTSOURCE_BOUNDARY_DISCIPLINE.md) (the five non-negotiables governing every change here).
+- **Empirical first instance:** `lodgeit-labs/LodgeiT_FBT` PR #12 (Phase 2l-OC-integrate) — the PR-D 5th case the Phase 3a E2E test pins against.
+- **Manifest-fidelity Brain-side algorithm:** `clawdog-brain/scripts/audit_content_hashes.py` — `api/manifest_fidelity.py` is a byte-identical port verified by the test suite via in-process and (when `CLAWDOG_BRAIN_ROOT` is set) subprocess cross-check.
 
 ## License
 
-MIT — see [Licence.txt](./Licence.txt).
+MIT. See [Licence.txt](./Licence.txt).
+
+*— ClawDog ∮*
