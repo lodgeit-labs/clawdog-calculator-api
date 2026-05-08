@@ -64,8 +64,12 @@ jobs:
       - name: Binary-failure gate #4 — OpenAPI drift
         # The drift check is run BEFORE pytest so any spec drift surfaces with
         # a clear, named failure (rather than as the slowest pytest line).
+        #
+        # PY=python overrides the Makefile default of `.venv/bin/python`,
+        # which doesn't exist in CI (actions/setup-python@v5 installs Python
+        # globally rather than into a venv). See Makefile header.
         run: |
-          make openapi-check
+          make openapi-check PY=python
 
       - name: Binary-failure gates #1–#3 — pytest
         # test_manifest_fidelity   — Lesson #38 anchor

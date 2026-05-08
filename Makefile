@@ -17,12 +17,24 @@
 #
 # Standing Rule #4: Cloud Run lives in australia-southeast1; no training in Cloud Run.
 
+# Environment-agnostic tool paths.
+#
+# Local-dev convenience: defaults assume a `.venv/` next to the Makefile,
+# matching `make install` semantics.
+#
+# CI override: `actions/setup-python@v5` installs Python globally without
+# creating `.venv/`. CI invokes targets with `PY=python PIP=pip PYTEST=pytest
+# RUFF=ruff` (or via the env block) to point at the global binaries.
+#
+# `?=` makes each variable overridable from the environment / make CLI;
+# `:=` would have hard-coded the venv path and broken portability.
+
 PYTHON ?= python3
 VENV   ?= .venv
-PIP    := $(VENV)/bin/pip
-PY     := $(VENV)/bin/python
-PYTEST := $(VENV)/bin/pytest
-RUFF   := $(VENV)/bin/ruff
+PIP    ?= $(VENV)/bin/pip
+PY     ?= $(VENV)/bin/python
+PYTEST ?= $(VENV)/bin/pytest
+RUFF   ?= $(VENV)/bin/ruff
 
 GCP_PROJECT ?= lodgeit-calculator-constellation
 GCP_REGION  ?= australia-southeast1
