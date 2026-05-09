@@ -48,6 +48,15 @@ spec:
               # may consolidate into a sidecar; for now the URL is wired
               # via a deploy-time substitution.
               value: "https://fbt-engine-XXXX-an.a.run.app"
+            - name: LODGEIT_FBT_REPO
+              # Points the manifest-fidelity helper at the bundled SBRM
+              # rate-table tree shipped inside this image (see Dockerfile).
+              # _rate_table_root_for() expands this to
+              # /app/SBRM_RATE_TABLE/<calc>/<period_id>/. Without this, the
+              # resolver falls back to /srv/lodgeit_fbt (no-such-path) and
+              # any deemed-dispatch request 500s with bare HTML
+              # (Phase 3a deemed-dispatch 500 root cause).
+              value: "/app"
             - name: LANG
               value: "en_AU.UTF-8"
             - name: LC_ALL

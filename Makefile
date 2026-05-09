@@ -78,7 +78,8 @@ test-binary-gates:
 	$(PYTEST) --collect-only -q tests/test_manifest_fidelity.py \
 	                            tests/test_advisory_boundary.py \
 	                            tests/test_phase3a_e2e.py \
-	                            tests/test_openapi_drift.py
+	                            tests/test_openapi_drift.py \
+	                            tests/test_production_bundle.py
 
 ruff:
 	$(RUFF) check api tests
