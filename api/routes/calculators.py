@@ -184,7 +184,27 @@ async def invoke_calculator(
         or []
     )
     rate_table_root = _rate_table_root_for(period_uri_decoded)
-    manifest = build_manifest(rate_uris, rate_table_root)
+    try:
+        manifest = build_manifest(rate_uris, rate_table_root)
+    except (FileNotFoundError, OSError) as exc:
+        # Defence in depth: if the bundled rate-table tree is missing or
+        # unreadable, surface a structured 502 (Lesson #34 — surface, do
+        # not paper over). The PRIMARY fix is the bundle shipped in the
+        # Dockerfile + LODGEIT_FBT_REPO wired in cloud-run.yaml; this
+        # branch exists so a future regression cannot revert to the bare
+        # HTML 500 that obscured the Phase 3a deemed-dispatch root cause.
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": "manifest_rate_table_unavailable",
+                "detail": (
+                    f"failed to build manifest for {len(rate_uris)} rate URI(s) "
+                    f"against root={rate_table_root!s}: {exc.__class__.__name__}: {exc}"
+                ),
+                "rate_uris": rate_uris,
+                "rate_table_root": str(rate_table_root),
+            },
+        ) from exc
 
     response_payload = wrap_response(
         {

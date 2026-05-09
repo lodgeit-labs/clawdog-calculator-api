@@ -71,6 +71,21 @@ COPY --chown=clawdog:clawdog api ./api
 COPY --chown=clawdog:clawdog openapi.json ./openapi.json
 COPY --chown=clawdog:clawdog README.md Licence.txt ./
 
+# Bundle the SBRM rate-table fact-nodes into the runtime image so the
+# manifest-fidelity helper (api/manifest_fidelity.py::build_manifest) can
+# read+hash them live at invocation time. Without this bundle, any request
+# whose engine response carries a non-empty rate_uris_consumed list would
+# trip an uncaught FileNotFoundError in build_manifest and the route would
+# surface a bare 500 to the caller (Phase 3a deemed-dispatch 500 root cause).
+#
+# Provenance: byte-vendored from lodgeit-labs/LodgeiT_FBT/SBRM_RATE_TABLE/.
+# See rate_tables/SBRM_RATE_TABLE/PROVENANCE.md for the re-vendor procedure.
+#
+# Layout inside the image: /app/SBRM_RATE_TABLE/<calc>/<period_id>/<rate_id>.md
+# The Cloud Run service descriptor sets LODGEIT_FBT_REPO=/app so
+# _rate_table_root_for() in api/routes/calculators.py resolves correctly.
+COPY --chown=clawdog:clawdog rate_tables/SBRM_RATE_TABLE ./SBRM_RATE_TABLE
+
 USER clawdog
 
 EXPOSE 8000
