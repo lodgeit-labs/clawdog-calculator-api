@@ -325,4 +325,71 @@ def test_unratified_taxonomy_rejected_at_route(
     assert "ratified" in detail_str.lower() or "some_made_up_taxonomy" in detail_str
 
 
+# --- Phase 3c.3.B depreciation production-bundle assertions -----------------
+#
+# Andrew + Tracer ratified 2026-05-12 05:54 UTC. Mirrors assertion classes #1
+# and #2 above against the depreciation calc tree. The end-to-end dispatch
+# test is deferred to Phase 3c.4 when the FBT-shaped E2E shape generalises
+# into a calc-uri-dispatched test fixture (vs. duplicating the entire body
+# below for one extra calculator — Lesson #31 anti-pattern at this scale).
+
+DEPRECIATION_FY2026_PERIOD_URI = "urn:sbrm:period:depreciation:fy2026"
+
+DEPRECIATION_REQUIRED_FILES = [
+    "audit-variance-threshold.md",
+    "instant-asset-write-off-threshold.md",
+    "small-business-pool-rate.md",
+]
+
+
+@pytest.mark.parametrize("taxonomy", RATIFIED_TAXONOMIES)
+def test_depreciation_bundle_directory_exists(taxonomy: str) -> None:
+    """Assertion class #1 (depreciation): every ratified taxonomy has a
+    depreciation bundle directory (populated OR empty-ready)."""
+    taxonomy_dir = (
+        PRODUCTION_BUNDLE_ROOT / "SBRM_RATE_TABLE" / "depreciation" / taxonomy
+    )
+    assert taxonomy_dir.is_dir(), (
+        f"production depreciation taxonomy bundle directory missing at "
+        f"{taxonomy_dir}; the manifest resolver expects "
+        f"<bundle>/SBRM_RATE_TABLE/depreciation/<taxonomy>/<period_id>/ "
+        f"per CLAWDOG/111 NN#2."
+    )
+
+
+@pytest.mark.parametrize("taxonomy", POPULATED_TAXONOMIES)
+def test_depreciation_bundle_contains_audit_rate_tables(taxonomy: str) -> None:
+    """Assertion class #2 (depreciation): populated taxonomies carry the
+    three rate-table fact-nodes consumed by the audit path."""
+    fy2026 = (
+        PRODUCTION_BUNDLE_ROOT
+        / "SBRM_RATE_TABLE"
+        / "depreciation"
+        / taxonomy
+        / "fy2026"
+    )
+    for name in DEPRECIATION_REQUIRED_FILES:
+        path = fy2026 / name
+        assert path.is_file(), f"production depreciation bundle missing {path}"
+        text = path.read_text(encoding="utf-8")
+        assert "content_hash" in text, f"{path} has no content_hash frontmatter line"
+
+
+@pytest.mark.parametrize("taxonomy", POPULATED_TAXONOMIES)
+def test_depreciation_resolver_resolves_against_bundle(
+    monkeypatch: pytest.MonkeyPatch,
+    taxonomy: str,
+) -> None:
+    """Assertion class #3 (depreciation): `rate_table_root_for` resolves to
+    a populated depreciation bundle when env is wired Cloud-Run-style."""
+    from api.lib.rate_table_resolver import rate_table_root_for
+
+    monkeypatch.delenv("CLAWDOG_RATE_TABLE_ROOT", raising=False)
+    monkeypatch.setenv("LODGEIT_FBT_REPO", str(PRODUCTION_BUNDLE_ROOT))
+
+    root = rate_table_root_for(DEPRECIATION_FY2026_PERIOD_URI, taxonomy)
+    assert root.is_dir(), f"resolver produced non-existent path {root}"
+    assert (root / "audit-variance-threshold.md").is_file()
+
+
 __all__ = []

@@ -26,6 +26,7 @@ from api.lib.rate_table_resolver import (
 )
 from api.manifest_fidelity import build_manifest
 from api.prolog_client import PrologCalculationError, PrologClient
+from api.schemas.depreciation import DepreciationAuditInput
 from api.schemas.invocation import (
     CalculatorInvocationResponse,
     CalculatorListing,
@@ -45,6 +46,8 @@ router = APIRouter(prefix="/v1", tags=["calculators"])
 
 _FBT_CAR_OC_URI = "urn:sbrm:calculator:fbt:car-operating-cost"
 _FBT_FY2026 = "urn:sbrm:period:fbt:fy2026"
+_DEPRECIATION_AUDIT_URI = "urn:sbrm:calculator:depreciation:audit"
+_DEPRECIATION_FY2026 = "urn:sbrm:period:depreciation:fy2026"
 
 _CALCULATOR_REGISTRY: dict[str, dict] = {
     _FBT_CAR_OC_URI: {
@@ -54,6 +57,20 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
         "label": "FBT Car — Operating Cost Method",
         "supported_periods": [_FBT_FY2026],
         "input_schema_ref": "#/components/schemas/FBTCarOperatingCostInput",
+    },
+    _DEPRECIATION_AUDIT_URI: {
+        # Phase 3c.3.B onboarding (Andrew + Tracer ratified 2026-05-12 05:54 UTC).
+        # Scope per Andrew: accounting-engine depreciation supports prime cost
+        # + diminishing value only; /audit cross-checks ledger-side accumulated
+        # depreciation against the accounting-method ideal. /resurrect and
+        # /adjustment_journal are out of scope for β.2.B (separate registry
+        # entries can be added later when those pipeline shapes are wired).
+        "engine_method": "audit",
+        "engine_benefit_category": "depreciation_audit",
+        "jurisdiction": "AU",
+        "label": "Depreciation — Audit (Prime Cost / Diminishing Value)",
+        "supported_periods": [_DEPRECIATION_FY2026],
+        "input_schema_ref": "#/components/schemas/DepreciationAuditInput",
     },
 }
 
@@ -233,6 +250,163 @@ async def invoke_calculator(
     )
 
     return CalculatorInvocationResponse.model_validate(response_payload)
+
+
+# --- Phase 3c.3.B depreciation route (Option α minimum-viable) ---------------
+#
+# Andrew + Tracer ratified 2026-05-12 05:54 UTC. This is a sibling route to
+# /v1/calculators/{calc_uri}/{period_uri}, deliberately kept SEPARATE from the
+# FBT-shaped invoke route so that:
+#   1. The FBT-shaped surface stays byte-untouched (a clean diff signal that
+#      CLAWDOG/109 §8.3 abstraction-leak test is honoured at the route level).
+#   2. The depreciation route can carry its native response shape
+#      (audited_standard_assets list) without forcing the FBT route to evolve
+#      into a polymorphic discriminated-union body.
+#   3. Phase 3c.4 (the PrologClient + route generalisation sprint) has a
+#      concrete second-implementation to study before designing the unified
+#      shape — vs. doing the generalisation now from a one-data-point
+#      extrapolation (Lesson #31 anti-pattern).
+#
+# When Phase 3c.4 unifies the surface, both routes converge under
+# /v1/calculators/{calc_uri}/{period_uri} with discriminated dispatch.
+
+_DEPRECIATION_RESPONSE_FIELDS = (
+    "status",
+    "transition_date",
+    "method",
+    "audited_standard_assets",
+)
+
+
+@router.post(
+    "/calculators/depreciation/audit/{period_uri}",
+    summary="Invoke the Depreciation Audit endpoint for the given URN-encoded period.",
+    description=(
+        "Phase 3c.3.B — onboards the upstream Depreciation Prolog engine's "
+        "`/api/v1/depreciation/audit` endpoint through the REST surface. "
+        "Cross-checks ledger-side `current_book_accum_dep` against the "
+        "accounting-method projection (prime cost or diminishing value) at "
+        "the supplied `transition_date`; surfaces a variance flag against "
+        "the Brain-canon variance threshold "
+        "(SBRM_RATE_TABLE/depreciation/<taxonomy>/<period>/audit-variance-threshold.md). "
+        "Out of scope for β.2.B: `/resurrect` (asset register migration) and "
+        "`/adjustment_journal` (Phase II pipeline) — each will land as a "
+        "sibling route at the next depreciation onboarding rung."
+    ),
+)
+async def invoke_depreciation_audit(
+    period_uri: Annotated[str, PathParam(description="URL-encoded period URN.")],
+    body: DepreciationAuditInput,
+    prolog: Annotated[PrologClient, Depends(get_prolog_client)],
+    taxonomy: Annotated[
+        str,
+        Query(
+            description=(
+                "Bare-atom taxonomy axis value per CLAWDOG/111 §2. "
+                "Ratified set: lodgeit_au_sbrm | hoffman_base. "
+                "At Phase 3c.3.B only lodgeit_au_sbrm is populated for "
+                "depreciation; hoffman_base bundle authoring is deferred."
+            ),
+        ),
+    ] = DEFAULT_TAXONOMY,
+) -> dict:
+    period_uri_decoded = unquote(period_uri)
+
+    try:
+        validate_period_uri(period_uri_decoded)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+
+    if taxonomy not in RATIFIED_TAXONOMIES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"taxonomy={taxonomy!r} is not in the ratified set "
+                f"{sorted(RATIFIED_TAXONOMIES)} per CLAWDOG/111 §2."
+            ),
+        )
+
+    meta = _CALCULATOR_REGISTRY.get(_DEPRECIATION_AUDIT_URI)
+    if meta is None:  # pragma: no cover — registry is module-level constant
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="depreciation_audit calculator missing from registry",
+        )
+    if period_uri_decoded not in meta["supported_periods"]:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"period_uri={period_uri_decoded!r} is not supported by the "
+                f"depreciation audit calculator. Supported: "
+                f"{meta['supported_periods']}"
+            ),
+        )
+
+    payload: dict = body.model_dump(by_alias=False, exclude_none=True)
+
+    try:
+        engine_response = await prolog.depreciation_audit(payload)
+    except PrologCalculationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"error": exc.error, "detail": exc.detail},
+        ) from exc
+
+    # Engine response shape: {status, transition_date, method, audited_standard_assets}.
+    # Any missing primary field is a structural-defence-tier failure (Lesson #34
+    # surface-do-not-paper-over).
+    for required in _DEPRECIATION_RESPONSE_FIELDS:
+        if required not in engine_response:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "error": "engine_response_missing_field",
+                    "field": required,
+                    "detail": engine_response,
+                },
+            )
+
+    # Manifest fidelity: the depreciation engine consumes the variance
+    # threshold rate from rates.pl. The Brain canon URI is fixed for the
+    # period; we surface it in the manifest the same way FBT surfaces its
+    # rate URIs. Future depreciation methods may consume more rate nodes;
+    # the engine should populate `rate_uris_consumed` in its response so the
+    # bridge does not need to know which rates a method touched. For now,
+    # pin the audit-variance-threshold URI as the load-bearing manifest entry.
+    rate_uris: list[str] = engine_response.get("rate_uris_consumed") or [
+        f"urn:sbrm:rate:depreciation:{period_uri_decoded.split(':')[-1]}:audit-variance-threshold"
+    ]
+    rate_table_root = _rate_table_root_for(period_uri_decoded, taxonomy)
+    try:
+        manifest = build_manifest(rate_uris, rate_table_root)
+    except (FileNotFoundError, OSError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": "manifest_rate_table_unavailable",
+                "detail": (
+                    f"failed to build manifest for {len(rate_uris)} rate URI(s) "
+                    f"against root={rate_table_root!s}: {exc.__class__.__name__}: {exc}"
+                ),
+                "rate_uris": rate_uris,
+                "rate_table_root": str(rate_table_root),
+            },
+        ) from exc
+
+    response_payload = wrap_response(
+        {
+            "status": engine_response["status"],
+            "transition_date": engine_response["transition_date"],
+            "method": engine_response["method"],
+            "audited_standard_assets": engine_response["audited_standard_assets"],
+            "manifest": manifest,
+        },
+        jurisdiction=meta["jurisdiction"],
+    )
+
+    return response_payload
 
 
 __all__ = ["router"]

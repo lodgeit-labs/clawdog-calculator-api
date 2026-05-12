@@ -1,0 +1,40 @@
+{
+  "status": "success",
+  "transition_date": "2025-07-01",
+  "method": "primecost",
+  "audited_standard_assets": [
+    {
+      "asset_id": "10",
+      "asset_name": "Toyota",
+      "category": "motor_vehicles",
+      "effective_life_years": 8,
+      "days_held": 3804,
+      "tax_method_recorded": "dv",
+      "current_book_accum_dep": 24934.04,
+      "ideal_accum_dep_primecost": 25000.00,
+      "variance": 65.96,
+      "variance_flag": "OK",
+      "method_flag": "Warning: Asset uses Tax DV. Consider transitioning to Prime Cost for accounting.",
+      "depreciation_rate_percent_target": 12.5,
+      "depreciation_rate_percent_ledger": 12.47
+    },
+    {
+      "asset_id": "11",
+      "asset_name": "Corolla",
+      "category": "motor_vehicles",
+      "effective_life_years": 8,
+      "days_held": 5388,
+      "tax_method_recorded": "pc",
+      "current_book_accum_dep": 19766.72,
+      "ideal_accum_dep_primecost": 19800.00,
+      "variance": 33.28,
+      "variance_flag": "OK",
+      "method_flag": "OK",
+      "depreciation_rate_percent_target": 12.5,
+      "depreciation_rate_percent_ledger": 12.49
+    }
+  ],
+  "rate_uris_consumed": [
+    "urn:sbrm:rate:depreciation:fy2026:audit-variance-threshold"
+  ]
+}

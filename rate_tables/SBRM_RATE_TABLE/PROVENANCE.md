@@ -21,14 +21,17 @@ placeholder-substituted bytes. Without this bundle, `read_text()` raises
 
 ## Provenance
 
-- Source: `lodgeit-labs/LodgeiT_FBT` repo, `SBRM_RATE_TABLE/` tree
+- Source for FBT: `lodgeit-labs/LodgeiT_FBT` repo, `SBRM_RATE_TABLE/` tree
+- Source for Depreciation (Phase 3c.3.B, 2026-05-12): `futureWA/clawdog-brain` repo, `SBRM_RATE_TABLE/depreciation/<taxonomy>/<period>/` tree (the Brain is the canonical source after the mc16 reshape).
 - Vendoring rule: byte-identical copy. Do NOT edit these files in-place; if
   the engine-side rate-table is updated, re-vendor by running
-  `cp -r LodgeiT_FBT/SBRM_RATE_TABLE/* clawdog-calculator-api/rate_tables/SBRM_RATE_TABLE/`
+  `cp -r LodgeiT_FBT/SBRM_RATE_TABLE/* clawdog-calculator-api/rate_tables/SBRM_RATE_TABLE/` (FBT)
+  or `cp -r clawdog-brain/SBRM_RATE_TABLE/depreciation/* clawdog-calculator-api/rate_tables/SBRM_RATE_TABLE/depreciation/` (Depreciation)
   and committing the result.
 - Layout: `SBRM_RATE_TABLE/<calc>/<taxonomy>/<period_id>/<rate_id>.md`
   (taxonomy axis added at `mut-2026-05-12-mc16` per clawdog-brain CLAWDOG/111;
-  Phase 3c.2 ratified set: `lodgeit_au_sbrm` populated, `hoffman_base` to populate at Phase 3c.3)
+  Phase 3c.2 ratified set: `lodgeit_au_sbrm` populated, `hoffman_base` empty-ready)
+- Calculators vendored: `fbt` (Phase 3a), `depreciation` (Phase 3c.3.B onboarded 2026-05-12, audit endpoint scope only per Andrew — prime cost + diminishing value only).
   - matches the canonical resolver at `api/lib/rate_table_resolver.py::rate_table_root_for(period_uri, taxonomy)`
   - in-route wrappers `_rate_table_root_for(period_uri, taxonomy=DEFAULT_TAXONOMY)` in `api/routes/calculators.py` and `api/routes/rates.py` delegate to the canonical resolver.
 
