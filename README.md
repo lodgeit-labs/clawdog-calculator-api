@@ -106,7 +106,7 @@ clawdog-calculator-api/                  ← THIS repo (Egress Interface)
 |---|---|
 | **#1 ClawDog Git Protocol** | `scripts/hooks/pre-push` (installed via `make install-hooks`); branch protection visual layer is Andrew's responsibility. |
 | **#4 Fano-Constraint API immutables** | Cloud Run target `australia-southeast1`; `locale-gen en_AU.UTF-8` in the runtime image; **no training inside Cloud Run** (this service is invocation-only). |
-| **#6 Hoffman Temporal-Dimension Discipline** | No statutory constants in any Python source; the bridge is rate-table-blind, the upstream Prolog engine reads `SBRM_RATE_TABLE/<calc>/<period>/`. |
+| **#6 Hoffman Temporal-Dimension Discipline** | No statutory constants in any Python source; the bridge is rate-table-blind, the upstream Prolog engine reads `SBRM_RATE_TABLE/<calc>/<taxonomy>/<period>/` (taxonomy axis added at `mut-2026-05-12-mc16` per clawdog-brain CLAWDOG/111). |
 | **#7 Repository Topology Discipline** | This repo is an **Egress Interface**; provenance lives in the Brain and the calculator repos. |
 | **#11 Verbatim-Claim Byte-Diff Discipline** | The advisory disclaimer is paraphrased + cites by section (TAA 1953 s284-15, TASA 2009 s50-5, FA 2008 Sch41). No verbatim transcription from statute or canon nodes; no `verbatim_claims:` declarations needed. |
 

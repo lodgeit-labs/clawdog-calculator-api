@@ -438,6 +438,18 @@
               "title": "Period Uri",
               "type": "string"
             }
+          },
+          {
+            "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. Default at Phase 3c.2: lodgeit_au_sbrm (only populated bundle). Strict-required discipline tightens at Phase 3c.3 when hoffman_base populates.",
+            "in": "query",
+            "name": "taxonomy",
+            "required": false,
+            "schema": {
+              "default": "lodgeit_au_sbrm",
+              "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. Default at Phase 3c.2: lodgeit_au_sbrm (only populated bundle). Strict-required discipline tightens at Phase 3c.3 when hoffman_base populates.",
+              "title": "Taxonomy",
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -488,6 +500,18 @@
             "required": true,
             "schema": {
               "title": "Period Uri",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Default: lodgeit_au_sbrm.",
+            "in": "query",
+            "name": "taxonomy",
+            "required": false,
+            "schema": {
+              "default": "lodgeit_au_sbrm",
+              "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Default: lodgeit_au_sbrm.",
+              "title": "Taxonomy",
               "type": "string"
             }
           }
@@ -541,6 +565,18 @@
             "required": true,
             "schema": {
               "title": "Rate Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Default: lodgeit_au_sbrm.",
+            "in": "query",
+            "name": "taxonomy",
+            "required": false,
+            "schema": {
+              "default": "lodgeit_au_sbrm",
+              "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Default: lodgeit_au_sbrm.",
+              "title": "Taxonomy",
               "type": "string"
             }
           }

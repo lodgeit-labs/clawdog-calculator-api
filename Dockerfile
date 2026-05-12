@@ -81,9 +81,12 @@ COPY --chown=clawdog:clawdog README.md Licence.txt ./
 # Provenance: byte-vendored from lodgeit-labs/LodgeiT_FBT/SBRM_RATE_TABLE/.
 # See rate_tables/SBRM_RATE_TABLE/PROVENANCE.md for the re-vendor procedure.
 #
-# Layout inside the image: /app/SBRM_RATE_TABLE/<calc>/<period_id>/<rate_id>.md
+# Layout inside the image: /app/SBRM_RATE_TABLE/<calc>/<taxonomy>/<period_id>/<rate_id>.md
+# (taxonomy axis added at mut-2026-05-12-mc16 per clawdog-brain CLAWDOG/111;
+# Phase 3c.2 ratified set: lodgeit_au_sbrm populated, hoffman_base to populate
+# at Phase 3c.3.)
 # The Cloud Run service descriptor sets LODGEIT_FBT_REPO=/app so
-# _rate_table_root_for() in api/routes/calculators.py resolves correctly.
+# rate_table_root_for() in api/lib/rate_table_resolver.py resolves correctly.
 COPY --chown=clawdog:clawdog rate_tables/SBRM_RATE_TABLE ./SBRM_RATE_TABLE
 
 USER clawdog
