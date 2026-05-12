@@ -110,6 +110,90 @@
         "title": "CalculatorListing",
         "type": "object"
       },
+      "DepreciationAuditAssetInput": {
+        "additionalProperties": false,
+        "description": "One asset row in a depreciation-audit batch.\n\nMirrors the upstream Prolog handler's accepted shape\n(`app/server/depreciation_server.pl::handle_audit`); fields are\natom-pure carriers of identity per CLAWDOG/110 \u00a73.3.",
+        "properties": {
+          "assetId": {
+            "description": "Caller-supplied stable identifier for the asset row.",
+            "title": "Assetid",
+            "type": "string"
+          },
+          "assetName": {
+            "description": "Free-text asset description. Used by the Prolog Tier-1 classifier (keyword_map/2 + Stopwords.pl) to resolve effective-life category.",
+            "title": "Assetname",
+            "type": "string"
+          },
+          "currentBookAccumDep": {
+            "description": "Current ledger-side accumulated depreciation balance at the transition date (AUD). The audit compares this against the ideal-method projection to detect material variance.",
+            "minimum": 0.0,
+            "title": "Currentbookaccumdep",
+            "type": "number"
+          },
+          "originalCost": {
+            "description": "Acquisition cost (AUD).",
+            "minimum": 0.0,
+            "title": "Originalcost",
+            "type": "number"
+          },
+          "purchaseDate": {
+            "description": "ISO-8601 date of acquisition (e.g. 2015-01-30).",
+            "title": "Purchasedate",
+            "type": "string"
+          },
+          "taxMethod": {
+            "description": "The depreciation method historically applied on the tax side. Common values: 'dv' (diminishing value), 'pc' (prime cost). Used by the engine to surface a method-flag warning when the accounting-side ideal differs from the tax-side recorded method.",
+            "title": "Taxmethod",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId",
+          "assetName",
+          "purchaseDate",
+          "originalCost",
+          "taxMethod",
+          "currentBookAccumDep"
+        ],
+        "title": "DepreciationAuditAssetInput",
+        "type": "object"
+      },
+      "DepreciationAuditInput": {
+        "additionalProperties": false,
+        "description": "Input for the Depreciation Audit endpoint.\n\nWire-shape mirrors the upstream Prolog `/api/v1/depreciation/audit`\nhandler: a transition_date, a method discriminator, and an\n`assets_to_audit` batch.\n\nThe `method` field is constrained to the accounting-engine scope per\nAndrew (2026-05-12 05:54 UTC): prime cost + diminishing value only.\nThe engine's `normalize_method/2` accepts `'dvmethod'` for DV; legacy\naliases on input are coerced to canonical strings before forwarding.",
+        "properties": {
+          "assetsToAudit": {
+            "description": "Batch of asset rows to audit. The engine processes them sequentially; total runtime is dominated by Tier-1 classifier lookups (keyword_map/2).",
+            "items": {
+              "$ref": "#/components/schemas/DepreciationAuditAssetInput"
+            },
+            "minItems": 1,
+            "title": "Assetstoaudit",
+            "type": "array"
+          },
+          "method": {
+            "default": "primecost",
+            "description": "Accounting-side ideal method to project. 'primecost' = straight-line; 'dvmethod' = diminishing value. The engine default is 'primecost' (matches handle_audit fall-through).",
+            "enum": [
+              "primecost",
+              "dvmethod"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "transitionDate": {
+            "description": "ISO-8601 date marking the audit anchor (e.g. 2025-07-01 = FY2026 opening). The engine projects accumulated depreciation to this date and compares against current_book_accum_dep.",
+            "title": "Transitiondate",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transitionDate",
+          "assetsToAudit"
+        ],
+        "title": "DepreciationAuditInput",
+        "type": "object"
+      },
       "FBTCarOperatingCostInput": {
         "additionalProperties": false,
         "description": "Input for the FBT Car Operating Cost method (Phase 3a Cut A).\n\nField naming mirrors the upstream Prolog engine's request shape (snake_case\nvia FastAPI's alias mapping, accepting both snake_case and the camelCase\nused by the existing fbt_tester.py compatibility surface).",
@@ -407,6 +491,75 @@
           }
         },
         "summary": "List calculators available through the REST surface.",
+        "tags": [
+          "calculators"
+        ]
+      }
+    },
+    "/v1/calculators/depreciation/audit/{period_uri}": {
+      "post": {
+        "description": "Phase 3c.3.B \u2014 onboards the upstream Depreciation Prolog engine's `/api/v1/depreciation/audit` endpoint through the REST surface. Cross-checks ledger-side `current_book_accum_dep` against the accounting-method projection (prime cost or diminishing value) at the supplied `transition_date`; surfaces a variance flag against the Brain-canon variance threshold (SBRM_RATE_TABLE/depreciation/<taxonomy>/<period>/audit-variance-threshold.md). Out of scope for \u03b2.2.B: `/resurrect` (asset register migration) and `/adjustment_journal` (Phase II pipeline) \u2014 each will land as a sibling route at the next depreciation onboarding rung.",
+        "operationId": "invoke_depreciation_audit_v1_calculators_depreciation_audit__period_uri__post",
+        "parameters": [
+          {
+            "description": "URL-encoded period URN.",
+            "in": "path",
+            "name": "period_uri",
+            "required": true,
+            "schema": {
+              "description": "URL-encoded period URN.",
+              "title": "Period Uri",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. At Phase 3c.3.B only lodgeit_au_sbrm is populated for depreciation; hoffman_base bundle authoring is deferred.",
+            "in": "query",
+            "name": "taxonomy",
+            "required": false,
+            "schema": {
+              "default": "lodgeit_au_sbrm",
+              "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. At Phase 3c.3.B only lodgeit_au_sbrm is populated for depreciation; hoffman_base bundle authoring is deferred.",
+              "title": "Taxonomy",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepreciationAuditInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Invoke Depreciation Audit V1 Calculators Depreciation Audit  Period Uri  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Invoke the Depreciation Audit endpoint for the given URN-encoded period.",
         "tags": [
           "calculators"
         ]
