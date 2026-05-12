@@ -56,7 +56,7 @@ statutory_source:
 cryptographic_anchor:
   ipfs_cid: "PENDING_IPFS_BROADCAST"
   hash_domain: "pre_anchor_draft"
-  content_hash: "837740cf9f62c53c508af561fccdd94ac8e4e066cba7b7c1e9f1399a18dfe597"
+  content_hash: "4d3a9e54d740de8df7961758d8f588cf76d3a37a638075b82b2811ddb3ad95df"
 
 # Cybernetic state
 cybernetic_state:
@@ -99,6 +99,15 @@ helm_mutations:
       Forward discipline: future calculator rate-table authoring must invoke
       scripts/audit_content_hashes.py --write to anchor the hash, never compute inline.
       Banked as a finding for Phase 3b/3c discipline.
+  - ledger_id: "mut-2026-05-12-mc16"
+    timestamp: "2026-05-12T02:10:00Z"
+    agent_id: "clawdog-agent"
+    authority: "andrew (workspace owner, 2026-05-12 01:59 UTC, webchat control UI). PR #166 = mc16 Brain-side reshape merged at 7a143a8 (Phase 3c.2 Brain-only-first). Reply text 'proceed' green-lit Phase 3c.2.b sibling PR in LodgeiT_FBT."
+    mutation_type: "path_segment_addition"
+    content_hash_rolled: true
+    previous_content_hash: "837740cf9f62c53c508af561fccdd94ac8e4e066cba7b7c1e9f1399a18dfe597"
+    justification: |
+      Phase 3c.2.b path-segment-addition: taxonomy axis lift per GLOBAL_NOTES/CLAWDOG/111_TAXONOMY_AXIS.md (mut-2026-05-11-mc14, ratified PR #164). Path moved from SBRM_RATE_TABLE/fbt/fy2026/ to SBRM_RATE_TABLE/fbt/lodgeit_au_sbrm/fy2026/. The bare math of this fact-node is unchanged; only its filesystem-layer address is extended to make the taxonomy dimension explicit (NN#2 of CLAWDOG/111). This is the Egress-Interface side (LodgeiT_FBT) of Phase 3c.2; the Brain-side reshape banked at mut-2026-05-12-mc16 (clawdog-brain PR #166 merged 2026-05-12 01:59 UTC at 7a143a8). The compound deemed-depreciation node is locally-authored in LodgeiT_FBT (not in Brain); the 9 atomic FBT FY2026 nodes are byte-vendored from Brain's post-mc16 state. URN identity (urn:sbrm:rate:fbt:fy2026:deemed-depreciation-rates) is unchanged — Lesson #36 (atom carries identity, bridge carries interpretation): URN is identity, path segment is interpretation-metadata.
 ---
 
 # Deemed Depreciation Rates — Operating Cost Method (FY2026)

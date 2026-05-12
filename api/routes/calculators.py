@@ -11,15 +11,19 @@ holds under a second calculator.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import unquote
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi import Path as PathParam
 
 from api.lib.advisory_boundary import wrap_response
+from api.lib.rate_table_resolver import (
+    DEFAULT_TAXONOMY,
+    RATIFIED_TAXONOMIES,
+    rate_table_root_for,
+)
 from api.manifest_fidelity import build_manifest
 from api.prolog_client import PrologCalculationError, PrologClient
 from api.schemas.invocation import (
@@ -54,24 +58,17 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
 }
 
 
-def _rate_table_root_for(period_uri: str) -> Path:
-    """Resolve the on-disk rate-table root for a given period URI.
+def _rate_table_root_for(period_uri: str, taxonomy: str = DEFAULT_TAXONOMY) -> Path:
+    """Backward-compatible thin wrapper around the canonical resolver.
 
-    Resolution:
-        1. If ``CLAWDOG_RATE_TABLE_ROOT`` is set, use it directly (test-fixture
-           override; the test fixture vendors a pinned snapshot).
-        2. Otherwise, resolve relative to ``$LODGEIT_FBT_REPO`` /
-           ``SBRM_RATE_TABLE/fbt/<period_id>/`` for the FBT calculator.
+    The canonical implementation lives at
+    ``api.lib.rate_table_resolver.rate_table_root_for`` since Phase 3c.2.c
+    (mut-2026-05-12-mc16). This function is kept for in-route legibility and
+    for the existing test_production_bundle.py import path; it delegates
+    immediately. Per CLAWDOG/111 NN#2 the resolver path is now
+    ``SBRM_RATE_TABLE/<calc>/<taxonomy>/<period_id>``.
     """
-    override = os.environ.get("CLAWDOG_RATE_TABLE_ROOT")
-    if override:
-        return Path(override)
-
-    fbt_repo = os.environ.get("LODGEIT_FBT_REPO", "/srv/lodgeit_fbt")
-    # period_uri shape: urn:sbrm:period:<calc>:<period_id>
-    parts = period_uri.split(":")
-    calc, period_id = parts[3], parts[4]
-    return Path(fbt_repo) / "SBRM_RATE_TABLE" / calc / period_id
+    return rate_table_root_for(period_uri, taxonomy)
 
 
 async def get_prolog_client() -> PrologClient:
@@ -123,6 +120,17 @@ async def invoke_calculator(
     period_uri: Annotated[str, PathParam(description="URL-encoded period URN.")],
     body: FBTCarOperatingCostInput,
     prolog: Annotated[PrologClient, Depends(get_prolog_client)],
+    taxonomy: Annotated[
+        str,
+        Query(
+            description=(
+                "Bare-atom taxonomy axis value per CLAWDOG/111 §2. "
+                "Ratified set: lodgeit_au_sbrm | hoffman_base. "
+                "Default at Phase 3c.2: lodgeit_au_sbrm (only populated bundle). "
+                "Strict-required discipline tightens at Phase 3c.3 when hoffman_base populates."
+            ),
+        ),
+    ] = DEFAULT_TAXONOMY,
 ) -> CalculatorInvocationResponse:
     calc_uri_decoded = unquote(calc_uri)
     period_uri_decoded = unquote(period_uri)
@@ -134,6 +142,15 @@ async def invoke_calculator(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
+
+    if taxonomy not in RATIFIED_TAXONOMIES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"taxonomy={taxonomy!r} is not in the ratified set "
+                f"{sorted(RATIFIED_TAXONOMIES)} per CLAWDOG/111 §2."
+            ),
+        )
 
     meta = _CALCULATOR_REGISTRY.get(calc_uri_decoded)
     if meta is None:
@@ -183,7 +200,7 @@ async def invoke_calculator(
         or engine_response.get("rate_uris_consumed", [])
         or []
     )
-    rate_table_root = _rate_table_root_for(period_uri_decoded)
+    rate_table_root = _rate_table_root_for(period_uri_decoded, taxonomy)
     try:
         manifest = build_manifest(rate_uris, rate_table_root)
     except (FileNotFoundError, OSError) as exc:

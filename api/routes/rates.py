@@ -11,14 +11,18 @@ the Brain repository directly.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import unquote
 
 import yaml
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
+from api.lib.rate_table_resolver import (
+    DEFAULT_TAXONOMY,
+    RATIFIED_TAXONOMIES,
+    rate_table_root_for,
+)
 from api.manifest_fidelity import (
     declared_content_hash,
     hash_rate_table,
@@ -28,19 +32,15 @@ from api.schemas.invocation import validate_period_uri
 router = APIRouter(prefix="/v1/rates", tags=["rates"])
 
 
-def _rate_table_root_for(period_uri: str) -> Path:
-    """Resolve the on-disk rate-table root for a given period URI.
+def _rate_table_root_for(period_uri: str, taxonomy: str = DEFAULT_TAXONOMY) -> Path:
+    """Backward-compatible thin wrapper around the canonical resolver.
 
-    Mirrors ``api.routes.calculators._rate_table_root_for`` so both surfaces
-    agree on lookup semantics.
+    Lifted to ``api.lib.rate_table_resolver.rate_table_root_for`` at Phase 3c.2.c
+    (mut-2026-05-12-mc16); resolver path now includes the taxonomy axis per
+    CLAWDOG/111 NN#2. Both `calculators.py` and `rates.py` import the canonical
+    resolver via this thin wrapper for in-route legibility.
     """
-    override = os.environ.get("CLAWDOG_RATE_TABLE_ROOT")
-    if override:
-        return Path(override)
-    fbt_repo = os.environ.get("LODGEIT_FBT_REPO", "/srv/lodgeit_fbt")
-    parts = period_uri.split(":")
-    calc, period_id = parts[3], parts[4]
-    return Path(fbt_repo) / "SBRM_RATE_TABLE" / calc / period_id
+    return rate_table_root_for(period_uri, taxonomy)
 
 
 def _split_frontmatter(content: str) -> dict[str, Any]:
@@ -60,7 +60,16 @@ def _split_frontmatter(content: str) -> dict[str, Any]:
     "/{period_uri}",
     summary="List rate-table fact-nodes for a period (URN-encoded period URI).",
 )
-def list_rates(period_uri: str) -> dict[str, Any]:
+def list_rates(
+    period_uri: str,
+    taxonomy: Annotated[
+        str,
+        Query(description=(
+            "Bare-atom taxonomy axis value per CLAWDOG/111 §2. "
+            "Default: lodgeit_au_sbrm."
+        )),
+    ] = DEFAULT_TAXONOMY,
+) -> dict[str, Any]:
     period_uri_decoded = unquote(period_uri)
     try:
         validate_period_uri(period_uri_decoded)
@@ -69,7 +78,16 @@ def list_rates(period_uri: str) -> dict[str, Any]:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
 
-    root = _rate_table_root_for(period_uri_decoded)
+    if taxonomy not in RATIFIED_TAXONOMIES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"taxonomy={taxonomy!r} is not in the ratified set "
+                f"{sorted(RATIFIED_TAXONOMIES)} per CLAWDOG/111 §2."
+            ),
+        )
+
+    root = _rate_table_root_for(period_uri_decoded, taxonomy)
     if not root.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -98,7 +116,17 @@ def list_rates(period_uri: str) -> dict[str, Any]:
     "/{period_uri}/{rate_id}",
     summary="Return a single rate-table fact-node body + content_hash.",
 )
-def get_rate(period_uri: str, rate_id: str) -> dict[str, Any]:
+def get_rate(
+    period_uri: str,
+    rate_id: str,
+    taxonomy: Annotated[
+        str,
+        Query(description=(
+            "Bare-atom taxonomy axis value per CLAWDOG/111 §2. "
+            "Default: lodgeit_au_sbrm."
+        )),
+    ] = DEFAULT_TAXONOMY,
+) -> dict[str, Any]:
     period_uri_decoded = unquote(period_uri)
     try:
         validate_period_uri(period_uri_decoded)
@@ -107,7 +135,16 @@ def get_rate(period_uri: str, rate_id: str) -> dict[str, Any]:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
 
-    root = _rate_table_root_for(period_uri_decoded)
+    if taxonomy not in RATIFIED_TAXONOMIES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"taxonomy={taxonomy!r} is not in the ratified set "
+                f"{sorted(RATIFIED_TAXONOMIES)} per CLAWDOG/111 §2."
+            ),
+        )
+
+    root = _rate_table_root_for(period_uri_decoded, taxonomy)
     path = root / f"{rate_id}.md"
 
     if not path.exists():

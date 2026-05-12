@@ -36,7 +36,7 @@ statutory_source:
 cryptographic_anchor:
   ipfs_cid: "PENDING_IPFS_BROADCAST"
   hash_domain: "pre_anchor_draft"
-  content_hash: "5c35804fe451a93877db717a3506f3c893dad190343343dd7d1f6ce6a16490b6"
+  content_hash: "e6e04fd6cdab8ee67b0fd0f14ae3358ba31495d68382415ea063cab3e8ce3a78"
 
 # Cybernetic state
 cybernetic_state:
@@ -54,7 +54,17 @@ semantic_edges:
     target: "urn:lodgeit:calculator:fbt"
 
 # Mutation ledger (append-only)
-helm_mutations: []
+helm_mutations:
+  - mutation_id: "mut-2026-05-12-mc16"
+    ledger_id: "mut-2026-05-12-mc16"
+    timestamp: "2026-05-12T01:30:00Z"
+    agent_id: "clawdog-agent"
+    authority: "andrew (workspace owner, 2026-05-12 01:24 UTC, webchat control UI). PR #165 = mc15 Phase 3c ratifications including D3 = helm-roll the SBRM_RATE_TABLE/ reshape. Reply text Go a selects option (a) Brain-only-first cadence per the option ladder surfaced in PR #165 body."
+    mutation_type: "path_segment_addition"
+    content_hash_rolled: true
+    previous_content_hash: "5c35804fe451a93877db717a3506f3c893dad190343343dd7d1f6ce6a16490b6"
+    justification: |
+      Phase 3c.2 path-segment-addition: taxonomy axis lift per GLOBAL_NOTES/CLAWDOG/111_TAXONOMY_AXIS.md (mut-2026-05-11-mc14). Path moved from SBRM_RATE_TABLE/{calc}/{period}/ to SBRM_RATE_TABLE/{calc}/lodgeit_au_sbrm/{period}/. The bare math of this fact-node is unchanged; only its filesystem-layer address is extended to make the taxonomy dimension explicit (NN#2 of CLAWDOG/111). Honours Lesson #36 (atom carries identity, bridge carries interpretation): the rate value 'value' / 'primary_value' is identity and unchanged; the path segment 'lodgeit_au_sbrm' is interpretation-metadata. content_hash will roll because the helm_mutations ledger grew; the body of the fact (rate, statutory_source, temporal_context) is byte-identical to pre-mutation state.
 ---
 
 # In-House Fringe Benefit Annual Reduction Cap
