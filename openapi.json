@@ -198,6 +198,19 @@
         "additionalProperties": false,
         "description": "Input for the FBT Car Operating Cost method (Phase 3a Cut A).\n\nField naming mirrors the upstream Prolog engine's request shape (snake_case\nvia FastAPI's alias mapping, accepting both snake_case and the camelCase\nused by the existing fbt_tester.py compatibility surface).",
         "properties": {
+          "acquisitionCost": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Original acquisition cost (AUD) for the chained-DV walk; chained-DV entry-point. Mutually exclusive with opening_depreciated_value. When supplied with acquisition_date (and without opening_depreciated_value), the engine dispatches to the OT #81 chained-DV walk predicate (mc08).",
+            "title": "Acquisitioncost"
+          },
           "acquisitionDate": {
             "anyOf": [
               {
@@ -228,7 +241,7 @@
                 "type": "null"
               }
             ],
-            "description": "Days the car was held during the FBT year [0..366].",
+            "description": "Days the car was held during the FBT year [0..366]. Required for in-FY-acquisition chained-DV cases (acquisition_date within the FBT year) where the engine's default of 365 would over-state the partial-year leg. Multi-FY chains do NOT need this field (their FY2026 leg is always a full year).",
             "title": "Daysheldinfbtyear"
           },
           "deemedTotal": {
@@ -305,7 +318,7 @@
                 "type": "null"
               }
             ],
-            "description": "Opening depreciated value at start of FBT year (AUD).",
+            "description": "Opening depreciated value at start of FBT year (AUD). Mutually exclusive with acquisition_cost per engine Lesson #14 strict-validation (OT #81 Rung 2 mc07).",
             "title": "Openingdepreciatedvalue"
           },
           "registrationInsurance": {
