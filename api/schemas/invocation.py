@@ -106,11 +106,37 @@ class FBTCarOperatingCostInput(BaseModel):
     )
     opening_depreciated_value: float | None = Field(
         None, ge=0, alias="openingDepreciatedValue",
-        description="Opening depreciated value at start of FBT year (AUD).",
+        description="Opening depreciated value at start of FBT year (AUD). "
+        "Mutually exclusive with acquisition_cost per engine Lesson #14 "
+        "strict-validation (OT #81 Rung 2 mc07).",
+    )
+    # OT #81 Rung 2 (mut-2026-05-22-mc07) chained-DV entry-point: acquisition_cost
+    # is the original acquisition cost AUD that the engine uses as the chained-
+    # DV entry-point depreciated value. When supplied with acquisition_date (and
+    # WITHOUT opening_depreciated_value), the engine dispatches to the chained-DV
+    # walk predicate (fbt_car_oc_deemed_amounts_chained/9 added in OT #81 Rung 3
+    # mc08) which walks each FBT year from acquisition forward, applying the
+    # statutory per-year depreciation primitive once per year. This reproduces
+    # the NTAA toolkit's chained-DV reference data byte-exactly (closed by
+    # LodgeiT_FBT PR #26 + Brain canon node CALCULATORS/FBT/140 content_hash
+    # 552e53cf3b7de5bd7c140deef6c3328afbb98d9d9637fb65f36feabca20a3fea).
+    # Strict mutual-exclusion vs opening_depreciated_value is enforced engine-side
+    # in validate_chained_dv_inputs/2 per Lesson #14; surfaces as a Prolog throw
+    # bubbled to FastAPI as a structured error.
+    acquisition_cost: float | None = Field(
+        None, ge=0, alias="acquisitionCost",
+        description="Original acquisition cost (AUD) for the chained-DV walk; "
+        "chained-DV entry-point. Mutually exclusive with opening_depreciated_value. "
+        "When supplied with acquisition_date (and without opening_depreciated_value), "
+        "the engine dispatches to the OT #81 chained-DV walk predicate (mc08).",
     )
     days_held_in_fbt_year: int | None = Field(
         None, ge=0, le=366, alias="daysHeldInFBTYear",
-        description="Days the car was held during the FBT year [0..366].",
+        description="Days the car was held during the FBT year [0..366]. "
+        "Required for in-FY-acquisition chained-DV cases (acquisition_date "
+        "within the FBT year) where the engine's default of 365 would over-"
+        "state the partial-year leg. Multi-FY chains do NOT need this field "
+        "(their FY2026 leg is always a full year).",
     )
     # Legacy/override path — retained for parity with the engine's optional
     # explicit deemed_total override; not used in PR-D Case 5.
