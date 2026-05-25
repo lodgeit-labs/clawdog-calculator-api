@@ -459,7 +459,7 @@
   "paths": {
     "/healthz": {
       "get": {
-        "description": "Return a minimal liveness response for the Cloud Run / Docker HEALTHCHECK.\n\nDoes NOT call into the upstream Prolog engine \u2014 that would couple the\nREST liveness signal to the engine's readiness, which is a deliberately\nindependent dimension.",
+        "description": "Return a minimal liveness response for the Cloud Run / Docker HEALTHCHECK.\n\nDoes NOT call into the upstream Prolog engine \u2014 that would couple the\nREST liveness signal to the engine's readiness, which is a deliberately\nindependent dimension.\n\nNOTE (mut-2026-05-25-mc11): Cloud Run / Google edge layer special-cases\nthe literal path ``/healthz`` and returns a Google generic 404 HTML page\nto EXTERNAL public traffic, even when the route is correctly registered\nin FastAPI and the deployed image contains the route bytes (verified\n2026-05-25 00:39 UTC: external curl returns HTML 404 with\n``content-type: text/html`` and NO ``server: Google Frontend`` header,\nwhile FastAPI 404s return JSON ``{\"detail\":\"Not Found\"}`` with\n``server: Google Frontend``; the HTML 404 is from a layer ABOVE GFE).\nCloud Run's INTERNAL startup/liveness probe path uses a different\nnetwork channel that bypasses this interception and DOES reach this\nroute successfully. The path stays at ``/healthz`` so the cloud-run.yaml\nstartupProbe/livenessProbe config continues to work; external operators\nuse ``/livez`` (added below) for public-traffic liveness checks.",
         "operationId": "healthz_healthz_get",
         "responses": {
           "200": {
@@ -477,7 +477,33 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Liveness probe.",
+        "summary": "Liveness probe (Cloud Run internal).",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/livez": {
+      "get": {
+        "description": "Public-traffic liveness probe.\n\nMirror of ``/healthz`` at a non-reserved path. ``/healthz`` is\nintercepted by Google's edge layer for external traffic (see ``healthz``\ndocstring); ``/livez`` is NOT reserved and routes correctly through\nGoogle Frontend to FastAPI.\n\nSame body shape as ``/healthz``. Does NOT call into the upstream Prolog\nengine.",
+        "operationId": "livez_livez_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Livez Livez Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness probe (public, non-reserved path).",
         "tags": [
           "system"
         ]
