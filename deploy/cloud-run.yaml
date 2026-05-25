@@ -13,10 +13,18 @@ kind: Service
 metadata:
   name: fbt-calculator-api
   labels:
+    # cloud.googleapis.com/* labels are GCP-whitelisted (allow dots + slashes).
     cloud.googleapis.com/location: australia-southeast1
-    lodgeit.org/component: calculator-constellation
-    lodgeit.org/phase: "3a"
-    lodgeit.org/canon: "clawdog-109-110"
+    # GCP label keys outside the cloud.googleapis.com/* namespace must match
+    # [a-z]([-_a-z0-9]{0,62})? — no dots, no slashes. Kubernetes-style domain-
+    # prefixed keys like `lodgeit.org/canon` fail `gcloud run services replace`
+    # with: "At least one label does not conform to GCP naming style"
+    # (verified 2026-05-25 03:02 UTC; PR #8 deploy attempt rejected).
+    # Renamed to hyphenated form for GCP compliance while preserving the
+    # semantic prefix that ties these labels to the lodgeit.org canon set.
+    lodgeit-org-component: calculator-constellation
+    lodgeit-org-phase: "3a"
+    lodgeit-org-canon: "clawdog-109-110"
   annotations:
     run.googleapis.com/launch-stage: GA
     run.googleapis.com/ingress: all
