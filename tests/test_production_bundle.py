@@ -118,10 +118,28 @@ def test_production_bundle_contains_dispatch_rate_tables(taxonomy: str) -> None:
     only). `hoffman_base` joins this list when its FBT bundle populates.
     """
     fy2026 = PRODUCTION_BUNDLE_ROOT / "SBRM_RATE_TABLE" / "fbt" / taxonomy / "fy2026"
+    # mc17-2026-05-25: required list extended to cover OT #79 (s8a EV
+    # exemption) and OT #81 (chained-DV) work that landed on the LodgeiT_FBT
+    # engine side and was re-vendored into rate_tables/ in this PR. The list
+    # is hand-maintained; a future Tier-B drift gate (banked as a follow-up
+    # OT) should derive this from a canonical manifest file shipped alongside
+    # the bundle, so a new rate-table on the engine side cannot land here
+    # without an explicit re-vendoring step.
     required = [
-        "deemed-depreciation-rates.md",
         "benchmark-interest.md",
+        "days-in-year-by-fy.md",        # OT #81 chained-DV (mc17)
         "days-in-year.md",
+        "deemed-depreciation-rates.md",
+        "fbt-rate.md",
+        "gross-up-type-1.md",
+        "gross-up-type-2.md",
+        "in-house-benefit-cap.md",
+        "reasonable-food-allowance.md",
+        "rfba-threshold.md",
+        "s8a-effective-from.md",                # OT #79 EV exemption (mc17)
+        "s8a-lct-low-emission-threshold.md",    # OT #79 EV exemption (mc17)
+        "s8a-phev-exclusion-effective-from.md", # OT #79 EV exemption (mc17)
+        "statutory-fraction.md",
     ]
     for name in required:
         path = fy2026 / name
