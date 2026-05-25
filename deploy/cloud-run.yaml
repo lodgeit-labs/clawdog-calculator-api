@@ -55,7 +55,18 @@ spec:
               # sibling Cloud Run service in the same region. Phase 3b/3c
               # may consolidate into a sidecar; for now the URL is wired
               # via a deploy-time substitution.
-              value: "https://fbt-engine-XXXX-an.a.run.app"
+              #
+              # mc16-2026-05-25: this MUST point at the live fbt-engine
+              # Cloud Run service; do NOT leave as a placeholder. A previous
+              # placeholder value was tolerated by `gcloud run services
+              # replace` and silently clobbered an out-of-band
+              # `--set-env-vars` override that had been keeping production
+              # alive across revisions 00005/00006, taking the calculator
+              # path to HTTP 500 on revision 00007 at 03:41:49 UTC on
+              # 2026-05-25. Lesson #40 (production-bundle green) caught it
+              # at pre-flight smoke; a regex placeholder-guard now fires at
+              # pre-push (scripts/check_deploy_placeholders.py).
+              value: "https://fbt-engine-8340695160.australia-southeast1.run.app"
             - name: LODGEIT_FBT_REPO
               # Points the manifest-fidelity helper at the bundled SBRM
               # rate-table tree shipped inside this image (see Dockerfile).
