@@ -72,4 +72,32 @@ if [ "$violation_found" -eq 1 ]; then
     exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# Layer 2 (mc16-2026-05-25): deploy-YAML placeholder guard.
+#
+# Watch-pattern: `gcloud run services replace` honours placeholder env
+# values in deploy/*.yaml, silently clobbering working out-of-band
+# `--set-env-vars` overrides and taking production to HTTP 500.
+#
+# Layer 2 exit-code contract (mirroring Standing Rule #8):
+#   0  🟢 CLEAN          — no placeholders detected.
+#   1  🔴 LOGIC DRIFT    — placeholder detected; fix or allowlist.
+#   2  🟡 INFRA BROKEN   — scanner could not run; halt and alert.
+# ---------------------------------------------------------------------------
+guard_script="scripts/check_deploy_placeholders.py"
+if [ -f "$guard_script" ]; then
+    if ! python3 "$guard_script" >&2; then
+        gs_exit=$?
+        printf '\n' >&2
+        if [ "$gs_exit" = "2" ]; then
+            printf '🟡 deploy-placeholder guard: INFRA BROKEN (exit 2).\n' >&2
+            printf 'Halt and alert a human; do not bypass with --no-verify.\n' >&2
+            exit 2
+        fi
+        printf '🔴 deploy-placeholder guard: LOGIC DRIFT (exit %s).\n' "$gs_exit" >&2
+        printf 'Fix the placeholder value(s) above before pushing.\n' >&2
+        exit 1
+    fi
+fi
+
 exit 0
