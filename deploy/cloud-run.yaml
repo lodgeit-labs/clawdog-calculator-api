@@ -30,10 +30,10 @@ spec:
         run.googleapis.com/startup-cpu-boost: "true"
     spec:
       timeoutSeconds: 60
-      serviceAccountName: clawdog-calculator-api@lodgeit-calculator-constellation.iam.gserviceaccount.com
+      serviceAccountName: clawdog-calculator-api@lodgeit-calc-constellation.iam.gserviceaccount.com
       containers:
         - name: api
-          image: australia-southeast1-docker.pkg.dev/lodgeit-calculator-constellation/clawdog/clawdog-calculator-api:latest
+          image: australia-southeast1-docker.pkg.dev/lodgeit-calc-constellation/clawdog/clawdog-calculator-api:latest
           ports:
             - name: http1
               containerPort: 8000

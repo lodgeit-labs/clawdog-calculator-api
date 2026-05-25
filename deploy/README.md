@@ -8,11 +8,11 @@
 
 ```sh
 # Create the project (Andrew has done this manually before first deploy).
-gcloud projects create lodgeit-calculator-constellation \
+gcloud projects create lodgeit-calc-constellation \
     --name="LodgeiT Calculator Constellation"
 
 # Set the default project + region (Standing Rule #4: au-southeast1 matches Fano).
-gcloud config set project lodgeit-calculator-constellation
+gcloud config set project lodgeit-calc-constellation
 gcloud config set run/region australia-southeast1
 
 # Enable APIs.
@@ -40,10 +40,10 @@ make build
 
 # Tag + push to Artifact Registry.
 docker tag clawdog-calculator-api:dev \
-    australia-southeast1-docker.pkg.dev/lodgeit-calculator-constellation/clawdog/clawdog-calculator-api:latest
+    australia-southeast1-docker.pkg.dev/lodgeit-calc-constellation/clawdog/clawdog-calculator-api:latest
 gcloud auth configure-docker australia-southeast1-docker.pkg.dev
 docker push \
-    australia-southeast1-docker.pkg.dev/lodgeit-calculator-constellation/clawdog/clawdog-calculator-api:latest
+    australia-southeast1-docker.pkg.dev/lodgeit-calc-constellation/clawdog/clawdog-calculator-api:latest
 
 # Deploy from source (alternatively: --image=... to use the pushed image).
 make deploy
