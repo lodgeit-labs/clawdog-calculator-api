@@ -36,7 +36,11 @@ PY     ?= $(VENV)/bin/python
 PYTEST ?= $(VENV)/bin/pytest
 RUFF   ?= $(VENV)/bin/ruff
 
-GCP_PROJECT ?= lodgeit-calculator-constellation
+# mc18-2026-05-25: project name corrected to match cloud-run.yaml + actual
+# GCP project (the cloud-run.yaml was fixed in mc13/PR #8; this Makefile
+# variable was missed in that pass). The wrong value caused `make deploy`
+# to fail with a project-not-found error.
+GCP_PROJECT ?= lodgeit-calc-constellation
 GCP_REGION  ?= australia-southeast1
 SERVICE     ?= fbt-calculator-api
 
