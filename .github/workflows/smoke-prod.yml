@@ -1,0 +1,61 @@
+name: smoke-prod — post-deploy production gate
+
+# Fires the `make smoke-prod` binary-failure gate against the deployed
+# Cloud Run service. Manual trigger (workflow_dispatch) + scheduled hourly
+# probe + on push to main as a post-deploy sanity check.
+#
+# Lifts the mc18-2026-05-25 README's behavioural-recall post-deploy
+# checklist to a Lesson #35 mechanical gate per the mc02-ratified
+# Option-C PR β sprint design.
+#
+# Exit-code contract (Standing Rule #8 tri-state):
+#   0  🟢 GREEN          — all 5 wire-probes pass
+#   1  🔴 LOGIC DRIFT    — deploy is broken or production drifted
+#   2  🟡 INFRA BROKEN   — curl/python3 unreachable or DNS fail
+#
+# Cross-references:
+#   - scripts/smoke_prod.sh — the gate itself
+#   - tests/sidecars/ — byte-content reference for the load-bearing assertions
+#   - clawdog-brain/memory/2026-05-28-option-c-sprint-design.md § PR β
+#   - clawdog-brain/memory/lessons.md Lesson #35 (binary-failure beats behavioural-recall)
+#   - clawdog-brain/memory/lessons.md Lesson #40 (production-bundle-shape parity)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: 'Override target URL (defaults to production)'
+        required: false
+        default: ''
+  schedule:
+    # Hourly probe to catch drift between deploys
+    - cron: '0 * * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-prod:
+    name: smoke-prod (5 wire-probes against deployed URL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python (for sidecar JSON parsing in smoke_prod.sh)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fire smoke-prod gate
+        env:
+          API_BASE_URL: ${{ inputs.api_base_url || 'https://fbt-calculator-api-8340695160.australia-southeast1.run.app' }}
+        run: |
+          chmod +x scripts/smoke_prod.sh
+          make smoke-prod
