@@ -1,0 +1,8 @@
+{
+    "detail": {
+        "error": "engine_unavailable",
+        "error_code": "engine_unreachable",
+        "engine": "depreciation",
+        "detail": "All connection attempts failed"
+    }
+}

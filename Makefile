@@ -146,6 +146,28 @@ install-hooks:
 	@echo "  Standing Rule #1 is now mechanically enforced: pushes to master/main"
 	@echo "  will halt. Bypass with 'git push --no-verify' (deliberate-override only)."
 
+# `make smoke-prod` — Option-C PR β binary-failure gate (mut-2026-05-28-mc07).
+#
+# Lifts the mc18-2026-05-25 README's behavioural-recall post-deploy checklist
+# to a Lesson #35 mechanical gate. Fires 5 wire-probes against the deployed
+# Cloud Run service URL; exits with Standing Rule #8 tri-state contract:
+#
+#   exit 0  \U0001f7e2 GREEN          — all 5 checks pass
+#   exit 1  \U0001f534 LOGIC DRIFT    — deploy is broken or production drifted
+#   exit 2  \U0001f7e1 INFRA BROKEN   — curl/python3 missing or DNS unreachable
+#
+# Subagents MAY run this target — it is pure read against the deployed URL,
+# no mutation, no secrets required. CI runs it post-deploy via
+# .github/workflows/smoke-prod.yml.
+#
+# Override the target URL via env var:
+#   make smoke-prod API_BASE_URL=https://...
+#
+# Sidecar fixtures at tests/sidecars/ are the byte-content reference for
+# the load-bearing assertions (Lesson #38 honour).
+smoke-prod:
+	@./scripts/smoke_prod.sh
+
 clean:
 	rm -rf $(VENV) .pytest_cache .ruff_cache **/__pycache__ \
 	       *.egg-info build dist

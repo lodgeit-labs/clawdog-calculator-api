@@ -118,28 +118,41 @@ the new image is live BEFORE the new config switches traffic to it.
 
 ### Post-deploy smoke (mandatory — do NOT skip)
 
-After EITHER path, smoke the actual calculator endpoints, not just
-`/livez`. A 200 on `/livez` only proves the FastAPI process started; it
-does NOT prove the engine path, rate-table bundle, or manifest builder
-work. Per Standing Rule #12 (production resolver shape assertions) and
-Lesson #40 (hermetic green is not production-bundle green):
+After EITHER path, fire the binary-failure smoke gate from the repo root:
 
 ```sh
-curl -sS -X POST -H 'Content-Type: application/json' \
-  -d '{"businessUsePercentage":80,"employeeContribution":1000,
-       "formOfFinance":"owned","fuelRepairsServicing":4500,
-       "registrationInsurance":1200,"acquisitionDate":"2024-04-01",
-       "acquisitionCost":35000,"daysHeldInFBTYear":366}' \
-  'https://fbt-calculator-api-8340695160.australia-southeast1.run.app/v1/calculators/urn%3Asbrm%3Acalculator%3Afbt%3Acar-operating-cost/urn%3Asbrm%3Aperiod%3Afbt%3Afy2026' \
-  | python3 -m json.tool
+make smoke-prod
 ```
 
-**Expected:** HTTP 200 + JSON with `taxable_value` (a number), `trace`,
-`manifest` (with `rate_table_uris` populated), `advisory`.
+This runs `scripts/smoke_prod.sh` which fires **5 wire-probes** against
+the deployed Cloud Run service URL and exits per Standing Rule #8
+tri-state:
 
-**Not expected:** any `"error": "manifest_rate_table_unavailable"`,
-any HTTP 500, any bare HTML. If you see those, the deploy is broken even
-though `services replace` reported success.
+| Exit | State | Meaning |
+|------|-------|---------|
+| 0 | \U0001f7e2 GREEN | All 5 checks pass; deploy is structurally complete |
+| 1 | \U0001f534 LOGIC DRIFT | One or more checks failed; deploy is broken or production drifted |
+| 2 | \U0001f7e1 INFRA BROKEN | curl/python3 missing or DNS fail; halt + alert |
+
+The 5 checks are:
+
+1. `/livez` returns 200 with `{status: 'ok', service: 'clawdog-calculator-api'}`
+2. NTAA Row 3 FBT car operating-cost calc returns 200 with byte-exact `taxable_value`, `deemed_depreciation`, `deemed_interest`, `deemed_total` (regression on the canonical FBT result; sidecar at `tests/sidecars/ntaa_row_3_response.json`)
+3. Depreciation route returns **structured JSON 502** with `error_code=engine_unreachable, engine=depreciation` (NEVER bare HTML 500; sidecar at `tests/sidecars/depreciation_engine_unavailable_response.json`)
+4. FBT intentional-error returns 422 with `application/json` body + missing-field detail array
+5. `openapi.json` registers all 7 expected paths
+
+The gate also runs in CI via `.github/workflows/smoke-prod.yml` (post-deploy + hourly schedule + manual trigger).
+
+Per Standing Rule #12 (production resolver shape assertions) + Lesson #40 (hermetic green is not production-bundle green) + Lesson #35 (binary-failure beats behavioural-recall — this gate replaces the previous inline-curl checklist which was a behavioural-recall pattern; the gate is mechanical).
+
+Override the target URL via env var:
+
+```sh
+API_BASE_URL=https://my-other-cloud-run-url.run.app make smoke-prod
+```
+
+Introduced by `mut-2026-05-28-mc07` (Option-C PR β; Andrew direct-voice ratified 2026-05-28).
 
 ## Pre-deploy gates (must all be 🟢 before deploy)
 
