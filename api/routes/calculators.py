@@ -25,7 +25,11 @@ from api.lib.rate_table_resolver import (
     rate_table_root_for,
 )
 from api.manifest_fidelity import build_manifest
-from api.prolog_client import PrologCalculationError, PrologClient
+from api.prolog_client import (
+    PrologCalculationError,
+    PrologClient,
+    PrologEngineUnavailable,
+)
 from api.schemas.depreciation import DepreciationAuditInput
 from api.schemas.invocation import (
     CalculatorInvocationResponse,
@@ -195,6 +199,26 @@ async def invoke_calculator(
 
     try:
         engine_response = await prolog.calculate_fbt(payload)
+    except PrologEngineUnavailable as exc:
+        # mc06-2026-05-28 Option-C PR α: catch transport-layer failures and
+        # surface structured 502/503 rather than letting httpx.* propagate to
+        # FastAPI's default bare-HTML 500 handler. Closes Standing Rule #12
+        # clause (e) symmetrically across both calc routes (the depreciation
+        # route has the live bare-500 today; this defends FBT in depth).
+        status_code = (
+            status.HTTP_503_SERVICE_UNAVAILABLE
+            if exc.error_code == "engine_timeout"
+            else status.HTTP_502_BAD_GATEWAY
+        )
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "error": "engine_unavailable",
+                "error_code": exc.error_code,
+                "engine": exc.engine,
+                "detail": exc.detail,
+            },
+        ) from exc
     except PrologCalculationError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -348,6 +372,28 @@ async def invoke_depreciation_audit(
 
     try:
         engine_response = await prolog.depreciation_audit(payload)
+    except PrologEngineUnavailable as exc:
+        # mc06-2026-05-28 Option-C PR α: catch transport-layer failures and
+        # surface structured 502/503. This is the LIVE-FAILURE path closing
+        # OT #83 #1 — production deploy has no DEPRECIATION_PROLOG_URL env
+        # var, so depreciation_audit() falls through to localhost:8082 and
+        # raises httpx.ConnectError which previously propagated as bare-HTML
+        # 500 (Standing Rule #12 clause (e) violation; wire-verified mc03
+        # 06:05 UTC + mc06 pre-flight 10:30 UTC).
+        status_code = (
+            status.HTTP_503_SERVICE_UNAVAILABLE
+            if exc.error_code == "engine_timeout"
+            else status.HTTP_502_BAD_GATEWAY
+        )
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "error": "engine_unavailable",
+                "error_code": exc.error_code,
+                "engine": exc.engine,
+                "detail": exc.detail,
+            },
+        ) from exc
     except PrologCalculationError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
