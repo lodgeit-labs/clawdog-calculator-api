@@ -509,6 +509,48 @@
         ]
       }
     },
+    "/mcp": {
+      "post": {
+        "description": "Single MCP JSON-RPC 2.0 entry point. POST a JSON-RPC envelope; receive a JSON-RPC result or structured error. Supported methods: ``tools/list``, ``tools/call``, ``resources/list``, ``resources/read``. Per MCP spec 2025-06-18.",
+        "operationId": "mcp_endpoint_mcp_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "MCP JSON-RPC endpoint.",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
     "/v1/calculators": {
       "get": {
         "description": "Return a manifest of the calculators wired into this Phase 3a deployment.\n\nPhase 3a hardcodes one entry (FBT Car Operating Cost). Phase 3c onboards a\nsecond calculator; the registry above grows but the route signature does not.",
@@ -816,6 +858,10 @@
     {
       "description": "Liveness / readiness probes.",
       "name": "system"
+    },
+    {
+      "description": "Model Context Protocol (JSON-RPC 2.0) surface. Added at `mut-2026-05-29-mc08` Option-A PR 2 per CLAWDOG/151 widget renderer + MCP-Apps integration.",
+      "name": "mcp"
     }
   ]
 }
