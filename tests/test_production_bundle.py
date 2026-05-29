@@ -410,4 +410,92 @@ def test_depreciation_resolver_resolves_against_bundle(
     assert (root / "audit-variance-threshold.md").is_file()
 
 
+# --- Phase 4 mut-2026-05-29-mc08 Option-A PR 2: MCP-route + widget-URL --------
+#
+# SR #12 + Lesson #40 extension: assert that the MCP route renders cleanly
+# against the live FastAPI app + that the widget-renderer surface advertised
+# by the resolver matches the live deploy URL shape
+# (https://lodgeit.org/clawdog-widget-renderer/widgets/<slug>/). The live
+# renderer is NOT mocked in this test path; the URL string is asserted to
+# match the wire-verified shape captured at mc03-2026-05-29 04:08 UTC.
+#
+# Lesson #41 honour: assert against the LIVE deploy URL shape, NOT the
+# paper-design `widgets.clawdog.io` phrasing from the sprint-design body.
+
+
+def test_mcp_route_registered_on_production_app() -> None:
+    """Assertion class #4 (MCP route registration): /mcp surfaces in the
+    OpenAPI spec generated from the production app object.
+
+    The same FastAPI app object is what the Docker image ships; if /mcp is
+    NOT in app.routes, the deploy artefact will not surface it either.
+    """
+    from api.main import app
+
+    route_paths = {route.path for route in app.routes}
+    assert "/mcp" in route_paths, (
+        f"/mcp route missing from production app; available={sorted(route_paths)}"
+    )
+
+
+def test_mcp_tools_list_against_production_app_surface() -> None:
+    """Assertion class #4 (MCP tools/list): the production FastAPI app
+    surfaces the calculator registry as MCP tools.
+
+    Exercises the same in-process surface the Docker image binds; if this
+    assertion fails, the deploy will not surface tools either.
+    """
+    from api.main import app
+
+    client = TestClient(app)
+    resp = client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "method": "tools/list", "id": 1},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    tools = body["result"]["tools"]
+    assert len(tools) >= 2, (
+        f"expected at least 2 MCP tools surfaced from registry; got {len(tools)}"
+    )
+
+
+def test_widget_url_resolver_defaults_to_live_renderer_host() -> None:
+    """Assertion class #4 (widget-URL resolver shape):
+    ``widget_url_for_calc`` defaults to ``lodgeit.org/clawdog-widget-renderer/
+    widgets/<slug>/`` per the live deploy.
+
+    Wire-verified at mc03-2026-05-29 04:08 UTC against
+    https://lodgeit.org/clawdog-widget-renderer/widgets/gl-detail-csv-uploader/
+    widget.json (HTTP 200, name=gl-detail-csv-uploader).
+
+    Per Lesson #41, the assertion is against the ACTUAL live surface, NOT
+    the paper-design ``widgets.clawdog.io`` phrasing from the sprint design.
+    """
+    from api.services.widget_url_resolver import (
+        standalone_widget_url,
+        widget_renderer_base_url,
+        widget_url_for_calc,
+    )
+
+    # NOTE: do NOT use monkeypatch — assert the DEFAULT value (production).
+    # We are exercising the production resolver shape per SR #12.
+    base = widget_renderer_base_url()
+    assert base == "https://lodgeit.org/clawdog-widget-renderer", (
+        f"expected production widget-renderer host; got {base!r}"
+    )
+
+    fbt_widget = widget_url_for_calc(
+        "urn:sbrm:calculator:fbt:car-operating-cost"
+    )
+    assert fbt_widget == (
+        "https://lodgeit.org/clawdog-widget-renderer/widgets/fbt-car-operating-cost/"
+    ), f"FBT widget URL drift: got {fbt_widget!r}"
+
+    csv_widget = standalone_widget_url("gl-detail-csv-uploader")
+    assert csv_widget == (
+        "https://lodgeit.org/clawdog-widget-renderer/widgets/gl-detail-csv-uploader/"
+    ), f"CSV widget URL drift: got {csv_widget!r}"
+
+
 __all__ = []

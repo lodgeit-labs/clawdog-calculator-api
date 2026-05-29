@@ -100,6 +100,87 @@ clawdog-calculator-api/                  ← THIS repo (Egress Interface)
 └── .github/workflows/ci.yml             ← four binary-failure gates in CI
 ```
 
+## MCP (Model Context Protocol) surface
+
+**Added at `mut-2026-05-29-mc08` Option-A PR 2.** The calc-API now speaks MCP JSON-RPC 2.0 at `/mcp` so MCP-aware clients (Claude Desktop, OpenClaw webchat, the LodgeiT GL Playground host shell, partner integrations such as Streamace + Waqas's Office.js add-in) can invoke calculators as MCP **tools** and mount widget UIs as MCP **resources** without needing knowledge of the underlying REST shape.
+
+**Protocol surface implemented** (subset of MCP spec 2025-06-18):
+
+| Method | Purpose |
+|---|---|
+| `tools/list` | Enumerate calculators as MCP tools (one entry per row in `_CALCULATOR_REGISTRY`). |
+| `tools/call` | Return a structured REST-redirect block pointing the client at `POST /v1/calculators/{calc_uri}/{period_uri}` (or the depreciation sibling route), plus the iframe-loadable widget URL when one is mapped. |
+| `resources/list` | Enumerate standalone widgets (shipped: `gl-detail-csv-uploader`) plus calc-bound widget mappings. |
+| `resources/read` | Return a `ui_resource` block with the widget URL on `https://lodgeit.org/clawdog-widget-renderer/widgets/<slug>/` (override via `CLAWDOG_WIDGET_RENDERER_URL` env var for staging). |
+
+**Tool-name convention:** the URN's last two segments joined with a hyphen. So `urn:sbrm:calculator:fbt:car-operating-cost` → `fbt-car-operating-cost`; `urn:sbrm:calculator:depreciation:audit` → `depreciation-audit`.
+
+**Resource-URI scheme** (custom, MCP spec allows any URI scheme):
+
+- `urn:clawdog:widget:standalone:<slug>` — standalone widget (no calc binding)
+- `urn:clawdog:widget:calc:<calc_uri>` — widget bound to a specific calc URI
+
+### Curl examples
+
+**List MCP tools:**
+
+```bash
+curl -sS -X POST https://fbt-calculator-api-8340695160.australia-southeast1.run.app/mcp \
+     -H 'Content-Type: application/json' \
+     -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
+```
+
+**List widget resources:**
+
+```bash
+curl -sS -X POST https://fbt-calculator-api-8340695160.australia-southeast1.run.app/mcp \
+     -H 'Content-Type: application/json' \
+     -d '{"jsonrpc":"2.0","method":"resources/list","id":2}'
+```
+
+**Read a widget resource** (returns `_ui_resource.widget_url` for iframe mounting):
+
+```bash
+curl -sS -X POST https://fbt-calculator-api-8340695160.australia-southeast1.run.app/mcp \
+     -H 'Content-Type: application/json' \
+     -d '{"jsonrpc":"2.0","method":"resources/read","id":3,"params":{"uri":"urn:clawdog:widget:standalone:gl-detail-csv-uploader"}}'
+```
+
+**Dispatch via tools/call** (returns a `_dispatch.url` for the REST POST + a `_dispatch.widget_url` for optional iframe rendering):
+
+```bash
+curl -sS -X POST https://fbt-calculator-api-8340695160.australia-southeast1.run.app/mcp \
+     -H 'Content-Type: application/json' \
+     -d '{"jsonrpc":"2.0","method":"tools/call","id":4,
+          "params":{"name":"fbt-car-operating-cost",
+                    "arguments":{"period_uri":"urn:sbrm:period:fbt:fy2026",
+                                 "businessUsePercentage":75,
+                                 "employeeContribution":200,
+                                 "formOfFinance":"owned",
+                                 "leasePayments":0,
+                                 "fuelRepairsServicing":3000,
+                                 "registrationInsurance":1500,
+                                 "noPrivateUseReduction":0,
+                                 "acquisitionDate":"2024-04-01",
+                                 "openingDepreciatedValue":55000,
+                                 "daysHeldInFBTYear":365}}}'
+```
+
+**JSON-RPC error codes:**
+
+| Code | Meaning |
+|---|---|
+| -32700 | Parse error (malformed JSON) |
+| -32600 | Invalid request envelope (missing `jsonrpc=2.0` or `method`) |
+| -32601 | Method not found |
+| -32602 | Invalid params |
+| -32603 | Internal error |
+| -32001 | MCP tool not found |
+| -32002 | MCP resource not found |
+| -32003 | MCP dispatch failed |
+
+**Authentication:** inherits the REST surface's posture (CORS + IP allow-list); MCP-client auth + L402 gating land in later sprints per CLAWDOG/150.
+
 ## Standing Rules in scope
 
 | Rule | How this repo honours it |

@@ -9,6 +9,7 @@ from fastapi import FastAPI
 
 from api import __version__
 from api.routes import calculators as calculators_routes
+from api.routes import mcp as mcp_routes
 from api.routes import rates as rates_routes
 
 app = FastAPI(
@@ -46,11 +47,20 @@ app = FastAPI(
             "name": "system",
             "description": "Liveness / readiness probes.",
         },
+        {
+            "name": "mcp",
+            "description": (
+                "Model Context Protocol (JSON-RPC 2.0) surface. Added at "
+                "`mut-2026-05-29-mc08` Option-A PR 2 per CLAWDOG/151 widget "
+                "renderer + MCP-Apps integration."
+            ),
+        },
     ],
 )
 
 app.include_router(calculators_routes.router)
 app.include_router(rates_routes.router)
+app.include_router(mcp_routes.router)
 
 
 @app.get("/healthz", tags=["system"], summary="Liveness probe (Cloud Run internal).")
