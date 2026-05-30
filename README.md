@@ -208,6 +208,21 @@ Merging a PR into `main` automatically triggers `.github/workflows/deploy.yml`:
 
 **Closes the n=2 merged-but-not-deployed drift** observed at PR #13 (49 min drift) + PR #15 (~24 h drift). Per Lesson #35, the binary-failure GitHub Actions gate replaces the README behavioural-recall ("Andrew runs `make deploy` after merging") that drifted twice in 24 h.
 
+**`smoke-prod.yml` companion workflow** (separate from `deploy.yml`):
+- Triggers: `workflow_dispatch` (on-demand) + `schedule` (hourly drift detection).
+- The `on: push:` trigger was REMOVED in PR β (mc05-2026-05-30) — it fired BEFORE `deploy.yml` rotated the new revision, racing against the pre-deploy revision. `deploy.yml`'s own post-deploy `make smoke-prod` step is the canonical SR #12 gate at the deploy boundary.
+
+**Failure surfacing** (per Lesson #40 / SR #12 dogfood-banking, mc04-2026-05-30):
+- **smoke-prod failed** post-deploy → rollback hint + previous-revisions list printed in workflow log.
+- **`gcloud run deploy` itself failed** → Cloud Build debug surface + canonical 5-role IAM bundle reminder + most-recent-build describe printed in workflow log.
+
+Deploy SA `clawdog-deploy@lodgeit-calc-constellation.iam.gserviceaccount.com` requires these 5 IAM roles (banked at OT #91 dogfood mc04-2026-05-30):
+- Cloud Run Admin (`roles/run.admin`)
+- Service Account User (`roles/iam.serviceAccountUser`)
+- Cloud Build Editor (`roles/cloudbuild.builds.editor`)
+- Artifact Registry Writer (`roles/artifactregistry.writer`)
+- Storage Admin (`roles/storage.admin`)
+
 **Rollback hint** (printed on smoke-prod failure):
 ```
 gcloud run services update-traffic fbt-calculator-api \

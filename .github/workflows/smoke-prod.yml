@@ -20,11 +20,25 @@ name: smoke-prod — post-deploy production gate
 #   - clawdog-brain/memory/lessons.md Lesson #35 (binary-failure beats behavioural-recall)
 #   - clawdog-brain/memory/lessons.md Lesson #40 (production-bundle-shape parity)
 
+# Triggers — NOTE: on-push to main/master was REMOVED in OT #91 PR β
+# (mc05-2026-05-30). The on-push trigger fired BEFORE deploy.yml's gcloud
+# run deploy rotated the new revision, so it raced against the
+# pre-deploy revision and either:
+#   (a) passed GREEN against the old revision (silent false-OK), or
+#   (b) failed RED if the pre-deploy revision was already broken.
+# Either way it was decoupled from "did THIS push's code reach prod?".
+#
+# deploy.yml's own post-deploy `make smoke-prod` step (step #8) is now
+# the canonical SR #12 production-resolver-shape assertion at the
+# deploy boundary. This workflow retains workflow_dispatch (for on-demand
+# probes) and schedule (for hourly drift detection between deploys).
+#
+# Empirical surface: 2026-05-30 mc03 first dogfood of deploy.yml fired
+# this smoke-prod workflow at the same `2026-05-30T04:15:01Z` timestamp
+# as deploy.yml; smoke-prod “passed” GREEN against the unrotated
+# revision `00010-4xn` (which happened to be healthy), masking the fact
+# that deploy.yml's attempt 1 was actually failing at the IAM perimeter.
 on:
-  push:
-    branches:
-      - main
-      - master
   workflow_dispatch:
     inputs:
       api_base_url:
