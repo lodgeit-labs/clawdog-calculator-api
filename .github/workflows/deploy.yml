@@ -102,7 +102,14 @@ jobs:
           chmod +x scripts/smoke_prod.sh
           make smoke-prod
 
-      - name: On failure — print rollback hint
+      # mc05-2026-05-30 widening per mc04 dogfood-discovered gap:
+      # the original single rollback-hint step was gated on smoke.outcome
+      # == 'failure' but when DEPLOY step #6 fails (mc03 attempts 1+2 IAM
+      # gap surface), smoke.outcome is 'skipped' not 'failure', so the
+      # debug step also skipped. Two parallel steps:
+      #   #9 on smoke failure  : print rollback hint + previous revisions
+      #   #9b on deploy failure: print build-id chain + describe URL
+      - name: On smoke-prod failure — print rollback hint
         if: failure() && steps.smoke.outcome == 'failure'
         run: |
           echo "::error::smoke-prod failed against the freshly-deployed revision."
@@ -117,3 +124,38 @@ jobs:
             --region "$GCP_REGION" \
             --limit 5 \
             --format='table(metadata.name,metadata.creationTimestamp.date())' || true
+
+      - name: On deploy failure — print Cloud Build debug surface
+        if: failure() && steps.deploy.outcome == 'failure'
+        run: |
+          echo "::error::gcloud run deploy failed. The deploy step's own"
+          echo "::error::stderr is in the previous step's log."
+          echo "::error::Common causes (from mc04 OT #91 dogfood-banking):"
+          echo "::error::  - PERMISSION_DENIED on artifactregistry.* -> SA needs roles/artifactregistry.writer"
+          echo "::error::  - storage.buckets.get denied on run-sources-* -> SA needs roles/storage.admin"
+          echo "::error::  - cloudbuild.* denied -> SA needs roles/cloudbuild.builds.editor"
+          echo "::error::  - run.services.* denied -> SA needs roles/run.admin"
+          echo "::error::Canonical 5-role bundle: Cloud Run Admin + Service Account User"
+          echo "::error::                       + Cloud Build Editor + Artifact Registry Writer + Storage Admin"
+          echo ""
+          echo "Recent Cloud Build builds (if any reached the build stage):"
+          gcloud builds list \
+            --project "$GCP_PROJECT" \
+            --region "$GCP_REGION" \
+            --limit 3 \
+            --format='table(id,status,createTime,logUrl)' || true
+          echo ""
+          echo "Most recent build describe (full failure surface):"
+          LATEST_BUILD=$(gcloud builds list \
+            --project "$GCP_PROJECT" \
+            --region "$GCP_REGION" \
+            --limit 1 \
+            --format='value(id)' 2>/dev/null) || true
+          if [ -n "$LATEST_BUILD" ]; then
+            gcloud builds describe "$LATEST_BUILD" \
+              --project "$GCP_PROJECT" \
+              --region "$GCP_REGION" \
+              --format='value(status,statusDetail,logUrl,failureInfo.detail)' || true
+          else
+            echo "(No Cloud Build records — failure was upstream of build, likely IAM/auth.)"
+          fi
