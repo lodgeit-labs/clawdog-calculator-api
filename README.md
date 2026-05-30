@@ -198,6 +198,25 @@ curl -sS -X POST https://fbt-calculator-api-8340695160.australia-southeast1.run.
 - **Empirical first instance:** `lodgeit-labs/LodgeiT_FBT` PR #12 (Phase 2l-OC-integrate) — the PR-D 5th case the Phase 3a E2E test pins against.
 - **Manifest-fidelity Brain-side algorithm:** `clawdog-brain/scripts/audit_content_hashes.py` — `api/manifest_fidelity.py` is a byte-identical port verified by the test suite via in-process and (when `CLAWDOG_BRAIN_ROOT` is set) subprocess cross-check.
 
+## Deploy-on-merge
+
+Merging a PR into `main` automatically triggers `.github/workflows/deploy.yml`:
+
+1. Workload Identity Federation auth (no JSON service-account keys).
+2. `gcloud run deploy --source .` to `fbt-calculator-api` in `australia-southeast1` (project `lodgeit-calc-constellation`).
+3. Post-deploy `make smoke-prod` as the Standing Rule #12 production-resolver-shape gate (5 wire-probes against the freshly-rotated revision).
+
+**Closes the n=2 merged-but-not-deployed drift** observed at PR #13 (49 min drift) + PR #15 (~24 h drift). Per Lesson #35, the binary-failure GitHub Actions gate replaces the README behavioural-recall ("Andrew runs `make deploy` after merging") that drifted twice in 24 h.
+
+**Rollback hint** (printed on smoke-prod failure):
+```
+gcloud run services update-traffic fbt-calculator-api \
+  --region australia-southeast1 \
+  --to-revisions=<previous-revision>=100
+```
+
+Workflow source: [`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml). Sprint design: [`clawdog-brain/memory/2026-05-30-ot-91-sprint-design.md`](https://github.com/futureWA/clawdog-brain/blob/master/memory/2026-05-30-ot-91-sprint-design.md).
+
 ## License
 
 MIT. See [Licence.txt](./Licence.txt).
