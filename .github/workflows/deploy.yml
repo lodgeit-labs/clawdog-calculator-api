@@ -1,0 +1,119 @@
+name: deploy — push-to-main → Cloud Run + post-deploy smoke
+
+# Closes OT #91 (deploy-on-merge workflow; mc01-2026-05-30 sprint).
+#
+# n=2 prior drift instances of merged-but-not-deployed:
+#   - mc07-2026-05-28 PR #13 (49 minutes drift before manual deploy)
+#   - mc03-2026-05-29 PR #15 (~24+ hours drift; closed by this workflow)
+#
+# Lesson #35 anchor: README behavioural-recall ("Andrew runs make deploy after
+# merging") drifted twice in 24h; binary-failure gate fires every push to main.
+#
+# Lesson #40 / SR #12 anchor: post-deploy `make smoke-prod` is the
+# production-resolver-shape assertion against the freshly-deployed URL.
+#
+# Tri-state per Standing Rule #8:
+#   exit 0 🟢 GREEN        — gcloud deploy succeeded + smoke-prod green
+#   exit 1 🔴 LOGIC DRIFT  — deploy succeeded but smoke-prod red (consider
+#                            rollback via gcloud run services update-traffic)
+#   exit 2 🟡 INFRA BROKEN — gcloud deploy itself failed (auth / quota /
+#                            source-build error); HALT and alert Andrew
+
+on:
+  push:
+    branches:
+      - main
+
+# Workload Identity Federation (preferred over JSON service-account keys
+# per GCP best practice + GitHub Actions OIDC integration).
+permissions:
+  contents: read       # checkout
+  id-token: write      # OIDC token for WIF exchange
+
+# Prevent overlapping deploys — if two PRs merge in rapid succession, the
+# later run cancels any in-flight earlier run.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false   # let in-flight finish; queue the next
+
+jobs:
+  deploy:
+    name: deploy + smoke-prod
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # WIF + service account configured per clawdog-brain
+    # memory/2026-05-30-ot-91-sprint-design.md § 5 (GCP click-path).
+    env:
+      GCP_PROJECT: lodgeit-calc-constellation
+      GCP_REGION: australia-southeast1
+      SERVICE: fbt-calculator-api
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (WIF)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Verify auth + project
+        run: |
+          gcloud config set project "$GCP_PROJECT"
+          gcloud config set run/region "$GCP_REGION"
+          gcloud auth list
+          gcloud config list
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        run: |
+          set -o pipefail
+          gcloud run deploy "$SERVICE" \
+            --source . \
+            --region "$GCP_REGION" \
+            --project "$GCP_PROJECT" \
+            --platform managed \
+            --allow-unauthenticated \
+            --quiet 2>&1 | tee deploy.log
+          echo "Deploy complete. New revision:"
+          gcloud run revisions list \
+            --service "$SERVICE" \
+            --region "$GCP_REGION" \
+            --limit 3 \
+            --format='table(metadata.name,metadata.creationTimestamp.date(),status.conditions[0].status)'
+
+      # Post-deploy smoke-prod is THE SR #12 gate firing at deploy boundary.
+      # If this fails, the deploy succeeded but the live surface is broken;
+      # next step surfaces the rollback option.
+      - name: Set up Python (for smoke_prod.sh sidecar parsing)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Post-deploy smoke-prod
+        id: smoke
+        run: |
+          chmod +x scripts/smoke_prod.sh
+          make smoke-prod
+
+      - name: On failure — print rollback hint
+        if: failure() && steps.smoke.outcome == 'failure'
+        run: |
+          echo "::error::smoke-prod failed against the freshly-deployed revision."
+          echo "::error::Consider rollback via:"
+          echo "::error::  gcloud run services update-traffic $SERVICE \\"
+          echo "::error::    --region $GCP_REGION \\"
+          echo "::error::    --to-revisions=<previous-revision>=100"
+          echo ""
+          echo "Previous revisions:"
+          gcloud run revisions list \
+            --service "$SERVICE" \
+            --region "$GCP_REGION" \
+            --limit 5 \
+            --format='table(metadata.name,metadata.creationTimestamp.date())' || true
