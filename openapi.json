@@ -420,6 +420,230 @@
         "title": "FBTCarOperatingCostInput",
         "type": "object"
       },
+      "FBTCarParkingActualInput": {
+        "additionalProperties": false,
+        "description": "Input for Phase 2j Car Parking Actual Method (engine: ``calculate_fbt_car_parking_actual``).\n\nFBTAA Division 10A simple-sum method. Engine arithmetic at FBT_Engine.pl L3237.",
+        "properties": {
+          "employeeContribution": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Employee contribution (AUD); clamped at gross subtotal.",
+            "title": "Employeecontribution"
+          },
+          "fbtType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+            "title": "Fbttype"
+          },
+          "spacesProvided": {
+            "description": "Number of car parking spaces provided.",
+            "minimum": 0.0,
+            "title": "Spacesprovided",
+            "type": "number"
+          },
+          "valuationMethodRate": {
+            "description": "Per-space daily rate (AUD).",
+            "minimum": 0.0,
+            "title": "Valuationmethodrate",
+            "type": "number"
+          }
+        },
+        "required": [
+          "spacesProvided",
+          "valuationMethodRate"
+        ],
+        "title": "FBTCarParkingActualInput",
+        "type": "object"
+      },
+      "FBTCarParkingRegister12WkInput": {
+        "additionalProperties": false,
+        "description": "Input for Phase 2j Car Parking 12-Week Register (engine:\n``calculate_fbt_car_parking_register_12wk``).\n\nFBTAA s.39GB 12-Week Register method. Engine arithmetic at FBT_Engine.pl L3360.\nWRT T1 sheet row 63 sheet-vs-statute divergence parked under OT #96.",
+        "properties": {
+          "benefitsInPeriod": {
+            "description": "Number of car parking benefits in the 12-week register period.",
+            "minimum": 0.0,
+            "title": "Benefitsinperiod",
+            "type": "number"
+          },
+          "daysSpaceAvailable": {
+            "description": "Days the car parking space was available [0..366]; engine clamps at 366.",
+            "maximum": 366.0,
+            "minimum": 0.0,
+            "title": "Daysspaceavailable",
+            "type": "number"
+          },
+          "employeeContribution": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Employee contribution (AUD); clamped at gross subtotal.",
+            "title": "Employeecontribution"
+          },
+          "fbtType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+            "title": "Fbttype"
+          },
+          "valuationMethodRate": {
+            "description": "Per-benefit rate (AUD).",
+            "minimum": 0.0,
+            "title": "Valuationmethodrate",
+            "type": "number"
+          }
+        },
+        "required": [
+          "benefitsInPeriod",
+          "valuationMethodRate",
+          "daysSpaceAvailable"
+        ],
+        "title": "FBTCarParkingRegister12WkInput",
+        "type": "object"
+      },
+      "FBTCarParkingStatutory228Input": {
+        "additionalProperties": false,
+        "description": "Input for Phase 2j Car Parking 228-Day Statutory Formula (engine:\n``calculate_fbt_car_parking_statutory_228``).\n\nFBTAA s.39FA Statutory Formula method. Engine arithmetic at FBT_Engine.pl L3288.",
+        "properties": {
+          "daysCarParkingAvailable": {
+            "description": "Days the car parking benefit was available [0..366]; engine clamps at 366.",
+            "maximum": 366.0,
+            "minimum": 0.0,
+            "title": "Dayscarparkingavailable",
+            "type": "number"
+          },
+          "employeeContribution": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Employee contribution (AUD); clamped at gross subtotal.",
+            "title": "Employeecontribution"
+          },
+          "fbtType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+            "title": "Fbttype"
+          },
+          "valuationMethodRate": {
+            "description": "Per-space daily rate (AUD).",
+            "minimum": 0.0,
+            "title": "Valuationmethodrate",
+            "type": "number"
+          }
+        },
+        "required": [
+          "daysCarParkingAvailable",
+          "valuationMethodRate"
+        ],
+        "title": "FBTCarParkingStatutory228Input",
+        "type": "object"
+      },
+      "FBTCarStatutoryFormulaInput": {
+        "additionalProperties": false,
+        "description": "Input for Phase 2l Car Statutory Formula (engine: ``calculate_fbt_car_statutory_formula``).\n\nFBTAA s.9 Statutory Formula method (legacy v1; rate-table-fed). Engine\narithmetic at FBT_Engine.pl L927. Consumes the FY2026\n``statutory-fraction`` + ``days-in-year`` rate-table fact-nodes per\nStanding Rule #6 (the engine throws ``missing_rate(...)`` if absent).",
+        "properties": {
+          "accessories": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Accessories added to base value (AUD).",
+            "title": "Accessories"
+          },
+          "baseValue": {
+            "description": "Statutory base value of the car (AUD).",
+            "minimum": 0.0,
+            "title": "Basevalue",
+            "type": "number"
+          },
+          "daysAvailable": {
+            "description": "Days the car was available for private use [0..366].",
+            "maximum": 366.0,
+            "minimum": 0.0,
+            "title": "Daysavailable",
+            "type": "number"
+          },
+          "employeeContribution": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Employee contribution (AUD); clamped DOWN so TV cannot go negative.",
+            "title": "Employeecontribution"
+          },
+          "fbtType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+            "title": "Fbttype"
+          }
+        },
+        "required": [
+          "baseValue",
+          "daysAvailable"
+        ],
+        "title": "FBTCarStatutoryFormulaInput",
+        "type": "object"
+      },
       "FBTDebtWaiverInput": {
         "additionalProperties": false,
         "description": "Input for Phase 2b Debt Waiver Fringe Benefit (engine: ``calculate_fbt_debt_waiver``).\n\nFBTAA s.16. Engine arithmetic at FBT_Engine.pl L3433. Type 2 only per\nFBTAA; ``fbt_type`` echoed as 'Type 2'.",
@@ -741,6 +965,268 @@
           "otherwiseDeductiblePercentage"
         ],
         "title": "FBTLoanInput",
+        "type": "object"
+      },
+      "FBTMealEntertainment5050Input": {
+        "additionalProperties": false,
+        "description": "Phase 2k Meal Entertainment 50/50 Split (FBTAA s.37CA).\n\nEngine ``method=50_50``; the multiplier is hard-coded to 50 inside the\nengine when this method-atom dispatches.",
+        "properties": {
+          "eligibleMeals": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Meals in an eligible in-house dining facility (s.54 FBTAA); AUD.",
+            "title": "Eligiblemeals"
+          },
+          "employees": {
+            "description": "GST-inclusive meal entertainment expenditure on employees + other staff (AUD).",
+            "minimum": 0.0,
+            "title": "Employees",
+            "type": "number"
+          },
+          "employeesAssociates": {
+            "description": "Meal entertainment expenditure on associates of employees (AUD).",
+            "minimum": 0.0,
+            "title": "Employeesassociates",
+            "type": "number"
+          },
+          "employeesNonassociates": {
+            "description": "Meal entertainment expenditure on clients + other non-associates (AUD).",
+            "minimum": 0.0,
+            "title": "Employeesnonassociates",
+            "type": "number"
+          },
+          "fbtType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+            "title": "Fbttype"
+          },
+          "overnightMeals": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Otherwise-deductible business-travel meals (s.32-20 ITAA 1997); AUD.",
+            "title": "Overnightmeals"
+          },
+          "recreationExpenses": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Recreation entertainment excluded from base (AUD).",
+            "title": "Recreationexpenses"
+          },
+          "seminarMeals": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Exempt seminar meals (s.32-30 ITAA 1997); AUD.",
+            "title": "Seminarmeals"
+          },
+          "staffAmenities": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Exempt employer-provided staff amenities (s.41 minor-benefits); AUD.",
+            "title": "Staffamenities"
+          },
+          "teaItems": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Exempt morning/afternoon tea (s.41 minor-benefits); AUD.",
+            "title": "Teaitems"
+          }
+        },
+        "required": [
+          "employees",
+          "employeesAssociates",
+          "employeesNonassociates"
+        ],
+        "title": "FBTMealEntertainment5050Input",
+        "type": "object"
+      },
+      "FBTMealEntertainmentRegister12WkInput": {
+        "additionalProperties": false,
+        "description": "Phase 2k Meal Entertainment 12-Week Register (FBTAA s.37CB).\n\nEngine ``method=register_12wk``; ``register_percentage`` is REQUIRED.",
+        "properties": {
+          "eligibleMeals": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Meals in an eligible in-house dining facility (s.54 FBTAA); AUD.",
+            "title": "Eligiblemeals"
+          },
+          "employees": {
+            "description": "GST-inclusive meal entertainment expenditure on employees + other staff (AUD).",
+            "minimum": 0.0,
+            "title": "Employees",
+            "type": "number"
+          },
+          "employeesAssociates": {
+            "description": "Meal entertainment expenditure on associates of employees (AUD).",
+            "minimum": 0.0,
+            "title": "Employeesassociates",
+            "type": "number"
+          },
+          "employeesNonassociates": {
+            "description": "Meal entertainment expenditure on clients + other non-associates (AUD).",
+            "minimum": 0.0,
+            "title": "Employeesnonassociates",
+            "type": "number"
+          },
+          "fbtType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+            "title": "Fbttype"
+          },
+          "overnightMeals": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Otherwise-deductible business-travel meals (s.32-20 ITAA 1997); AUD.",
+            "title": "Overnightmeals"
+          },
+          "recreationExpenses": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Recreation entertainment excluded from base (AUD).",
+            "title": "Recreationexpenses"
+          },
+          "registerPercentage": {
+            "description": "Register percentage established under the 12-week sample register per s.37CC (0..100). Engine clamps at 100 if exceeded.",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Registerpercentage",
+            "type": "number"
+          },
+          "seminarMeals": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Exempt seminar meals (s.32-30 ITAA 1997); AUD.",
+            "title": "Seminarmeals"
+          },
+          "staffAmenities": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Exempt employer-provided staff amenities (s.41 minor-benefits); AUD.",
+            "title": "Staffamenities"
+          },
+          "teaItems": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0,
+            "description": "Exempt morning/afternoon tea (s.41 minor-benefits); AUD.",
+            "title": "Teaitems"
+          }
+        },
+        "required": [
+          "employees",
+          "employeesAssociates",
+          "employeesNonassociates",
+          "registerPercentage"
+        ],
+        "title": "FBTMealEntertainmentRegister12WkInput",
         "type": "object"
       },
       "FBTPropertyInHouseInput": {
@@ -1394,6 +1880,24 @@
                   },
                   {
                     "$ref": "#/components/schemas/FBTTebeInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FBTCarParkingActualInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FBTCarParkingStatutory228Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FBTCarParkingRegister12WkInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FBTMealEntertainment5050Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FBTMealEntertainmentRegister12WkInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FBTCarStatutoryFormulaInput"
                   },
                   {
                     "additionalProperties": true,

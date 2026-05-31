@@ -46,12 +46,18 @@ from api.schemas.depreciation import DepreciationAuditInput
 from api.schemas.invocation import (
     FBTBoardInput,
     FBTCarOperatingCostInput,
+    FBTCarParkingActualInput,
+    FBTCarParkingRegister12WkInput,
+    FBTCarParkingStatutory228Input,
+    FBTCarStatutoryFormulaInput,
     FBTDebtWaiverInput,
     FBTExpensePaymentInHouseInput,
     FBTExpensePaymentInput,
     FBTHousingInput,
     FBTLafhaInput,
     FBTLoanInput,
+    FBTMealEntertainment5050Input,
+    FBTMealEntertainmentRegister12WkInput,
     FBTPropertyInHouseInput,
     FBTPropertyInput,
     FBTResidualInHouseInput,
@@ -89,6 +95,13 @@ _CALC_INPUT_MODEL: dict[str, type[Any]] = {
     "urn:sbrm:calculator:fbt:lafha": FBTLafhaInput,
     "urn:sbrm:calculator:fbt:board": FBTBoardInput,
     "urn:sbrm:calculator:fbt:tebe": FBTTebeInput,
+    # --- Wave C Phase 2j–2k + Car-SF public-API widening (mut-2026-05-31-mc19) -----
+    "urn:sbrm:calculator:fbt:car-parking-actual": FBTCarParkingActualInput,
+    "urn:sbrm:calculator:fbt:car-parking-statutory-228": FBTCarParkingStatutory228Input,
+    "urn:sbrm:calculator:fbt:car-parking-register-12wk": FBTCarParkingRegister12WkInput,
+    "urn:sbrm:calculator:fbt:meal-entertainment-50-50": FBTMealEntertainment5050Input,
+    "urn:sbrm:calculator:fbt:meal-entertainment-register-12wk": FBTMealEntertainmentRegister12WkInput,
+    "urn:sbrm:calculator:fbt:car-statutory-formula": FBTCarStatutoryFormulaInput,
     "urn:sbrm:calculator:depreciation:audit": DepreciationAuditInput,
 }
 

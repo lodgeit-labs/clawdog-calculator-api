@@ -539,6 +539,224 @@ class FBTTebeInput(BaseModel):
     )
 
 
+# =============================================================================
+# Wave C — Phase 2j–2k + Car-SF public-API widening (mut-2026-05-31-mc19)
+# =============================================================================
+#
+# 6 method-atom input schemas wrapping the Phase 2j–2k method-dispatching
+# calculators + Car-SF (legacy v1 Statutory Formula). Per CLAWDOG/110 §3.3
+# atom-vs-bridge °γ-1 option ratified at sprint design (Brain PR #303): the
+# URN names the method explicitly rather than smuggling it in the body.
+#
+# Engine reference: FBT_Engine.pl L927 (Car-SF) / L3237 (CarParking Actual) /
+# L3288 (CarParking 228-Day Statutory) / L3360 (CarParking 12-Wk Register) /
+# L4117 (MealEntertainment) at LodgeiT_FBT `81e1a0ff`.
+#
+# Sheet-parity carry-overs from the FBT Phase 2 sprint:
+# - Car Parking WRT T1: OT #96 Waqas WAIT-STATE (sheet $929.34 vs statute
+#   $5,187.38). Predicate is statute-faithful. Registry label carries pointer.
+# - Car Parking ACT/SFT/WRT T2 + Meal Entertainment Actual/12-Wk T1/T2 +
+#   Car-SF: clean ships.
+#
+# Standing Rule #6: Car-SF consumes ``statutory-fraction`` + ``days-in-year``
+# rate-table fact-nodes from FY2026 (engine throws if missing). The other
+# 5 Wave C calcs are input-only arithmetic.
+
+
+class FBTCarParkingActualInput(BaseModel):
+    """Input for Phase 2j Car Parking Actual Method (engine: ``calculate_fbt_car_parking_actual``).
+
+    FBTAA Division 10A simple-sum method. Engine arithmetic at FBT_Engine.pl L3237.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    spaces_provided: float = Field(
+        ..., ge=0, alias="spacesProvided",
+        description="Number of car parking spaces provided.",
+    )
+    valuation_method_rate: float = Field(
+        ..., ge=0, alias="valuationMethodRate",
+        description="Per-space daily rate (AUD).",
+    )
+    employee_contribution: float | None = Field(
+        0, ge=0, alias="employeeContribution",
+        description="Employee contribution (AUD); clamped at gross subtotal.",
+    )
+    fbt_type: str | None = Field(
+        None, alias="fbtType",
+        description="'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+    )
+
+
+class FBTCarParkingStatutory228Input(BaseModel):
+    """Input for Phase 2j Car Parking 228-Day Statutory Formula (engine:
+    ``calculate_fbt_car_parking_statutory_228``).
+
+    FBTAA s.39FA Statutory Formula method. Engine arithmetic at FBT_Engine.pl L3288.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    days_car_parking_available: float = Field(
+        ..., ge=0, le=366, alias="daysCarParkingAvailable",
+        description="Days the car parking benefit was available [0..366]; engine clamps at 366.",
+    )
+    valuation_method_rate: float = Field(
+        ..., ge=0, alias="valuationMethodRate",
+        description="Per-space daily rate (AUD).",
+    )
+    employee_contribution: float | None = Field(
+        0, ge=0, alias="employeeContribution",
+        description="Employee contribution (AUD); clamped at gross subtotal.",
+    )
+    fbt_type: str | None = Field(
+        None, alias="fbtType",
+        description="'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+    )
+
+
+class FBTCarParkingRegister12WkInput(BaseModel):
+    """Input for Phase 2j Car Parking 12-Week Register (engine:
+    ``calculate_fbt_car_parking_register_12wk``).
+
+    FBTAA s.39GB 12-Week Register method. Engine arithmetic at FBT_Engine.pl L3360.
+    WRT T1 sheet row 63 sheet-vs-statute divergence parked under OT #96.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    benefits_in_period: float = Field(
+        ..., ge=0, alias="benefitsInPeriod",
+        description="Number of car parking benefits in the 12-week register period.",
+    )
+    valuation_method_rate: float = Field(
+        ..., ge=0, alias="valuationMethodRate",
+        description="Per-benefit rate (AUD).",
+    )
+    days_space_available: float = Field(
+        ..., ge=0, le=366, alias="daysSpaceAvailable",
+        description="Days the car parking space was available [0..366]; engine clamps at 366.",
+    )
+    employee_contribution: float | None = Field(
+        0, ge=0, alias="employeeContribution",
+        description="Employee contribution (AUD); clamped at gross subtotal.",
+    )
+    fbt_type: str | None = Field(
+        None, alias="fbtType",
+        description="'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+    )
+
+
+class _MealEntertainmentBaseInput(BaseModel):
+    """Shared input shape for Phase 2k Meal Entertainment (50/50 + 12-Wk Register variants).
+
+    FBTAA Division 9A (s.37AA-s.37CB). Engine arithmetic at FBT_Engine.pl L4117.
+    Both methods consume the same 9-category input shape; the multiplier
+    dispatches per the engine ``method`` field (set by the route handler from
+    the registry's ``engine_method``).
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    employees: float = Field(
+        ..., ge=0, alias="employees",
+        description="GST-inclusive meal entertainment expenditure on employees + other staff (AUD).",
+    )
+    employees_associates: float = Field(
+        ..., ge=0, alias="employeesAssociates",
+        description="Meal entertainment expenditure on associates of employees (AUD).",
+    )
+    employees_nonassociates: float = Field(
+        ..., ge=0, alias="employeesNonassociates",
+        description="Meal entertainment expenditure on clients + other non-associates (AUD).",
+    )
+    staff_amenities: float | None = Field(
+        0, ge=0, alias="staffAmenities",
+        description="Exempt employer-provided staff amenities (s.41 minor-benefits); AUD.",
+    )
+    tea_items: float | None = Field(
+        0, ge=0, alias="teaItems",
+        description="Exempt morning/afternoon tea (s.41 minor-benefits); AUD.",
+    )
+    overnight_meals: float | None = Field(
+        0, ge=0, alias="overnightMeals",
+        description="Otherwise-deductible business-travel meals (s.32-20 ITAA 1997); AUD.",
+    )
+    recreation_expenses: float | None = Field(
+        0, ge=0, alias="recreationExpenses",
+        description="Recreation entertainment excluded from base (AUD).",
+    )
+    eligible_meals: float | None = Field(
+        0, ge=0, alias="eligibleMeals",
+        description="Meals in an eligible in-house dining facility (s.54 FBTAA); AUD.",
+    )
+    seminar_meals: float | None = Field(
+        0, ge=0, alias="seminarMeals",
+        description="Exempt seminar meals (s.32-30 ITAA 1997); AUD.",
+    )
+    fbt_type: str | None = Field(
+        None, alias="fbtType",
+        description="'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+    )
+
+
+class FBTMealEntertainment5050Input(_MealEntertainmentBaseInput):
+    """Phase 2k Meal Entertainment 50/50 Split (FBTAA s.37CA).
+
+    Engine ``method=50_50``; the multiplier is hard-coded to 50 inside the
+    engine when this method-atom dispatches.
+    """
+
+
+class FBTMealEntertainmentRegister12WkInput(_MealEntertainmentBaseInput):
+    """Phase 2k Meal Entertainment 12-Week Register (FBTAA s.37CB).
+
+    Engine ``method=register_12wk``; ``register_percentage`` is REQUIRED.
+    """
+
+    register_percentage: float = Field(
+        ..., ge=0, le=100, alias="registerPercentage",
+        description=(
+            "Register percentage established under the 12-week sample "
+            "register per s.37CC (0..100). Engine clamps at 100 if exceeded."
+        ),
+    )
+
+
+class FBTCarStatutoryFormulaInput(BaseModel):
+    """Input for Phase 2l Car Statutory Formula (engine: ``calculate_fbt_car_statutory_formula``).
+
+    FBTAA s.9 Statutory Formula method (legacy v1; rate-table-fed). Engine
+    arithmetic at FBT_Engine.pl L927. Consumes the FY2026
+    ``statutory-fraction`` + ``days-in-year`` rate-table fact-nodes per
+    Standing Rule #6 (the engine throws ``missing_rate(...)`` if absent).
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    base_value: float = Field(
+        ..., ge=0, alias="baseValue",
+        description="Statutory base value of the car (AUD).",
+    )
+    days_available: float = Field(
+        ..., ge=0, le=366, alias="daysAvailable",
+        description="Days the car was available for private use [0..366].",
+    )
+    accessories: float | None = Field(
+        0, ge=0, alias="accessories",
+        description="Accessories added to base value (AUD).",
+    )
+    employee_contribution: float | None = Field(
+        0, ge=0, alias="employeeContribution",
+        description="Employee contribution (AUD); clamped DOWN so TV cannot go negative.",
+    )
+    fbt_type: str | None = Field(
+        None, alias="fbtType",
+        description="'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+    )
+
+
 class ManifestRateTableEntry(BaseModel):
     """One entry in the manifest's ``rate_table_uris`` block (CLAWDOG/109 §7.1)."""
 
@@ -644,6 +862,13 @@ __all__ = [
     "FBTLafhaInput",
     "FBTBoardInput",
     "FBTTebeInput",
+    # Wave C (Phase 2j–2k + Car-SF) public-API widening (mut-2026-05-31-mc19)
+    "FBTCarParkingActualInput",
+    "FBTCarParkingStatutory228Input",
+    "FBTCarParkingRegister12WkInput",
+    "FBTMealEntertainment5050Input",
+    "FBTMealEntertainmentRegister12WkInput",
+    "FBTCarStatutoryFormulaInput",
     "ManifestRateTableEntry",
     "Manifest",
     "AdvisoryBlock",

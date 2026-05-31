@@ -1,24 +1,14 @@
-"""Wave A + Wave B route-dispatch contract gate (mut-2026-05-31-mc15 + mc17).
+"""Wave A + Wave B + Wave C route-dispatch contract gate
+(mut-2026-05-31-mc15 + mc17 + mc19).
 
 Asserts the per-URN pydantic dispatch on the generic
 ``POST /v1/calculators/{calc_uri}/{period_uri}`` route works end-to-end for
-each Wave A + Wave B method-atom.
+each Wave A + Wave B + Wave C method-atom (18 total).
 
-Wave A (mut-2026-05-31-mc15; Phase 2a–2e originals):
-- urn:sbrm:calculator:fbt:loan
-- urn:sbrm:calculator:fbt:debt-waiver
-- urn:sbrm:calculator:fbt:expense-payment
-- urn:sbrm:calculator:fbt:expense-payment-in-house
-- urn:sbrm:calculator:fbt:property
-- urn:sbrm:calculator:fbt:property-in-house
-- urn:sbrm:calculator:fbt:residual
-- urn:sbrm:calculator:fbt:residual-in-house
-
-Wave B (mut-2026-05-31-mc17; Phase 2f–2i single-method calcs):
-- urn:sbrm:calculator:fbt:housing
-- urn:sbrm:calculator:fbt:lafha
-- urn:sbrm:calculator:fbt:board
-- urn:sbrm:calculator:fbt:tebe
+Wave A (mut-2026-05-31-mc15; Phase 2a–2e originals; 8 atoms / 8 URNs).
+Wave B (mut-2026-05-31-mc17; Phase 2f–2i single-method calcs; 4 atoms / 4 URNs).
+Wave C (mut-2026-05-31-mc19; Phase 2j–2k + Car-SF; 6 atoms / 6 URNs per
+CLAWDOG/110 §3.3 atom-vs-bridge γ-1 URN-per-method).
 
 For each URN we assert:
 1. **Valid body → 200** (with engine mocked to return a canonical response).
@@ -29,9 +19,10 @@ This is the Lesson #40 production-resolver-shape pattern applied at the
 per-URN dispatch boundary: hermetic green here, paired with the post-deploy
 ``make smoke-prod`` extension for live-wire green.
 
-NB: Wave A std methods + Wave B Housing/LAFHA/Board/TEBE don't consume
-rate-tables at the engine layer (Wave A in-house variants consume
-``in-house-benefit-cap`` which IS present in the vendored production bundle).
+NB: most Wave A/B/C methods don't consume rate-tables at the engine layer.
+Wave A in-house variants consume ``in-house-benefit-cap``; Wave C Car-SF
+consumes ``statutory-fraction`` + ``days-in-year`` (all present in the
+vendored production bundle).
 """
 from __future__ import annotations
 
@@ -172,6 +163,76 @@ _WAVE_A_CASES: list[tuple[str, str, dict[str, Any], str]] = [
             "recreation": 1500,
         },
         "salaryPackagedMealEfle",
+    ),
+    # --- Wave C (mut-2026-05-31-mc19; Phase 2j-2k + Car-SF) ---
+    (
+        "urn:sbrm:calculator:fbt:car-parking-actual",
+        "actual",
+        {
+            "spacesProvided": 50,
+            "valuationMethodRate": 12,
+            "employeeContribution": 100,
+        },
+        "spacesProvided",
+    ),
+    (
+        "urn:sbrm:calculator:fbt:car-parking-statutory-228",
+        "statutory_228",
+        {
+            "daysCarParkingAvailable": 222,
+            "valuationMethodRate": 12,
+            "employeeContribution": 100,
+        },
+        "daysCarParkingAvailable",
+    ),
+    (
+        "urn:sbrm:calculator:fbt:car-parking-register-12wk",
+        "register_12wk",
+        {
+            "benefitsInPeriod": 80,
+            "valuationMethodRate": 12,
+            "daysSpaceAvailable": 366,
+            "employeeContribution": 2000,
+        },
+        "benefitsInPeriod",
+    ),
+    (
+        "urn:sbrm:calculator:fbt:meal-entertainment-50-50",
+        "50_50",
+        {
+            "employees": 4500,
+            "employeesAssociates": 330,
+            "employeesNonassociates": 220,
+            "staffAmenities": 222,
+            "teaItems": 213,
+            "overnightMeals": 123,
+            "recreationExpenses": 300,
+            "eligibleMeals": 200,
+            "seminarMeals": 150,
+        },
+        "employees",
+    ),
+    (
+        "urn:sbrm:calculator:fbt:meal-entertainment-register-12wk",
+        "register_12wk",
+        {
+            "registerPercentage": 80,
+            "employees": 2000,
+            "employeesAssociates": 1000,
+            "employeesNonassociates": 500,
+        },
+        "registerPercentage",
+    ),
+    (
+        "urn:sbrm:calculator:fbt:car-statutory-formula",
+        "car_statutory_formula",
+        {
+            "baseValue": 50000,
+            "daysAvailable": 366,
+            "accessories": 5000,
+            "employeeContribution": 200,
+        },
+        "baseValue",
     ),
 ]
 
