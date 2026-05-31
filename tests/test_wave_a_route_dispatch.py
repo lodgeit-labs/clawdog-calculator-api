@@ -1,9 +1,10 @@
-"""Wave A route-dispatch contract gate (mut-2026-05-31-mc15).
+"""Wave A + Wave B route-dispatch contract gate (mut-2026-05-31-mc15 + mc17).
 
 Asserts the per-URN pydantic dispatch on the generic
 ``POST /v1/calculators/{calc_uri}/{period_uri}`` route works end-to-end for
-each of the 8 Wave A method-atoms:
+each Wave A + Wave B method-atom.
 
+Wave A (mut-2026-05-31-mc15; Phase 2a–2e originals):
 - urn:sbrm:calculator:fbt:loan
 - urn:sbrm:calculator:fbt:debt-waiver
 - urn:sbrm:calculator:fbt:expense-payment
@@ -12,6 +13,12 @@ each of the 8 Wave A method-atoms:
 - urn:sbrm:calculator:fbt:property-in-house
 - urn:sbrm:calculator:fbt:residual
 - urn:sbrm:calculator:fbt:residual-in-house
+
+Wave B (mut-2026-05-31-mc17; Phase 2f–2i single-method calcs):
+- urn:sbrm:calculator:fbt:housing
+- urn:sbrm:calculator:fbt:lafha
+- urn:sbrm:calculator:fbt:board
+- urn:sbrm:calculator:fbt:tebe
 
 For each URN we assert:
 1. **Valid body → 200** (with engine mocked to return a canonical response).
@@ -22,11 +29,9 @@ This is the Lesson #40 production-resolver-shape pattern applied at the
 per-URN dispatch boundary: hermetic green here, paired with the post-deploy
 ``make smoke-prod`` extension for live-wire green.
 
-NB: Wave A std methods don't consume rate-tables; the in-house variants
-consume ``in-house-benefit-cap`` (FY2026 = 1000) which IS present in the
-vendored production bundle at ``rate_tables/SBRM_RATE_TABLE/fbt/...``. The
-existing ``test_production_bundle.py`` gate already asserts that bundle
-existence + readability.
+NB: Wave A std methods + Wave B Housing/LAFHA/Board/TEBE don't consume
+rate-tables at the engine layer (Wave A in-house variants consume
+``in-house-benefit-cap`` which IS present in the vendored production bundle).
 """
 from __future__ import annotations
 
@@ -122,6 +127,52 @@ _WAVE_A_CASES: list[tuple[str, str, dict[str, Any], str]] = [
         },
         "gstInclusiveValue",
     ),
+    # --- Wave B (mut-2026-05-31-mc17; Phase 2f–2i single-method calcs) ---
+    (
+        "urn:sbrm:calculator:fbt:housing",
+        "housing_non_remote",
+        {
+            "housingBenefitValue": 12000,
+            "indexationFactor": 1.05,
+            "recipientRent": 2000,
+        },
+        "housingBenefitValue",
+    ),
+    (
+        "urn:sbrm:calculator:fbt:lafha",
+        "lafha_std",
+        {
+            "weeksLivedAway": 5,
+            "accommodationPerWeek": 220,
+            "mealsPerWeek": 80,
+            "exemptAccommodationComponent": 500,
+            "exemptFoodComponent": 100,
+        },
+        "weeksLivedAway",
+    ),
+    (
+        "urn:sbrm:calculator:fbt:board",
+        "board_std",
+        {
+            "membersUnderTwelve": 3,
+            "under12MealsPerChild": 0,
+            "membersOverTwelve": 60,
+            "over12MealsPerChild": 45,
+            "over12EmployeeContributions": 100,
+        },
+        # All Board fields are optional (default 0); use ``__extra_unknown__``
+        # which is rejected by ``extra='forbid'`` to trigger 422.
+        "__extra_unknown__",
+    ),
+    (
+        "urn:sbrm:calculator:fbt:tebe",
+        "tebe_std",
+        {
+            "salaryPackagedMealEfle": 5000,
+            "recreation": 1500,
+        },
+        "salaryPackagedMealEfle",
+    ),
 ]
 
 
@@ -181,9 +232,19 @@ def test_wave_a_route_dispatch_invalid_body_returns_422(
     valid_body: dict[str, Any],
     required_field: str,
 ) -> None:
-    """Per-URN: dropping a required field returns 422 (not 500)."""
+    """Per-URN: invalid body returns 422 (not 500).
+
+    For URNs with at least one required field, we drop that field. For
+    URNs whose schema is entirely optional fields (e.g. Board where all
+    inputs default to 0), we inject an unknown field which is rejected by
+    ``model_config = ConfigDict(extra='forbid')``.
+    """
     calc_uri_enc = quote(urn, safe="")
-    bad_body = {k: v for k, v in valid_body.items() if k != required_field}
+    if required_field == "__extra_unknown__":
+        # Inject an unknown field rejected by extra='forbid'.
+        bad_body = {**valid_body, "unknownExtraField": 999}
+    else:
+        bad_body = {k: v for k, v in valid_body.items() if k != required_field}
     with patch(
         "api.routes.calculators.PrologClient.calculate_fbt",
         new=AsyncMock(return_value=_canonical_engine_response()),
@@ -193,7 +254,7 @@ def test_wave_a_route_dispatch_invalid_body_returns_422(
             json=bad_body,
         )
     assert resp.status_code == 422, (
-        f"{urn}: expected 422 on missing {required_field!r}, got "
+        f"{urn}: expected 422 on invalid body shape ({required_field!r}), got "
         f"{resp.status_code}: {resp.text[:300]}"
     )
 

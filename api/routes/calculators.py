@@ -35,15 +35,19 @@ from api.schemas.depreciation import DepreciationAuditInput
 from api.schemas.invocation import (
     CalculatorInvocationResponse,
     CalculatorListing,
+    FBTBoardInput,
     FBTCarOperatingCostInput,
     FBTDebtWaiverInput,
     FBTExpensePaymentInHouseInput,
     FBTExpensePaymentInput,
+    FBTHousingInput,
+    FBTLafhaInput,
     FBTLoanInput,
     FBTPropertyInHouseInput,
     FBTPropertyInput,
     FBTResidualInHouseInput,
     FBTResidualInput,
+    FBTTebeInput,
     validate_calc_uri,
     validate_period_uri,
 )
@@ -75,6 +79,13 @@ _FBT_PROPERTY_URI = "urn:sbrm:calculator:fbt:property"
 _FBT_PROPERTY_IN_HOUSE_URI = "urn:sbrm:calculator:fbt:property-in-house"
 _FBT_RESIDUAL_URI = "urn:sbrm:calculator:fbt:residual"
 _FBT_RESIDUAL_IN_HOUSE_URI = "urn:sbrm:calculator:fbt:residual-in-house"
+
+# --- Wave B URN constants (mut-2026-05-31-mc17) -----------------------------
+# Phase 2f–2i single-method calculators widened to the public REST + MCP surface.
+_FBT_HOUSING_URI = "urn:sbrm:calculator:fbt:housing"
+_FBT_LAFHA_URI = "urn:sbrm:calculator:fbt:lafha"
+_FBT_BOARD_URI = "urn:sbrm:calculator:fbt:board"
+_FBT_TEBE_URI = "urn:sbrm:calculator:fbt:tebe"
 
 _CALCULATOR_REGISTRY: dict[str, dict] = {
     _FBT_CAR_OC_URI: {
@@ -155,7 +166,48 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
         "supported_periods": [_FBT_FY2026],
         "input_schema_ref": "#/components/schemas/FBTResidualInHouseInput",
     },
-    # End Wave A registry entries; the existing depreciation entry follows.
+    # End Wave A registry entries.
+    # --- Wave B Phase 2f–2i public-API widening (mut-2026-05-31-mc17) -----
+    # 4 single-method calculators. Engine method-atoms match the `route_calc/4`
+    # table at FBT_Engine.pl L692–L772 (LodgeiT_FBT `81e1a0ff`). Sheet-parity
+    # carry-overs:
+    # - Board: OT #94 row 35 Waqas WAIT-STATE (predicate is statute-faithful)
+    # - Housing: clean ship
+    # - LAFHA: clean ship; caller supplies pre-computed exempt_food_component
+    # - TEBE: clean ship; 50/50-split is sheet/UI-layer concern
+    _FBT_HOUSING_URI: {
+        "engine_method": "housing_non_remote",
+        "engine_benefit_category": "housing",
+        "jurisdiction": "AU",
+        "label": "FBT Housing — Non-Remote (FBTAA s.26)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTHousingInput",
+    },
+    _FBT_LAFHA_URI: {
+        "engine_method": "lafha_std",
+        "engine_benefit_category": "lafha",
+        "jurisdiction": "AU",
+        "label": "FBT LAFHA — Living-Away-From-Home Allowance (FBTAA s.31; Type 2 only)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTLafhaInput",
+    },
+    _FBT_BOARD_URI: {
+        "engine_method": "board_std",
+        "engine_benefit_category": "board",
+        "jurisdiction": "AU",
+        "label": "FBT Board (FBTAA s.36; sheet row 35 sheet-vs-statute divergence parked under OT #94)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTBoardInput",
+    },
+    _FBT_TEBE_URI: {
+        "engine_method": "tebe_std",
+        "engine_benefit_category": "tebe",
+        "jurisdiction": "AU",
+        "label": "FBT TEBE — Tax-Exempt Body Entertainment (FBTAA s.39)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTTebeInput",
+    },
+    # End Wave B registry entries; the existing depreciation entry follows.
     _DEPRECIATION_AUDIT_URI: {
         # Phase 3c.3.B onboarding (Andrew + Tracer ratified 2026-05-12 05:54 UTC).
         # Scope per Andrew: accounting-engine depreciation supports prime cost
@@ -189,6 +241,7 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
 # extension).
 _CALC_INPUT_MODEL_REST: dict[str, type] = {
     _FBT_CAR_OC_URI: FBTCarOperatingCostInput,
+    # Wave A (mut-2026-05-31-mc15)
     _FBT_LOAN_URI: FBTLoanInput,
     _FBT_DEBT_WAIVER_URI: FBTDebtWaiverInput,
     _FBT_EXPENSE_PAYMENT_URI: FBTExpensePaymentInput,
@@ -197,6 +250,11 @@ _CALC_INPUT_MODEL_REST: dict[str, type] = {
     _FBT_PROPERTY_IN_HOUSE_URI: FBTPropertyInHouseInput,
     _FBT_RESIDUAL_URI: FBTResidualInput,
     _FBT_RESIDUAL_IN_HOUSE_URI: FBTResidualInHouseInput,
+    # Wave B (mut-2026-05-31-mc17)
+    _FBT_HOUSING_URI: FBTHousingInput,
+    _FBT_LAFHA_URI: FBTLafhaInput,
+    _FBT_BOARD_URI: FBTBoardInput,
+    _FBT_TEBE_URI: FBTTebeInput,
 }
 
 
@@ -270,6 +328,10 @@ async def invoke_calculator(
         | FBTPropertyInHouseInput
         | FBTResidualInput
         | FBTResidualInHouseInput
+        | FBTHousingInput
+        | FBTLafhaInput
+        | FBTBoardInput
+        | FBTTebeInput
         | dict,
         Body(
             description=(

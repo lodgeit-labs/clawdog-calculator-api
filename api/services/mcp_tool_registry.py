@@ -44,15 +44,19 @@ from typing import Any
 from api.routes.calculators import _CALCULATOR_REGISTRY
 from api.schemas.depreciation import DepreciationAuditInput
 from api.schemas.invocation import (
+    FBTBoardInput,
     FBTCarOperatingCostInput,
     FBTDebtWaiverInput,
     FBTExpensePaymentInHouseInput,
     FBTExpensePaymentInput,
+    FBTHousingInput,
+    FBTLafhaInput,
     FBTLoanInput,
     FBTPropertyInHouseInput,
     FBTPropertyInput,
     FBTResidualInHouseInput,
     FBTResidualInput,
+    FBTTebeInput,
 )
 from api.services.widget_url_resolver import (
     all_calc_widget_mappings,
@@ -80,6 +84,11 @@ _CALC_INPUT_MODEL: dict[str, type[Any]] = {
     "urn:sbrm:calculator:fbt:property-in-house": FBTPropertyInHouseInput,
     "urn:sbrm:calculator:fbt:residual": FBTResidualInput,
     "urn:sbrm:calculator:fbt:residual-in-house": FBTResidualInHouseInput,
+    # --- Wave B Phase 2f–2i public-API widening (mut-2026-05-31-mc17) -----
+    "urn:sbrm:calculator:fbt:housing": FBTHousingInput,
+    "urn:sbrm:calculator:fbt:lafha": FBTLafhaInput,
+    "urn:sbrm:calculator:fbt:board": FBTBoardInput,
+    "urn:sbrm:calculator:fbt:tebe": FBTTebeInput,
     "urn:sbrm:calculator:depreciation:audit": DepreciationAuditInput,
 }
 
