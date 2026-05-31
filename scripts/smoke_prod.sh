@@ -330,17 +330,121 @@ fi
 rm -f "$OPENAPI_TMP"
 
 # ----------------------------------------------------------------------
+# Check 6: GET /v1/calculators lists Wave A FBT methods
+# (mut-2026-05-31-mc15 — production-resolver-shape assertion at the
+# calculator-discovery boundary; per-URN POST byte-content assertions
+# deferred until canonical engine-response sidecars land.)
+# ----------------------------------------------------------------------
+echo ""
+echo "--- Check 6: GET /v1/calculators lists Wave A FBT methods ---"
+CALCS_TMP=$(mktemp)
+HTTP_STATUS=$(curl -sS -o "$CALCS_TMP" -w "%{http_code}" "$API_BASE_URL/v1/calculators" 2>&1) || {
+    echo "🟡 INFRA BROKEN: curl failed against /v1/calculators"
+    rm -f "$CALCS_TMP"
+    exit 2
+}
+if [ "$HTTP_STATUS" != "200" ]; then
+    echo "🔴 FAIL: expected HTTP 200, got $HTTP_STATUS"
+    head -c 300 "$CALCS_TMP"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+else
+    CALCS_OK=$(python3 -c "
+import json
+d = json.load(open('$CALCS_TMP'))
+uris = {c.get('calc_uri') for c in d}
+required = {
+    'urn:sbrm:calculator:fbt:car-operating-cost',
+    'urn:sbrm:calculator:fbt:loan',
+    'urn:sbrm:calculator:fbt:debt-waiver',
+    'urn:sbrm:calculator:fbt:expense-payment',
+    'urn:sbrm:calculator:fbt:expense-payment-in-house',
+    'urn:sbrm:calculator:fbt:property',
+    'urn:sbrm:calculator:fbt:property-in-house',
+    'urn:sbrm:calculator:fbt:residual',
+    'urn:sbrm:calculator:fbt:residual-in-house',
+    'urn:sbrm:calculator:depreciation:audit',
+}
+missing = required - uris
+if missing:
+    print('MISSING:' + ','.join(sorted(missing)))
+else:
+    print('OK')
+")
+    if [ "$CALCS_OK" = "OK" ]; then
+        echo "🟢 PASS: all 10 expected calculator URNs registered (2 existing + 8 Wave A)"
+        PASS_COUNT=$((PASS_COUNT + 1))
+    else
+        echo "🔴 FAIL: $CALCS_OK"
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+fi
+rm -f "$CALCS_TMP"
+
+# ----------------------------------------------------------------------
+# Check 7: MCP tools/list returns at least 10 tools post Wave A
+# (mut-2026-05-31-mc15)
+# ----------------------------------------------------------------------
+echo ""
+echo "--- Check 7: MCP tools/list returns at least 10 tools post Wave A ---"
+MCP_TMP=$(mktemp)
+HTTP_STATUS=$(curl -sS -o "$MCP_TMP" -w "%{http_code}" -X POST \
+    "$API_BASE_URL/mcp" \
+    -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' 2>&1) || {
+    echo "🟡 INFRA BROKEN: curl failed against /mcp"
+    rm -f "$MCP_TMP"
+    exit 2
+}
+if [ "$HTTP_STATUS" != "200" ]; then
+    echo "🔴 FAIL: expected HTTP 200, got $HTTP_STATUS"
+    head -c 300 "$MCP_TMP"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+else
+    MCP_OK=$(python3 -c "
+import json
+d = json.load(open('$MCP_TMP'))
+tools = d.get('result', {}).get('tools', [])
+names = {t.get('name') for t in tools}
+required = {
+    'fbt-car-operating-cost',
+    'fbt-loan',
+    'fbt-debt-waiver',
+    'fbt-expense-payment',
+    'fbt-expense-payment-in-house',
+    'fbt-property',
+    'fbt-property-in-house',
+    'fbt-residual',
+    'fbt-residual-in-house',
+    'depreciation-audit',
+}
+missing = required - names
+if missing:
+    print('MISSING:' + ','.join(sorted(missing)))
+else:
+    print('OK')
+")
+    if [ "$MCP_OK" = "OK" ]; then
+        echo "🟢 PASS: MCP tools/list advertises all 10 expected tools"
+        PASS_COUNT=$((PASS_COUNT + 1))
+    else
+        echo "🔴 FAIL: $MCP_OK"
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+fi
+rm -f "$MCP_TMP"
+
+# ----------------------------------------------------------------------
 # Aggregate verdict
 # ----------------------------------------------------------------------
 echo ""
 echo "============================================================"
-echo "Result: PASS=$PASS_COUNT FAIL=$FAIL_COUNT (of 5)"
+echo "Result: PASS=$PASS_COUNT FAIL=$FAIL_COUNT (of 7)"
 echo "============================================================"
 
 if [ "$FAIL_COUNT" -eq 0 ]; then
     echo "🟢 GREEN — production-bundle gate clean"
     exit 0
 else
-    echo "🔴 LOGIC DRIFT — $FAIL_COUNT of 5 checks failed; deploy is broken or production drifted"
+    echo "🔴 LOGIC DRIFT — $FAIL_COUNT of 7 checks failed; deploy is broken or production drifted"
     exit 1
 fi

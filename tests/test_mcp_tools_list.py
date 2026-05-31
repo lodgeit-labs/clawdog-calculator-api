@@ -64,25 +64,50 @@ def test_tools_list_envelope_shape(mcp_client: TestClient) -> None:
     assert "error" not in body
 
 
-def test_tools_list_surfaces_two_calculators(mcp_client: TestClient) -> None:
-    """The two calculators registered today surface as two MCP tools.
+def test_tools_list_surfaces_ten_calculators(mcp_client: TestClient) -> None:
+    """The 10 calculators registered today surface as 10 MCP tools.
 
     Per Lesson #31, we assert exactly the count of registered calculators
-    rather than ">= 1" or similar generalised assertion. If a third
+    rather than ">= 1" or similar generalised assertion. If an eleventh
     calculator is registered, this assertion fails — the failure is a
     *signal*, not a defect (it requires explicit update of the canonical
     count + acknowledgement that the tools/list surface has grown).
+
+    History:
+    - Phase 3a (n=1): fbt-car-operating-cost only.
+    - Phase 3c.3.B (n=2): + depreciation-audit (the original "two calculators"
+      assertion this test was named after).
+    - mut-2026-05-31-mc15 Wave A (n=10): + 8 Phase 2a–2e public-API widening
+      (loan + debt-waiver + expense-payment {± in-house} + property {± in-house}
+      + residual {± in-house}).
     """
     body = _jsonrpc_call(mcp_client, "tools/list")
     tools = body["result"]["tools"]
     assert isinstance(tools, list)
-    assert len(tools) == 2, (
-        f"expected 2 calculators registered (FBT + depreciation); got "
-        f"{len(tools)}; tools={tools}"
+    assert len(tools) == 10, (
+        f"expected 10 calculators registered (FBT car-OC + depreciation + 8 "
+        f"Wave A Phase 2a–2e); got {len(tools)}; tools={tools}"
     )
 
     names = {tool["name"] for tool in tools}
-    assert names == {"fbt-car-operating-cost", "depreciation-audit"}
+    expected_names = {
+        "fbt-car-operating-cost",
+        "depreciation-audit",
+        # Wave A (mut-2026-05-31-mc15)
+        "fbt-loan",
+        "fbt-debt-waiver",
+        "fbt-expense-payment",
+        "fbt-expense-payment-in-house",
+        "fbt-property",
+        "fbt-property-in-house",
+        "fbt-residual",
+        "fbt-residual-in-house",
+    }
+    assert names == expected_names, f"tool name set mismatch: {names ^ expected_names}"
+
+
+# Backward-compat alias for any external test discovery referencing the old name.
+test_tools_list_surfaces_two_calculators = test_tools_list_surfaces_ten_calculators
 
 
 def test_tools_list_input_schemas_resolve(mcp_client: TestClient) -> None:

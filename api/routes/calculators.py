@@ -15,8 +15,9 @@ from pathlib import Path
 from typing import Annotated
 from urllib.parse import unquote
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi import Path as PathParam
+from pydantic import ValidationError
 
 from api.lib.advisory_boundary import wrap_response
 from api.lib.rate_table_resolver import (
@@ -35,6 +36,14 @@ from api.schemas.invocation import (
     CalculatorInvocationResponse,
     CalculatorListing,
     FBTCarOperatingCostInput,
+    FBTDebtWaiverInput,
+    FBTExpensePaymentInHouseInput,
+    FBTExpensePaymentInput,
+    FBTLoanInput,
+    FBTPropertyInHouseInput,
+    FBTPropertyInput,
+    FBTResidualInHouseInput,
+    FBTResidualInput,
     validate_calc_uri,
     validate_period_uri,
 )
@@ -53,6 +62,20 @@ _FBT_FY2026 = "urn:sbrm:period:fbt:fy2026"
 _DEPRECIATION_AUDIT_URI = "urn:sbrm:calculator:depreciation:audit"
 _DEPRECIATION_FY2026 = "urn:sbrm:period:depreciation:fy2026"
 
+# --- Wave A URN constants (mut-2026-05-31-mc15) -----------------------------
+# Phase 2a–2e original engine methods widened to the public REST + MCP surface.
+# Each URN names the (jurisdiction-bare) calculator + method-atom per
+# CLAWDOG/110 §3.3 atom-vs-bridge boundary. Jurisdiction lives on the registry
+# entry below.
+_FBT_LOAN_URI = "urn:sbrm:calculator:fbt:loan"
+_FBT_DEBT_WAIVER_URI = "urn:sbrm:calculator:fbt:debt-waiver"
+_FBT_EXPENSE_PAYMENT_URI = "urn:sbrm:calculator:fbt:expense-payment"
+_FBT_EXPENSE_PAYMENT_IN_HOUSE_URI = "urn:sbrm:calculator:fbt:expense-payment-in-house"
+_FBT_PROPERTY_URI = "urn:sbrm:calculator:fbt:property"
+_FBT_PROPERTY_IN_HOUSE_URI = "urn:sbrm:calculator:fbt:property-in-house"
+_FBT_RESIDUAL_URI = "urn:sbrm:calculator:fbt:residual"
+_FBT_RESIDUAL_IN_HOUSE_URI = "urn:sbrm:calculator:fbt:residual-in-house"
+
 _CALCULATOR_REGISTRY: dict[str, dict] = {
     _FBT_CAR_OC_URI: {
         "engine_method": "operating_cost",
@@ -62,6 +85,77 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
         "supported_periods": [_FBT_FY2026],
         "input_schema_ref": "#/components/schemas/FBTCarOperatingCostInput",
     },
+    # --- Wave A Phase 2a–2e public-API widening (mut-2026-05-31-mc15) -----
+    # Each entry wraps an existing LodgeiT_FBT predicate; engine method-atom
+    # matches the `route_calc/4` table at FBT_Engine.pl L699–L772 (LodgeiT_FBT
+    # `81e1a0ff`); benefit-category matches the engine's `benefit_category`
+    # field shape. Zero rate-table consumption for std variants; in-house
+    # variants consume FY2026 `in-house-benefit-cap` per Standing Rule #6.
+    _FBT_LOAN_URI: {
+        "engine_method": "loan_benefit_type_2",
+        "engine_benefit_category": "loan",
+        "jurisdiction": "AU",
+        "label": "FBT Loan — Type 2 (FBTAA Division 4 ss.16–19)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTLoanInput",
+    },
+    _FBT_DEBT_WAIVER_URI: {
+        "engine_method": "debt_waiver",
+        "engine_benefit_category": "debt_waiver",
+        "jurisdiction": "AU",
+        "label": "FBT Debt Waiver (FBTAA s.16; Type 2 only)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTDebtWaiverInput",
+    },
+    _FBT_EXPENSE_PAYMENT_URI: {
+        "engine_method": "expense_payment",
+        "engine_benefit_category": "expense_payment",
+        "jurisdiction": "AU",
+        "label": "FBT Expense Payment — std (FBTAA Division 5 ss.20–24)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTExpensePaymentInput",
+    },
+    _FBT_EXPENSE_PAYMENT_IN_HOUSE_URI: {
+        "engine_method": "in_house_expense_payment",
+        "engine_benefit_category": "expense_payment_in_house",
+        "jurisdiction": "AU",
+        "label": "FBT Expense Payment — In-House (FBTAA s.62 cap)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTExpensePaymentInHouseInput",
+    },
+    _FBT_PROPERTY_URI: {
+        "engine_method": "property",
+        "engine_benefit_category": "property",
+        "jurisdiction": "AU",
+        "label": "FBT Property — std (FBTAA Division 7 ss.40–44)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTPropertyInput",
+    },
+    _FBT_PROPERTY_IN_HOUSE_URI: {
+        "engine_method": "in_house_property",
+        "engine_benefit_category": "property_in_house",
+        "jurisdiction": "AU",
+        "label": "FBT Property — In-House (FBTAA s.62 cap)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTPropertyInHouseInput",
+    },
+    _FBT_RESIDUAL_URI: {
+        "engine_method": "residual",
+        "engine_benefit_category": "residual",
+        "jurisdiction": "AU",
+        "label": "FBT Residual — std (FBTAA Division 12 ss.45–52)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTResidualInput",
+    },
+    _FBT_RESIDUAL_IN_HOUSE_URI: {
+        "engine_method": "in_house_residual",
+        "engine_benefit_category": "residual_in_house",
+        "jurisdiction": "AU",
+        "label": "FBT Residual — In-House (FBTAA s.62 cap)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTResidualInHouseInput",
+    },
+    # End Wave A registry entries; the existing depreciation entry follows.
     _DEPRECIATION_AUDIT_URI: {
         # Phase 3c.3.B onboarding (Andrew + Tracer ratified 2026-05-12 05:54 UTC).
         # Scope per Andrew: accounting-engine depreciation supports prime cost
@@ -76,6 +170,33 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
         "supported_periods": [_DEPRECIATION_FY2026],
         "input_schema_ref": "#/components/schemas/DepreciationAuditInput",
     },
+}
+
+
+# --- Per-URN input-model dispatch table (mut-2026-05-31-mc15) ---------------
+# Wave A widens the existing single-URN body type to a per-URN dispatch. The
+# generic ``/v1/calculators/{calc_uri}/{period_uri}`` route now accepts a raw
+# JSON body + validates against the URN's registered pydantic input class.
+# Per Lesson #31 anti-premature-design: this dict IS the framework; growing
+# it for each new calculator is the load-bearing application, not a separate
+# abstraction.
+#
+# Source of truth for which calc-URIs have a pydantic input schema. The MCP
+# tool registry at ``api/services/mcp_tool_registry.py`` mirrors this dict
+# for the JSON-RPC tools/list surface; both must agree. See
+# ``tests/test_input_model_registry_parity.py`` for the binary-failure gate
+# that enforces equality (mut-2026-05-31-mc15 production-bundle assertion #1
+# extension).
+_CALC_INPUT_MODEL_REST: dict[str, type] = {
+    _FBT_CAR_OC_URI: FBTCarOperatingCostInput,
+    _FBT_LOAN_URI: FBTLoanInput,
+    _FBT_DEBT_WAIVER_URI: FBTDebtWaiverInput,
+    _FBT_EXPENSE_PAYMENT_URI: FBTExpensePaymentInput,
+    _FBT_EXPENSE_PAYMENT_IN_HOUSE_URI: FBTExpensePaymentInHouseInput,
+    _FBT_PROPERTY_URI: FBTPropertyInput,
+    _FBT_PROPERTY_IN_HOUSE_URI: FBTPropertyInHouseInput,
+    _FBT_RESIDUAL_URI: FBTResidualInput,
+    _FBT_RESIDUAL_IN_HOUSE_URI: FBTResidualInHouseInput,
 }
 
 
@@ -139,7 +260,29 @@ async def list_calculators() -> list[CalculatorListing]:
 async def invoke_calculator(
     calc_uri: Annotated[str, PathParam(description="URL-encoded calculator URN.")],
     period_uri: Annotated[str, PathParam(description="URL-encoded period URN.")],
-    body: FBTCarOperatingCostInput,
+    body: Annotated[
+        FBTCarOperatingCostInput
+        | FBTLoanInput
+        | FBTDebtWaiverInput
+        | FBTExpensePaymentInput
+        | FBTExpensePaymentInHouseInput
+        | FBTPropertyInput
+        | FBTPropertyInHouseInput
+        | FBTResidualInput
+        | FBTResidualInHouseInput
+        | dict,
+        Body(
+            description=(
+                "Calculator input body. The schema dispatched per `calc_uri` "
+                "path param; see the `_CALC_INPUT_MODEL_REST` registry in "
+                "`api/routes/calculators.py` for the per-URN pydantic class "
+                "binding. FastAPI presents all wrapped input types as a "
+                "Union; the route validates the body against the URN's "
+                "specific class at request time and surfaces a structured "
+                "422 on mismatch."
+            ),
+        ),
+    ],
     prolog: Annotated[PrologClient, Depends(get_prolog_client)],
     taxonomy: Annotated[
         str,
@@ -191,9 +334,40 @@ async def invoke_calculator(
             ),
         )
 
+    # Per-URN input validation via the dispatch table (mut-2026-05-31-mc15).
+    # FastAPI parses the body as a Union of all wrapped input types (or as a
+    # dict when none match strictly), so the OpenAPI schema documents every
+    # possible per-URN shape. At runtime we look up the URN's specific pydantic
+    # class and validate AGAINST IT (independent of Union-discrimination) so a
+    # request body matching multiple input shapes is unambiguous — the
+    # calc_uri is the discriminator, not duck-typing.
+    input_model = _CALC_INPUT_MODEL_REST.get(calc_uri_decoded)
+    if input_model is None:  # pragma: no cover — registry invariant
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                f"calc_uri={calc_uri_decoded!r} is in the calculator registry "
+                f"but missing from _CALC_INPUT_MODEL_REST. Schema dispatch "
+                f"will not work; please add the entry."
+            ),
+        )
+    # Normalise body to dict regardless of whether FastAPI parsed it as a
+    # pydantic instance or a raw dict (Union dispatch is opportunistic).
+    if hasattr(body, "model_dump"):
+        raw_body = body.model_dump(by_alias=True, exclude_none=True)
+    else:
+        raw_body = dict(body)
+    try:
+        validated_body = input_model(**raw_body)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=exc.errors(),
+        ) from exc
+
     # The Prolog engine speaks snake_case OR camelCase on the wire; we normalise
     # to the engine's canonical snake_case shape via pydantic's `by_alias=False`.
-    payload: dict = body.model_dump(by_alias=False, exclude_none=True)
+    payload: dict = validated_body.model_dump(by_alias=False, exclude_none=True)
     payload["benefit_category"] = meta["engine_benefit_category"]
     payload["method"] = meta["engine_method"]
 
