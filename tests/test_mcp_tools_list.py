@@ -64,11 +64,11 @@ def test_tools_list_envelope_shape(mcp_client: TestClient) -> None:
     assert "error" not in body
 
 
-def test_tools_list_surfaces_fourteen_calculators(mcp_client: TestClient) -> None:
-    """The 14 calculators registered today surface as 14 MCP tools.
+def test_tools_list_surfaces_twenty_calculators(mcp_client: TestClient) -> None:
+    """The 20 calculators registered today surface as 20 MCP tools.
 
     Per Lesson #31, we assert exactly the count of registered calculators
-    rather than ">= 1" or similar generalised assertion. If a fifteenth
+    rather than ">= 1" or similar generalised assertion. If a twenty-first
     calculator is registered, this assertion fails — the failure is a
     *signal*, not a defect (it requires explicit update of the canonical
     count + acknowledgement that the tools/list surface has grown).
@@ -77,15 +77,18 @@ def test_tools_list_surfaces_fourteen_calculators(mcp_client: TestClient) -> Non
     - Phase 3a (n=1): fbt-car-operating-cost only.
     - Phase 3c.3.B (n=2): + depreciation-audit.
     - mut-2026-05-31-mc15 Wave A (n=10): + 8 Phase 2a–2e originals.
-    - mut-2026-05-31-mc17 Wave B (n=14): + 4 Phase 2f–2i single-method
-      (housing + lafha + board + tebe).
+    - mut-2026-05-31-mc17 Wave B (n=14): + 4 Phase 2f–2i single-method.
+    - mut-2026-05-31-mc19 Wave C (n=20): + 6 Phase 2j–2k + Car-SF
+      (car-parking-actual + car-parking-statutory-228 +
+      car-parking-register-12wk + meal-entertainment-50-50 +
+      meal-entertainment-register-12wk + car-statutory-formula).
     """
     body = _jsonrpc_call(mcp_client, "tools/list")
     tools = body["result"]["tools"]
     assert isinstance(tools, list)
-    assert len(tools) == 14, (
-        f"expected 14 calculators registered (FBT car-OC + depreciation + "
-        f"8 Wave A + 4 Wave B); got {len(tools)}; tools={tools}"
+    assert len(tools) == 20, (
+        f"expected 20 calculators registered (FBT car-OC + depreciation + "
+        f"8 Wave A + 4 Wave B + 6 Wave C); got {len(tools)}; tools={tools}"
     )
 
     names = {tool["name"] for tool in tools}
@@ -106,13 +109,21 @@ def test_tools_list_surfaces_fourteen_calculators(mcp_client: TestClient) -> Non
         "fbt-lafha",
         "fbt-board",
         "fbt-tebe",
+        # Wave C (mut-2026-05-31-mc19)
+        "fbt-car-parking-actual",
+        "fbt-car-parking-statutory-228",
+        "fbt-car-parking-register-12wk",
+        "fbt-meal-entertainment-50-50",
+        "fbt-meal-entertainment-register-12wk",
+        "fbt-car-statutory-formula",
     }
     assert names == expected_names, f"tool name set mismatch: {names ^ expected_names}"
 
 
 # Backward-compat aliases for any external test discovery referencing prior names.
-test_tools_list_surfaces_two_calculators = test_tools_list_surfaces_fourteen_calculators
-test_tools_list_surfaces_ten_calculators = test_tools_list_surfaces_fourteen_calculators
+test_tools_list_surfaces_two_calculators = test_tools_list_surfaces_twenty_calculators
+test_tools_list_surfaces_ten_calculators = test_tools_list_surfaces_twenty_calculators
+test_tools_list_surfaces_fourteen_calculators = test_tools_list_surfaces_twenty_calculators
 
 
 def test_tools_list_input_schemas_resolve(mcp_client: TestClient) -> None:

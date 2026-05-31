@@ -366,6 +366,12 @@ required = {
     'urn:sbrm:calculator:fbt:lafha',
     'urn:sbrm:calculator:fbt:board',
     'urn:sbrm:calculator:fbt:tebe',
+    'urn:sbrm:calculator:fbt:car-parking-actual',
+    'urn:sbrm:calculator:fbt:car-parking-statutory-228',
+    'urn:sbrm:calculator:fbt:car-parking-register-12wk',
+    'urn:sbrm:calculator:fbt:meal-entertainment-50-50',
+    'urn:sbrm:calculator:fbt:meal-entertainment-register-12wk',
+    'urn:sbrm:calculator:fbt:car-statutory-formula',
     'urn:sbrm:calculator:depreciation:audit',
 }
 missing = required - uris
@@ -375,7 +381,7 @@ else:
     print('OK')
 ")
     if [ "$CALCS_OK" = "OK" ]; then
-        echo "🟢 PASS: all 14 expected calculator URNs registered (2 existing + 8 Wave A + 4 Wave B)"
+        echo "🟢 PASS: all 20 expected calculator URNs registered (2 existing + 8 Wave A + 4 Wave B + 6 Wave C)"
         PASS_COUNT=$((PASS_COUNT + 1))
     else
         echo "🔴 FAIL: $CALCS_OK"
@@ -423,6 +429,12 @@ required = {
     'fbt-lafha',
     'fbt-board',
     'fbt-tebe',
+    'fbt-car-parking-actual',
+    'fbt-car-parking-statutory-228',
+    'fbt-car-parking-register-12wk',
+    'fbt-meal-entertainment-50-50',
+    'fbt-meal-entertainment-register-12wk',
+    'fbt-car-statutory-formula',
     'depreciation-audit',
 }
 missing = required - names
@@ -432,7 +444,7 @@ else:
     print('OK')
 ")
     if [ "$MCP_OK" = "OK" ]; then
-        echo "🟢 PASS: MCP tools/list advertises all 14 expected tools"
+        echo "🟢 PASS: MCP tools/list advertises all 20 expected tools"
         PASS_COUNT=$((PASS_COUNT + 1))
     else
         echo "🔴 FAIL: $MCP_OK"

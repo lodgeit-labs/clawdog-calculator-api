@@ -37,12 +37,18 @@ from api.schemas.invocation import (
     CalculatorListing,
     FBTBoardInput,
     FBTCarOperatingCostInput,
+    FBTCarParkingActualInput,
+    FBTCarParkingRegister12WkInput,
+    FBTCarParkingStatutory228Input,
+    FBTCarStatutoryFormulaInput,
     FBTDebtWaiverInput,
     FBTExpensePaymentInHouseInput,
     FBTExpensePaymentInput,
     FBTHousingInput,
     FBTLafhaInput,
     FBTLoanInput,
+    FBTMealEntertainment5050Input,
+    FBTMealEntertainmentRegister12WkInput,
     FBTPropertyInHouseInput,
     FBTPropertyInput,
     FBTResidualInHouseInput,
@@ -86,6 +92,16 @@ _FBT_HOUSING_URI = "urn:sbrm:calculator:fbt:housing"
 _FBT_LAFHA_URI = "urn:sbrm:calculator:fbt:lafha"
 _FBT_BOARD_URI = "urn:sbrm:calculator:fbt:board"
 _FBT_TEBE_URI = "urn:sbrm:calculator:fbt:tebe"
+
+# --- Wave C URN constants (mut-2026-05-31-mc19) -----------------------------
+# Phase 2j-2k method-dispatching calculators + Car-SF (legacy v1) widened
+# per CLAWDOG/110 §3.3 atom-vs-bridge γ-1 option (URN names the method).
+_FBT_CAR_PARKING_ACTUAL_URI = "urn:sbrm:calculator:fbt:car-parking-actual"
+_FBT_CAR_PARKING_STATUTORY_228_URI = "urn:sbrm:calculator:fbt:car-parking-statutory-228"
+_FBT_CAR_PARKING_REGISTER_12WK_URI = "urn:sbrm:calculator:fbt:car-parking-register-12wk"
+_FBT_MEAL_ENTERTAINMENT_50_50_URI = "urn:sbrm:calculator:fbt:meal-entertainment-50-50"
+_FBT_MEAL_ENTERTAINMENT_REGISTER_12WK_URI = "urn:sbrm:calculator:fbt:meal-entertainment-register-12wk"
+_FBT_CAR_STATUTORY_FORMULA_URI = "urn:sbrm:calculator:fbt:car-statutory-formula"
 
 _CALCULATOR_REGISTRY: dict[str, dict] = {
     _FBT_CAR_OC_URI: {
@@ -207,7 +223,65 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
         "supported_periods": [_FBT_FY2026],
         "input_schema_ref": "#/components/schemas/FBTTebeInput",
     },
-    # End Wave B registry entries; the existing depreciation entry follows.
+    # End Wave B registry entries.
+    # --- Wave C Phase 2j–2k + Car-SF public-API widening (mut-2026-05-31-mc19) -----
+    # 6 method-atoms across 3 calc URN-classes. Per CLAWDOG/110 §3.3 atom-vs-bridge
+    # γ-1 option (Brain PR #303 sprint design): the URN names the method
+    # explicitly rather than smuggling it in the body. Engine method-atoms match
+    # the `route_calc/4` table at FBT_Engine.pl L692–L772 (LodgeiT_FBT `81e1a0ff`).
+    # Sheet-parity carry-overs:
+    # - Car Parking WRT T1: OT #96 row 63 Waqas WAIT-STATE
+    # - Car Parking ACT/SFT/WRT-T2 + Meal Entertainment Actual/12-Wk T1/T2
+    #   + Car-SF: clean ships
+    _FBT_CAR_PARKING_ACTUAL_URI: {
+        "engine_method": "actual",
+        "engine_benefit_category": "car_parking",
+        "jurisdiction": "AU",
+        "label": "FBT Car Parking — Actual Method (FBTAA Division 10A; simple-sum)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTCarParkingActualInput",
+    },
+    _FBT_CAR_PARKING_STATUTORY_228_URI: {
+        "engine_method": "statutory_228",
+        "engine_benefit_category": "car_parking",
+        "jurisdiction": "AU",
+        "label": "FBT Car Parking — 228-Day Statutory Formula (FBTAA s.39FA)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTCarParkingStatutory228Input",
+    },
+    _FBT_CAR_PARKING_REGISTER_12WK_URI: {
+        "engine_method": "register_12wk",
+        "engine_benefit_category": "car_parking",
+        "jurisdiction": "AU",
+        "label": "FBT Car Parking — 12-Week Register (FBTAA s.39GB; WRT T1 sheet row 63 sheet-vs-statute divergence parked under OT #96)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTCarParkingRegister12WkInput",
+    },
+    _FBT_MEAL_ENTERTAINMENT_50_50_URI: {
+        "engine_method": "50_50",
+        "engine_benefit_category": "meal_entertainment",
+        "jurisdiction": "AU",
+        "label": "FBT Meal Entertainment — 50/50 Split (FBTAA s.37CA; Division 9A)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTMealEntertainment5050Input",
+    },
+    _FBT_MEAL_ENTERTAINMENT_REGISTER_12WK_URI: {
+        "engine_method": "register_12wk",
+        "engine_benefit_category": "meal_entertainment",
+        "jurisdiction": "AU",
+        "label": "FBT Meal Entertainment — 12-Week Register (FBTAA s.37CB; Division 9A)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTMealEntertainmentRegister12WkInput",
+    },
+    _FBT_CAR_STATUTORY_FORMULA_URI: {
+        "engine_method": "car_statutory_formula",
+        "engine_benefit_category": "car_statutory_formula",
+        "jurisdiction": "AU",
+        "label": "FBT Car — Statutory Formula (FBTAA s.9; rate-table-fed; consumes statutory-fraction + days-in-year)",
+        "supported_periods": [_FBT_FY2026],
+        "input_schema_ref": "#/components/schemas/FBTCarStatutoryFormulaInput",
+    },
+    # End Wave C registry entries; the existing depreciation entry follows.
     _DEPRECIATION_AUDIT_URI: {
         # Phase 3c.3.B onboarding (Andrew + Tracer ratified 2026-05-12 05:54 UTC).
         # Scope per Andrew: accounting-engine depreciation supports prime cost
@@ -255,6 +329,13 @@ _CALC_INPUT_MODEL_REST: dict[str, type] = {
     _FBT_LAFHA_URI: FBTLafhaInput,
     _FBT_BOARD_URI: FBTBoardInput,
     _FBT_TEBE_URI: FBTTebeInput,
+    # Wave C (mut-2026-05-31-mc19)
+    _FBT_CAR_PARKING_ACTUAL_URI: FBTCarParkingActualInput,
+    _FBT_CAR_PARKING_STATUTORY_228_URI: FBTCarParkingStatutory228Input,
+    _FBT_CAR_PARKING_REGISTER_12WK_URI: FBTCarParkingRegister12WkInput,
+    _FBT_MEAL_ENTERTAINMENT_50_50_URI: FBTMealEntertainment5050Input,
+    _FBT_MEAL_ENTERTAINMENT_REGISTER_12WK_URI: FBTMealEntertainmentRegister12WkInput,
+    _FBT_CAR_STATUTORY_FORMULA_URI: FBTCarStatutoryFormulaInput,
 }
 
 
@@ -332,6 +413,12 @@ async def invoke_calculator(
         | FBTLafhaInput
         | FBTBoardInput
         | FBTTebeInput
+        | FBTCarParkingActualInput
+        | FBTCarParkingStatutory228Input
+        | FBTCarParkingRegister12WkInput
+        | FBTMealEntertainment5050Input
+        | FBTMealEntertainmentRegister12WkInput
+        | FBTCarStatutoryFormulaInput
         | dict,
         Body(
             description=(
