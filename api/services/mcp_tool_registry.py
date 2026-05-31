@@ -43,7 +43,17 @@ from typing import Any
 
 from api.routes.calculators import _CALCULATOR_REGISTRY
 from api.schemas.depreciation import DepreciationAuditInput
-from api.schemas.invocation import FBTCarOperatingCostInput
+from api.schemas.invocation import (
+    FBTCarOperatingCostInput,
+    FBTDebtWaiverInput,
+    FBTExpensePaymentInHouseInput,
+    FBTExpensePaymentInput,
+    FBTLoanInput,
+    FBTPropertyInHouseInput,
+    FBTPropertyInput,
+    FBTResidualInHouseInput,
+    FBTResidualInput,
+)
 from api.services.widget_url_resolver import (
     all_calc_widget_mappings,
     standalone_widget_url,
@@ -59,6 +69,17 @@ from api.services.widget_url_resolver import (
 # NOT magic.
 _CALC_INPUT_MODEL: dict[str, type[Any]] = {
     "urn:sbrm:calculator:fbt:car-operating-cost": FBTCarOperatingCostInput,
+    # --- Wave A Phase 2a–2e public-API widening (mut-2026-05-31-mc15) -----
+    # Mirrors api.routes.calculators._CALC_INPUT_MODEL_REST; both must agree
+    # per tests/test_input_model_registry_parity.py binary-failure gate.
+    "urn:sbrm:calculator:fbt:loan": FBTLoanInput,
+    "urn:sbrm:calculator:fbt:debt-waiver": FBTDebtWaiverInput,
+    "urn:sbrm:calculator:fbt:expense-payment": FBTExpensePaymentInput,
+    "urn:sbrm:calculator:fbt:expense-payment-in-house": FBTExpensePaymentInHouseInput,
+    "urn:sbrm:calculator:fbt:property": FBTPropertyInput,
+    "urn:sbrm:calculator:fbt:property-in-house": FBTPropertyInHouseInput,
+    "urn:sbrm:calculator:fbt:residual": FBTResidualInput,
+    "urn:sbrm:calculator:fbt:residual-in-house": FBTResidualInHouseInput,
     "urn:sbrm:calculator:depreciation:audit": DepreciationAuditInput,
 }
 

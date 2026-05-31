@@ -170,6 +170,220 @@ class FBTCarOperatingCostInput(BaseModel):
         return v
 
 
+# =============================================================================
+# Wave A — Phase 2a–2e public-API widening (mut-2026-05-31-mc15)
+# =============================================================================
+#
+# 8 method-atom input schemas wrapping the existing Phase 2a–2e Prolog
+# predicates in LodgeiT_FBT (engine reference: FBT_Engine.pl). Each schema
+# mirrors the engine's `calculate_fbt_<method>/2` input contract documented
+# in the predicate's comment block. The bridge sends snake_case to the
+# engine; pydantic accepts both snake_case and the camelCase from
+# fbt_tester.py / the original FY2026 sheet inputs (via `alias`).
+#
+# Per Standing Rule #6 (Hoffman temporal-dimension): none of the Wave A
+# calculators consume rate-tables at the engine layer (zero `rate_uris_consumed`
+# in their respective predicate outputs as of LodgeiT_FBT `81e1a0ff`), so
+# Standing Rule #12's production-bundle gate assertion class #1 collapses to
+# registry+URN-shape verification for these methods. Per the Phase 2a–2e
+# predicate comment blocks the only rate-table touch is in Expense Payment
+# /Property/Residual which consume the FY2026 `in-house-benefit-cap` rate-node
+# under the in-house variant; assertion class #1 will fire for those.
+#
+# Per CLAWDOG/110 §3.3 (atom-vs-bridge boundary): jurisdiction (AU) lives on
+# the registry entry, NOT smuggled into the URN or any field. fbt_type is
+# echoed unchanged by the engine (Type 1 vs Type 2 is a gross-up concern,
+# not a per-calculator algebraic concern).
+
+
+class FBTLoanInput(BaseModel):
+    """Input for Phase 2a Loan Fringe Benefit (engine: ``calculate_fbt_loan_benefit_type_2``).
+
+    FBTAA Division 4 (ss.16–19). Engine arithmetic at FBT_Engine.pl L2434.
+    ``fbt_benchmark_interest_amount`` is the DOLLAR amount (not the 0.0862
+    rate); the rate is applied upstream by the caller against
+    ``original_loan_amount`` if supplied.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    fbt_benchmark_interest_amount: float | None = Field(
+        None, ge=0, alias="fbtBenchmarkInterestAmount",
+        description=(
+            "Benchmark FBT interest amount (AUD) per FBTAA Schedule 1. If "
+            "omitted, derived from ``original_loan_amount`` × benchmark rate."
+        ),
+    )
+    interest_charged_by_employer: float = Field(
+        ..., ge=0, alias="interestChargedByEmployer",
+        description="Actual interest amount the employer charged the employee (AUD).",
+    )
+    otherwise_deductible_percentage: float = Field(
+        ..., ge=0, le=100, alias="otherwiseDeductiblePercentage",
+        description="Otherwise-deductible percentage [0..100] per FBTAA s.19.",
+    )
+    original_loan_amount: float | None = Field(
+        None, ge=0, alias="originalLoanAmount",
+        description=(
+            "Original loan principal (AUD); only consulted when "
+            "``fbt_benchmark_interest_amount`` is absent."
+        ),
+    )
+    fbt_type: str | None = Field(
+        None, alias="fbtType",
+        description="'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+    )
+
+
+class FBTDebtWaiverInput(BaseModel):
+    """Input for Phase 2b Debt Waiver Fringe Benefit (engine: ``calculate_fbt_debt_waiver``).
+
+    FBTAA s.16. Engine arithmetic at FBT_Engine.pl L3433. Type 2 only per
+    FBTAA; ``fbt_type`` echoed as 'Type 2'.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    amount_waived: float = Field(
+        ..., ge=0, alias="amountWaived",
+        description="Principal debt amount waived (AUD).",
+    )
+    interest_no_longer_charged: float | None = Field(
+        None, ge=0, alias="interestNoLongerCharged",
+        description=(
+            "Foregone interest no longer charged following the waiver (AUD); "
+            "defaults engine-side to 0."
+        ),
+    )
+
+
+class _ExpensePaymentBaseInput(BaseModel):
+    """Shared input shape for Phase 2c Expense Payment (std + in-house variants).
+
+    FBTAA Division 5 (ss.20–24). Engine arithmetic at FBT_Engine.pl L3501.
+    In-house variant consults the FY2026 ``in-house-benefit-cap`` rate-node
+    per Standing Rule #6.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    expense_value: float = Field(
+        ..., ge=0, alias="expenseValue",
+        description="Gross expense amount paid/reimbursed by the employer (AUD).",
+    )
+    otherwise_deductible_percentage: float = Field(
+        ..., ge=0, le=100, alias="otherwiseDeductiblePercentage",
+        description="Otherwise-deductible percentage [0..100] per FBTAA s.24.",
+    )
+    employee_contribution: float = Field(
+        0, ge=0, alias="employeeContribution",
+        description="Employee contribution toward the expense (AUD); clamped at gross.",
+    )
+    inhouse_benefit_claimed: float | None = Field(
+        None, ge=0, alias="inhouseBenefitClaimed",
+        description=(
+            "In-house benefit reduction claimed (AUD); only consulted on the "
+            "in-house variant; clamped to FY2026 in-house cap (FBTAA s.62)."
+        ),
+    )
+    fbt_type: str | None = Field(
+        None, alias="fbtType",
+        description="'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+    )
+
+
+class FBTExpensePaymentInput(_ExpensePaymentBaseInput):
+    """Phase 2c std Expense Payment."""
+
+
+class FBTExpensePaymentInHouseInput(_ExpensePaymentBaseInput):
+    """Phase 2c in-house Expense Payment (consumes ``in-house-benefit-cap``)."""
+
+
+class _PropertyBaseInput(BaseModel):
+    """Shared input shape for Phase 2d Property (std + in-house variants).
+
+    FBTAA Division 7 (ss.40–44). Engine arithmetic at FBT_Engine.pl L3640.
+    In-house variant consults the FY2026 ``in-house-benefit-cap`` rate-node.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    gst_inclusive_value: float = Field(
+        ..., ge=0, alias="gstInclusiveValue",
+        description="GST-inclusive value of the property benefit (AUD).",
+    )
+    otherwise_deductible_percentage: float = Field(
+        ..., ge=0, le=100, alias="otherwiseDeductiblePercentage",
+        description="Otherwise-deductible percentage [0..100] per FBTAA s.44.",
+    )
+    employee_contribution: float = Field(
+        0, ge=0, alias="employeeContribution",
+        description="Employee contribution toward the property (AUD).",
+    )
+    inhouse_benefit_claimed: float | None = Field(
+        None, ge=0, alias="inhouseBenefitClaimed",
+        description=(
+            "In-house benefit reduction claimed (AUD); only consulted on the "
+            "in-house variant; clamped to FY2026 in-house cap (FBTAA s.62)."
+        ),
+    )
+    fbt_type: str | None = Field(
+        None, alias="fbtType",
+        description="'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+    )
+
+
+class FBTPropertyInput(_PropertyBaseInput):
+    """Phase 2d std Property."""
+
+
+class FBTPropertyInHouseInput(_PropertyBaseInput):
+    """Phase 2d in-house Property (consumes ``in-house-benefit-cap``)."""
+
+
+class _ResidualBaseInput(BaseModel):
+    """Shared input shape for Phase 2e Residual (std + in-house variants).
+
+    FBTAA Division 12 (ss.45–52). Engine arithmetic at FBT_Engine.pl L3763.
+    In-house variant consults the FY2026 ``in-house-benefit-cap`` rate-node.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    gst_inclusive_value: float = Field(
+        ..., ge=0, alias="gstInclusiveValue",
+        description="GST-inclusive value of the residual benefit (AUD).",
+    )
+    otherwise_deductible_percentage: float = Field(
+        ..., ge=0, le=100, alias="otherwiseDeductiblePercentage",
+        description="Otherwise-deductible percentage [0..100] per FBTAA s.52.",
+    )
+    employee_contribution: float = Field(
+        0, ge=0, alias="employeeContribution",
+        description="Employee contribution toward the residual benefit (AUD).",
+    )
+    inhouse_benefit_claimed: float | None = Field(
+        None, ge=0, alias="inhouseBenefitClaimed",
+        description=(
+            "In-house benefit reduction claimed (AUD); only consulted on the "
+            "in-house variant; clamped to FY2026 in-house cap (FBTAA s.62)."
+        ),
+    )
+    fbt_type: str | None = Field(
+        None, alias="fbtType",
+        description="'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+    )
+
+
+class FBTResidualInput(_ResidualBaseInput):
+    """Phase 2e std Residual."""
+
+
+class FBTResidualInHouseInput(_ResidualBaseInput):
+    """Phase 2e in-house Residual (consumes ``in-house-benefit-cap``)."""
+
+
 class ManifestRateTableEntry(BaseModel):
     """One entry in the manifest's ``rate_table_uris`` block (CLAWDOG/109 §7.1)."""
 
@@ -261,6 +475,15 @@ def validate_calc_uri(calc_uri: str) -> str:
 
 __all__ = [
     "FBTCarOperatingCostInput",
+    # Wave A (Phase 2a–2e) public-API widening (mut-2026-05-31-mc15)
+    "FBTLoanInput",
+    "FBTDebtWaiverInput",
+    "FBTExpensePaymentInput",
+    "FBTExpensePaymentInHouseInput",
+    "FBTPropertyInput",
+    "FBTPropertyInHouseInput",
+    "FBTResidualInput",
+    "FBTResidualInHouseInput",
     "ManifestRateTableEntry",
     "Manifest",
     "AdvisoryBlock",

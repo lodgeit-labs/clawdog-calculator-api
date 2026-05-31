@@ -342,6 +342,441 @@
         "title": "FBTCarOperatingCostInput",
         "type": "object"
       },
+      "FBTDebtWaiverInput": {
+        "additionalProperties": false,
+        "description": "Input for Phase 2b Debt Waiver Fringe Benefit (engine: ``calculate_fbt_debt_waiver``).\n\nFBTAA s.16. Engine arithmetic at FBT_Engine.pl L3433. Type 2 only per\nFBTAA; ``fbt_type`` echoed as 'Type 2'.",
+        "properties": {
+          "amountWaived": {
+            "description": "Principal debt amount waived (AUD).",
+            "minimum": 0.0,
+            "title": "Amountwaived",
+            "type": "number"
+          },
+          "interestNoLongerCharged": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Foregone interest no longer charged following the waiver (AUD); defaults engine-side to 0.",
+            "title": "Interestnolongercharged"
+          }
+        },
+        "required": [
+          "amountWaived"
+        ],
+        "title": "FBTDebtWaiverInput",
+        "type": "object"
+      },
+      "FBTExpensePaymentInHouseInput": {
+        "additionalProperties": false,
+        "description": "Phase 2c in-house Expense Payment (consumes ``in-house-benefit-cap``).",
+        "properties": {
+          "employeeContribution": {
+            "default": 0,
+            "description": "Employee contribution toward the expense (AUD); clamped at gross.",
+            "minimum": 0.0,
+            "title": "Employeecontribution",
+            "type": "number"
+          },
+          "expenseValue": {
+            "description": "Gross expense amount paid/reimbursed by the employer (AUD).",
+            "minimum": 0.0,
+            "title": "Expensevalue",
+            "type": "number"
+          },
+          "fbtType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+            "title": "Fbttype"
+          },
+          "inhouseBenefitClaimed": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62).",
+            "title": "Inhousebenefitclaimed"
+          },
+          "otherwiseDeductiblePercentage": {
+            "description": "Otherwise-deductible percentage [0..100] per FBTAA s.24.",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Otherwisedeductiblepercentage",
+            "type": "number"
+          }
+        },
+        "required": [
+          "expenseValue",
+          "otherwiseDeductiblePercentage"
+        ],
+        "title": "FBTExpensePaymentInHouseInput",
+        "type": "object"
+      },
+      "FBTExpensePaymentInput": {
+        "additionalProperties": false,
+        "description": "Phase 2c std Expense Payment.",
+        "properties": {
+          "employeeContribution": {
+            "default": 0,
+            "description": "Employee contribution toward the expense (AUD); clamped at gross.",
+            "minimum": 0.0,
+            "title": "Employeecontribution",
+            "type": "number"
+          },
+          "expenseValue": {
+            "description": "Gross expense amount paid/reimbursed by the employer (AUD).",
+            "minimum": 0.0,
+            "title": "Expensevalue",
+            "type": "number"
+          },
+          "fbtType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+            "title": "Fbttype"
+          },
+          "inhouseBenefitClaimed": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62).",
+            "title": "Inhousebenefitclaimed"
+          },
+          "otherwiseDeductiblePercentage": {
+            "description": "Otherwise-deductible percentage [0..100] per FBTAA s.24.",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Otherwisedeductiblepercentage",
+            "type": "number"
+          }
+        },
+        "required": [
+          "expenseValue",
+          "otherwiseDeductiblePercentage"
+        ],
+        "title": "FBTExpensePaymentInput",
+        "type": "object"
+      },
+      "FBTLoanInput": {
+        "additionalProperties": false,
+        "description": "Input for Phase 2a Loan Fringe Benefit (engine: ``calculate_fbt_loan_benefit_type_2``).\n\nFBTAA Division 4 (ss.16\u201319). Engine arithmetic at FBT_Engine.pl L2434.\n``fbt_benchmark_interest_amount`` is the DOLLAR amount (not the 0.0862\nrate); the rate is applied upstream by the caller against\n``original_loan_amount`` if supplied.",
+        "properties": {
+          "fbtBenchmarkInterestAmount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Benchmark FBT interest amount (AUD) per FBTAA Schedule 1. If omitted, derived from ``original_loan_amount`` \u00d7 benchmark rate.",
+            "title": "Fbtbenchmarkinterestamount"
+          },
+          "fbtType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+            "title": "Fbttype"
+          },
+          "interestChargedByEmployer": {
+            "description": "Actual interest amount the employer charged the employee (AUD).",
+            "minimum": 0.0,
+            "title": "Interestchargedbyemployer",
+            "type": "number"
+          },
+          "originalLoanAmount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Original loan principal (AUD); only consulted when ``fbt_benchmark_interest_amount`` is absent.",
+            "title": "Originalloanamount"
+          },
+          "otherwiseDeductiblePercentage": {
+            "description": "Otherwise-deductible percentage [0..100] per FBTAA s.19.",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Otherwisedeductiblepercentage",
+            "type": "number"
+          }
+        },
+        "required": [
+          "interestChargedByEmployer",
+          "otherwiseDeductiblePercentage"
+        ],
+        "title": "FBTLoanInput",
+        "type": "object"
+      },
+      "FBTPropertyInHouseInput": {
+        "additionalProperties": false,
+        "description": "Phase 2d in-house Property (consumes ``in-house-benefit-cap``).",
+        "properties": {
+          "employeeContribution": {
+            "default": 0,
+            "description": "Employee contribution toward the property (AUD).",
+            "minimum": 0.0,
+            "title": "Employeecontribution",
+            "type": "number"
+          },
+          "fbtType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+            "title": "Fbttype"
+          },
+          "gstInclusiveValue": {
+            "description": "GST-inclusive value of the property benefit (AUD).",
+            "minimum": 0.0,
+            "title": "Gstinclusivevalue",
+            "type": "number"
+          },
+          "inhouseBenefitClaimed": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62).",
+            "title": "Inhousebenefitclaimed"
+          },
+          "otherwiseDeductiblePercentage": {
+            "description": "Otherwise-deductible percentage [0..100] per FBTAA s.44.",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Otherwisedeductiblepercentage",
+            "type": "number"
+          }
+        },
+        "required": [
+          "gstInclusiveValue",
+          "otherwiseDeductiblePercentage"
+        ],
+        "title": "FBTPropertyInHouseInput",
+        "type": "object"
+      },
+      "FBTPropertyInput": {
+        "additionalProperties": false,
+        "description": "Phase 2d std Property.",
+        "properties": {
+          "employeeContribution": {
+            "default": 0,
+            "description": "Employee contribution toward the property (AUD).",
+            "minimum": 0.0,
+            "title": "Employeecontribution",
+            "type": "number"
+          },
+          "fbtType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+            "title": "Fbttype"
+          },
+          "gstInclusiveValue": {
+            "description": "GST-inclusive value of the property benefit (AUD).",
+            "minimum": 0.0,
+            "title": "Gstinclusivevalue",
+            "type": "number"
+          },
+          "inhouseBenefitClaimed": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62).",
+            "title": "Inhousebenefitclaimed"
+          },
+          "otherwiseDeductiblePercentage": {
+            "description": "Otherwise-deductible percentage [0..100] per FBTAA s.44.",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Otherwisedeductiblepercentage",
+            "type": "number"
+          }
+        },
+        "required": [
+          "gstInclusiveValue",
+          "otherwiseDeductiblePercentage"
+        ],
+        "title": "FBTPropertyInput",
+        "type": "object"
+      },
+      "FBTResidualInHouseInput": {
+        "additionalProperties": false,
+        "description": "Phase 2e in-house Residual (consumes ``in-house-benefit-cap``).",
+        "properties": {
+          "employeeContribution": {
+            "default": 0,
+            "description": "Employee contribution toward the residual benefit (AUD).",
+            "minimum": 0.0,
+            "title": "Employeecontribution",
+            "type": "number"
+          },
+          "fbtType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+            "title": "Fbttype"
+          },
+          "gstInclusiveValue": {
+            "description": "GST-inclusive value of the residual benefit (AUD).",
+            "minimum": 0.0,
+            "title": "Gstinclusivevalue",
+            "type": "number"
+          },
+          "inhouseBenefitClaimed": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62).",
+            "title": "Inhousebenefitclaimed"
+          },
+          "otherwiseDeductiblePercentage": {
+            "description": "Otherwise-deductible percentage [0..100] per FBTAA s.52.",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Otherwisedeductiblepercentage",
+            "type": "number"
+          }
+        },
+        "required": [
+          "gstInclusiveValue",
+          "otherwiseDeductiblePercentage"
+        ],
+        "title": "FBTResidualInHouseInput",
+        "type": "object"
+      },
+      "FBTResidualInput": {
+        "additionalProperties": false,
+        "description": "Phase 2e std Residual.",
+        "properties": {
+          "employeeContribution": {
+            "default": 0,
+            "description": "Employee contribution toward the residual benefit (AUD).",
+            "minimum": 0.0,
+            "title": "Employeecontribution",
+            "type": "number"
+          },
+          "fbtType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+            "title": "Fbttype"
+          },
+          "gstInclusiveValue": {
+            "description": "GST-inclusive value of the residual benefit (AUD).",
+            "minimum": 0.0,
+            "title": "Gstinclusivevalue",
+            "type": "number"
+          },
+          "inhouseBenefitClaimed": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62).",
+            "title": "Inhousebenefitclaimed"
+          },
+          "otherwiseDeductiblePercentage": {
+            "description": "Otherwise-deductible percentage [0..100] per FBTAA s.52.",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Otherwisedeductiblepercentage",
+            "type": "number"
+          }
+        },
+        "required": [
+          "gstInclusiveValue",
+          "otherwiseDeductiblePercentage"
+        ],
+        "title": "FBTResidualInput",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -690,7 +1125,41 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/FBTCarOperatingCostInput"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/FBTCarOperatingCostInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FBTLoanInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FBTDebtWaiverInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FBTExpensePaymentInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FBTExpensePaymentInHouseInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FBTPropertyInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FBTPropertyInHouseInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FBTResidualInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FBTResidualInHouseInput"
+                  },
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  }
+                ],
+                "description": "Calculator input body. The schema dispatched per `calc_uri` path param; see the `_CALC_INPUT_MODEL_REST` registry in `api/routes/calculators.py` for the per-URN pydantic class binding. FastAPI presents all wrapped input types as a Union; the route validates the body against the URN's specific class at request time and surfaces a structured 422 on mismatch.",
+                "title": "Body"
               }
             }
           },
