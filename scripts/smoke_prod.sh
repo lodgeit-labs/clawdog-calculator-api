@@ -362,6 +362,10 @@ required = {
     'urn:sbrm:calculator:fbt:property-in-house',
     'urn:sbrm:calculator:fbt:residual',
     'urn:sbrm:calculator:fbt:residual-in-house',
+    'urn:sbrm:calculator:fbt:housing',
+    'urn:sbrm:calculator:fbt:lafha',
+    'urn:sbrm:calculator:fbt:board',
+    'urn:sbrm:calculator:fbt:tebe',
     'urn:sbrm:calculator:depreciation:audit',
 }
 missing = required - uris
@@ -371,7 +375,7 @@ else:
     print('OK')
 ")
     if [ "$CALCS_OK" = "OK" ]; then
-        echo "🟢 PASS: all 10 expected calculator URNs registered (2 existing + 8 Wave A)"
+        echo "🟢 PASS: all 14 expected calculator URNs registered (2 existing + 8 Wave A + 4 Wave B)"
         PASS_COUNT=$((PASS_COUNT + 1))
     else
         echo "🔴 FAIL: $CALCS_OK"
@@ -415,6 +419,10 @@ required = {
     'fbt-property-in-house',
     'fbt-residual',
     'fbt-residual-in-house',
+    'fbt-housing',
+    'fbt-lafha',
+    'fbt-board',
+    'fbt-tebe',
     'depreciation-audit',
 }
 missing = required - names
@@ -424,7 +432,7 @@ else:
     print('OK')
 ")
     if [ "$MCP_OK" = "OK" ]; then
-        echo "🟢 PASS: MCP tools/list advertises all 10 expected tools"
+        echo "🟢 PASS: MCP tools/list advertises all 14 expected tools"
         PASS_COUNT=$((PASS_COUNT + 1))
     else
         echo "🔴 FAIL: $MCP_OK"

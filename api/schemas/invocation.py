@@ -384,6 +384,161 @@ class FBTResidualInHouseInput(_ResidualBaseInput):
     """Phase 2e in-house Residual (consumes ``in-house-benefit-cap``)."""
 
 
+# =============================================================================
+# Wave B — Phase 2f–2i public-API widening (mut-2026-05-31-mc17)
+# =============================================================================
+#
+# 4 method-atom input schemas wrapping the Phase 2f–2i Prolog predicates in
+# LodgeiT_FBT. Engine reference: FBT_Engine.pl L2586 (Board) / L2761 (Housing)
+# / L2943 (LAFHA) / L3089 (TEBE) at LodgeiT_FBT `81e1a0ff`.
+#
+# Sheet-parity carry-overs from the FBT Phase 2 sprint (mut-2026-05-31-mc05 +
+# mc07 + mc09 + mc10):
+# - Board: sheet row 35 ($350) DIVERGES from statute-correct ($5,300); OT #94
+#   Waqas-clarification WAIT-STATE. Predicate is statute-faithful (see
+#   findings/FBT_BOARD_SHEET_DIVERGENCE.md).
+# - Housing: clean ship; both sheet cases reproduce statute-correct.
+# - LAFHA: clean ship; the engine expects the caller to supply the
+#   pre-computed scalar exempt_food_component (TD 2025/2 composition lookup
+#   is sheet/UI concern).
+# - TEBE: clean ship; s.39 expenditure-passthrough; 50/50-split method is a
+#   sheet/UI-layer caller-side concern, not engine.
+
+
+class FBTBoardInput(BaseModel):
+    """Input for Phase 2h Board Fringe Benefit (engine: ``calculate_fbt_board``).
+
+    FBTAA s.36 (Compilation No. 95). Engine arithmetic at FBT_Engine.pl L2586.
+    Type 2 only. Sheet row 35 sheet-vs-statute divergence is parked under
+    OT #94; the predicate is statute-faithful.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    members_under_twelve: int | None = Field(
+        0, ge=0, alias="membersUnderTwelve",
+        description="Number of family members under 12 years (s.36(c)(i)).",
+    )
+    under_12_meals_per_child: int | None = Field(
+        0, ge=0, alias="under12MealsPerChild",
+        description="Meals provided per under-12 family member during the FBT year.",
+    )
+    members_over_twelve: int | None = Field(
+        0, ge=0, alias="membersOverTwelve",
+        description="Number of employees/associates aged 12 or over (s.36(c)(ii)).",
+    )
+    over_12_meals_per_child: int | None = Field(
+        0, ge=0, alias="over12MealsPerChild",
+        description="Meals provided per 12+ employee/associate during the FBT year.",
+    )
+    over_12_employee_contributions: float | None = Field(
+        0, ge=0, alias="over12EmployeeContributions",
+        description="Total employee contributions toward 12+ meals (AUD).",
+    )
+
+
+class FBTHousingInput(BaseModel):
+    """Input for Phase 2f Non-Remote Housing Fringe Benefit (engine: ``calculate_fbt_housing``).
+
+    FBTAA s.26(1)(c) + s.26(2)(b). Engine arithmetic at FBT_Engine.pl L2761.
+    Indexation factor is period-scoped per s.26(2)(b); FY2026 published State
+    rates span 0.988 (TAS) to 1.100 (WA). C# range-clamp [0.001, 1.099] under-
+    indexes WA — mirrored here for parity (banked forward concern OT #95
+    sibling).
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    housing_benefit_value: float = Field(
+        ..., ge=0, alias="housingBenefitValue",
+        description="Statutory annual value of the housing right at start of FBT year (AUD).",
+    )
+    indexation_factor: float | None = Field(
+        1.0, ge=0, alias="indexationFactor",
+        description=(
+            "State indexation factor per FBTAA s.26(2)(b). "
+            "Out-of-range values (less than 0.001 or greater than 1.099) "
+            "reset to 1.0 per C# clamp (under-indexes WA's 1.100)."
+        ),
+    )
+    recipient_rent: float | None = Field(
+        0, ge=0, alias="recipientRent",
+        description="Rent paid by recipient to employer (AUD); reduces taxable value.",
+    )
+    fbt_type: str | None = Field(
+        None, alias="fbtType",
+        description="'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+    )
+
+
+class FBTLafhaInput(BaseModel):
+    """Input for Phase 2g LAFHA Fringe Benefit (engine: ``calculate_fbt_lafha``).
+
+    FBTAA s.31(2). Engine arithmetic at FBT_Engine.pl L2943. Always Type 2 per
+    ATO TR 96/9. ``exempt_food_component`` is the pre-computed scalar (TD 2025/2
+    composition lookup is sheet/UI-layer concern).
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    weeks_lived_away: float = Field(
+        ..., ge=0, alias="weeksLivedAway",
+        description="Number of weeks the employee lived away from home.",
+    )
+    accommodation_per_week: float = Field(
+        ..., ge=0, alias="accommodationPerWeek",
+        description="Accommodation allowance paid per week (AUD).",
+    )
+    meals_per_week: float = Field(
+        ..., ge=0, alias="mealsPerWeek",
+        description="Food/drink allowance paid per week (AUD).",
+    )
+    exempt_accommodation_component: float | None = Field(
+        0, ge=0, alias="exemptAccommodationComponent",
+        description=(
+            "Total exempt accommodation component per s.31(2)(a) (AUD; not weekly)."
+        ),
+    )
+    exempt_food_component: float | None = Field(
+        0, ge=0, alias="exemptFoodComponent",
+        description=(
+            "Total exempt food component per s.31(2)(b) (AUD; not weekly). "
+            "Caller computes via TD 2025/2 composition lookup; engine consumes scalar."
+        ),
+    )
+
+
+class FBTTebeInput(BaseModel):
+    """Input for Phase 2i Tax-Exempt Body Entertainment (engine: ``calculate_fbt_tebe``).
+
+    FBTAA Subdivision B of Division 10 (ss.38–39). Engine arithmetic at
+    FBT_Engine.pl L3089. s.39 is a thin expenditure-passthrough statute.
+    50/50-split method is a sheet/UI-layer caller concern (the caller supplies
+    the post-50/50 totals; engine sums).
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    salary_packaged_meal_efle: float = Field(
+        ..., ge=0, alias="salaryPackagedMealEfle",
+        description=(
+            "Total expenditure on salary-packaged meal entertainment + EFLE "
+            "for tax-exempt body employees (AUD)."
+        ),
+    )
+    recreation: float = Field(
+        ..., ge=0, alias="recreation",
+        description="Total recreation entertainment expenditure (AUD).",
+    )
+    fbt_type: str | None = Field(
+        None, alias="fbtType",
+        description=(
+            "'Type 1' (creditable acquisitions) or 'Type 2' (input-taxed); "
+            "defaults engine-side to 'Type 2'."
+        ),
+    )
+
+
 class ManifestRateTableEntry(BaseModel):
     """One entry in the manifest's ``rate_table_uris`` block (CLAWDOG/109 §7.1)."""
 
@@ -484,6 +639,11 @@ __all__ = [
     "FBTPropertyInHouseInput",
     "FBTResidualInput",
     "FBTResidualInHouseInput",
+    # Wave B (Phase 2f–2i) public-API widening (mut-2026-05-31-mc17)
+    "FBTHousingInput",
+    "FBTLafhaInput",
+    "FBTBoardInput",
+    "FBTTebeInput",
     "ManifestRateTableEntry",
     "Manifest",
     "AdvisoryBlock",
