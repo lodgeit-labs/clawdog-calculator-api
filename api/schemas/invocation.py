@@ -16,7 +16,7 @@ Phase 3a scope:
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -143,6 +143,27 @@ class FBTCarOperatingCostInput(BaseModel):
     deemed_total: float | None = Field(
         None, ge=0, alias="deemedTotal",
         description="Optional explicit deemed_total (AUD) override.",
+    )
+    # --- Phase 3a (mut-2026-06-19-mc07-ot-104-calc-api-fbttype-gross-up-output)
+    # OT #104 sprint PR β: fbt_type three-state input. Operator-authoritative
+    # gross-up tier on the engine's post-s.8A taxable_value_final. Engine PR α
+    # (lodgeit-labs/LodgeiT_FBT PR #44 mut-2026-06-19-mc06; merged at
+    # `933794a3` 2026-06-19 11:53:46 UTC) adds the matching engine-side
+    # resolution + gross-up arithmetic. Three-state semantics:
+    #   * "Type 1" -> FBTAA s.5B(1B) gross-up 2.0802 (creditable acquisitions).
+    #   * "Type 2" -> FBTAA s.5B(1C) gross-up 1.8868 (input-taxed / not creditable).
+    #   * None    -> engine defaults to "Type 2" per cross-method convention
+    #               (Housing L2874 / TEBE L2998 / Property L3261 / Residual L3326).
+    # Lesson #14 strict-validation: any value other than "Type 1" / "Type 2"
+    # is rejected by Pydantic Literal BEFORE the engine call; an unknown
+    # value would also be rejected engine-side via domain_error(fbt_type, _).
+    fbt_type: Literal["Type 1", "Type 2"] | None = Field(
+        None, alias="fbtType",
+        description=(
+            "'Type 1' (creditable acquisitions; gross-up 2.0802) or 'Type 2' "
+            "(input-taxed; gross-up 1.8868). Defaults engine-side to 'Type 2' "
+            "when omitted."
+        ),
     )
 
     @field_validator("form_of_finance")
@@ -751,9 +772,21 @@ class FBTCarStatutoryFormulaInput(BaseModel):
         0, ge=0, alias="employeeContribution",
         description="Employee contribution (AUD); clamped DOWN so TV cannot go negative.",
     )
-    fbt_type: str | None = Field(
+    # --- Phase 3a (mut-2026-06-19-mc07-ot-104-calc-api-fbttype-gross-up-output)
+    # OT #104 sprint PR β: tighten fbt_type from `str | None` to
+    # `Literal["Type 1", "Type 2"] | None`. Pre-mc07 the field accepted any
+    # string and the engine quietly defaulted to 'Type 2' on unrecognised
+    # values; engine PR α (LodgeiT_FBT PR #44) now throws domain_error
+    # (fbt_type, _) on any value other than 'Type 1' / 'Type 2', so we move
+    # the validation earlier (Pydantic) for a cleaner error surface to
+    # operators. Lesson #14 strict-validation honoured at both layers.
+    fbt_type: Literal["Type 1", "Type 2"] | None = Field(
         None, alias="fbtType",
-        description="'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+        description=(
+            "'Type 1' (creditable acquisitions; gross-up 2.0802) or 'Type 2' "
+            "(input-taxed; gross-up 1.8868). Defaults engine-side to 'Type 2' "
+            "when omitted."
+        ),
     )
 
 
@@ -804,7 +837,22 @@ class AdvisoryBlock(BaseModel):
 
 
 class CalculatorInvocationResponse(BaseModel):
-    """Standard wire shape for any calculator invocation response."""
+    """Standard wire shape for any calculator invocation response.
+
+    Phase 3a (mut-2026-06-19-mc07-ot-104) adds 6 optional fields to surface
+    Phase 2l SF + Phase 2l OC end-to-end gross-up arithmetic introduced by
+    engine PR α (LodgeiT_FBT PR #44). Fields are optional because:
+
+    * Phase 2l SF + OC emit them on every call.
+    * Other calculators (Phase 2a Loan, 2b Debt Waiver, ...) do not currently
+      emit them; their responses simply omit the fields.
+    * Legacy v1 `calculate_fbt_car_statutory` is not exposed at calc-api and
+      is therefore not relevant to this surface.
+
+    The pre-mc07 wire shape (`taxable_value` + `trace` + `manifest` +
+    `advisory`) is byte-stable for all calculators that do not emit the new
+    fields (backward-compat regression gate at SR #12 production-bundle).
+    """
 
     model_config = ConfigDict(extra="allow")
 
@@ -812,6 +860,59 @@ class CalculatorInvocationResponse(BaseModel):
     trace: dict[str, Any]
     manifest: Manifest
     advisory: AdvisoryBlock
+
+    # --- Phase 3a gross-up surface (Phase 2l SF + OC only as of mc07) ---
+    fbt_type: Literal["Type 1", "Type 2"] | None = Field(
+        None,
+        description=(
+            "FBT gross-up tier the engine resolved against. 'Type 1' for "
+            "creditable acquisitions (FBTAA s.5B(1B)); 'Type 2' for input-"
+            "taxed (FBTAA s.5B(1C)). Omitted on calculators that do not "
+            "engage the gross-up arithmetic surface."
+        ),
+    )
+    gross_up_factor: float | None = Field(
+        None,
+        description=(
+            "Gross-up factor consumed for fbt_payable arithmetic. 2.0802 "
+            "for Type 1; 1.8868 for Type 2. Rate-table-fed via "
+            "`urn:sbrm:rate:fbt:fy2026:gross-up-type-{1,2}` (the URI is "
+            "present in `manifest.rate_table_uris` when this field is set)."
+        ),
+    )
+    grossed_up_taxable_value: float | None = Field(
+        None,
+        description=(
+            "`taxable_value * gross_up_factor`, rounded half-up to 2dp. "
+            "Equals 0 when s.8A exempts (taxable_value=0 ⇒ grossed_up=0)."
+        ),
+    )
+    fbt_payable: float | None = Field(
+        None,
+        description=(
+            "`grossed_up_taxable_value * 0.47`, rounded half-up to 2dp. "
+            "FBT rate 0.47 is rate-table-fed via "
+            "`urn:sbrm:rate:fbt:fy2026:fbt-rate` (FBTAA s.6). Equals 0 "
+            "when s.8A exempts."
+        ),
+    )
+    rfba_notional_taxable_value: float | None = Field(
+        None,
+        description=(
+            "Pre-s.8A taxable value for the RFBA reporting surface. Engine "
+            "emits this on Phase 2l SF + OC; mc07 surfaces it at calc-api "
+            "(previously dropped by the response shaper)."
+        ),
+    )
+    rfba_notional_grossed_up_t2: float | None = Field(
+        None,
+        description=(
+            "Pre-s.8A taxable value grossed up at Type 2 (1.8868) for the "
+            "employee's RFBA payment-summary surface. Engine emits this on "
+            "Phase 2l SF + OC regardless of operator-supplied `fbt_type`; "
+            "mc07 surfaces it at calc-api (previously dropped)."
+        ),
+    )
 
 
 class CalculatorListing(BaseModel):

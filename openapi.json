@@ -40,13 +40,89 @@
       },
       "CalculatorInvocationResponse": {
         "additionalProperties": true,
-        "description": "Standard wire shape for any calculator invocation response.",
+        "description": "Standard wire shape for any calculator invocation response.\n\nPhase 3a (mut-2026-06-19-mc07-ot-104) adds 6 optional fields to surface\nPhase 2l SF + Phase 2l OC end-to-end gross-up arithmetic introduced by\nengine PR \u03b1 (LodgeiT_FBT PR #44). Fields are optional because:\n\n* Phase 2l SF + OC emit them on every call.\n* Other calculators (Phase 2a Loan, 2b Debt Waiver, ...) do not currently\n  emit them; their responses simply omit the fields.\n* Legacy v1 `calculate_fbt_car_statutory` is not exposed at calc-api and\n  is therefore not relevant to this surface.\n\nThe pre-mc07 wire shape (`taxable_value` + `trace` + `manifest` +\n`advisory`) is byte-stable for all calculators that do not emit the new\nfields (backward-compat regression gate at SR #12 production-bundle).",
         "properties": {
           "advisory": {
             "$ref": "#/components/schemas/AdvisoryBlock"
           },
+          "fbt_payable": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`grossed_up_taxable_value * 0.47`, rounded half-up to 2dp. FBT rate 0.47 is rate-table-fed via `urn:sbrm:rate:fbt:fy2026:fbt-rate` (FBTAA s.6). Equals 0 when s.8A exempts.",
+            "title": "Fbt Payable"
+          },
+          "fbt_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "Type 1",
+                  "Type 2"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "FBT gross-up tier the engine resolved against. 'Type 1' for creditable acquisitions (FBTAA s.5B(1B)); 'Type 2' for input-taxed (FBTAA s.5B(1C)). Omitted on calculators that do not engage the gross-up arithmetic surface.",
+            "title": "Fbt Type"
+          },
+          "gross_up_factor": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Gross-up factor consumed for fbt_payable arithmetic. 2.0802 for Type 1; 1.8868 for Type 2. Rate-table-fed via `urn:sbrm:rate:fbt:fy2026:gross-up-type-{1,2}` (the URI is present in `manifest.rate_table_uris` when this field is set).",
+            "title": "Gross Up Factor"
+          },
+          "grossed_up_taxable_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`taxable_value * gross_up_factor`, rounded half-up to 2dp. Equals 0 when s.8A exempts (taxable_value=0 \u21d2 grossed_up=0).",
+            "title": "Grossed Up Taxable Value"
+          },
           "manifest": {
             "$ref": "#/components/schemas/Manifest"
+          },
+          "rfba_notional_grossed_up_t2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pre-s.8A taxable value grossed up at Type 2 (1.8868) for the employee's RFBA payment-summary surface. Engine emits this on Phase 2l SF + OC regardless of operator-supplied `fbt_type`; mc07 surfaces it at calc-api (previously dropped).",
+            "title": "Rfba Notional Grossed Up T2"
+          },
+          "rfba_notional_taxable_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pre-s.8A taxable value for the RFBA reporting surface. Engine emits this on Phase 2l SF + OC; mc07 surfaces it at calc-api (previously dropped by the response shaper).",
+            "title": "Rfba Notional Taxable Value"
           },
           "taxable_value": {
             "title": "Taxable Value",
@@ -342,6 +418,22 @@
             "title": "Employeecontribution",
             "type": "number"
           },
+          "fbtType": {
+            "anyOf": [
+              {
+                "enum": [
+                  "Type 1",
+                  "Type 2"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Type 1' (creditable acquisitions; gross-up 2.0802) or 'Type 2' (input-taxed; gross-up 1.8868). Defaults engine-side to 'Type 2' when omitted.",
+            "title": "Fbttype"
+          },
           "formOfFinance": {
             "description": "One of: owned | hire_purchase | leased | unspecified.",
             "title": "Formoffinance",
@@ -627,13 +719,17 @@
           "fbtType": {
             "anyOf": [
               {
+                "enum": [
+                  "Type 1",
+                  "Type 2"
+                ],
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+            "description": "'Type 1' (creditable acquisitions; gross-up 2.0802) or 'Type 2' (input-taxed; gross-up 1.8868). Defaults engine-side to 'Type 2' when omitted.",
             "title": "Fbttype"
           }
         },

@@ -498,4 +498,397 @@ def test_widget_url_resolver_defaults_to_live_renderer_host() -> None:
     ), f"CSV widget URL drift: got {csv_widget!r}"
 
 
+# =============================================================================
+# Phase 3a Gross-Up Production-Bundle Gate (mut-2026-06-19-mc07-ot-104)
+# =============================================================================
+#
+# Brain canon authority: clawdog-brain PR #466 (scope; merged 2026-06-19
+# 11:22:29Z sha c13cd672) + PR #467 (errata; merged 2026-06-19 11:41:58Z
+# sha ae970e11). Engine PR α lodgeit-labs/LodgeiT_FBT #44 merged 2026-06-19
+# 11:53:46Z sha 933794a3.
+#
+# This sprint adds 6 new optional output fields at calc-api response on
+# Phase 2l SF + Phase 2l OC:
+#   * fbt_type                 ('Type 1' | 'Type 2')
+#   * gross_up_factor          (2.0802 for Type 1; 1.8868 for Type 2)
+#   * grossed_up_taxable_value (taxable_value * gross_up_factor, 2dp)
+#   * fbt_payable              (grossed_up_taxable_value * 0.47, 2dp)
+#   * rfba_notional_taxable_value
+#   * rfba_notional_grossed_up_t2
+#
+# Plus a new optional input field on both `FBTCarOperatingCostInput` and
+# `FBTCarStatutoryFormulaInput`:
+#   * fbtType: Literal["Type 1", "Type 2"] | None
+#
+# Per SR #12, these tests exercise the PRODUCTION resolver against the
+# PRODUCTION bundle (rate_tables/SBRM_RATE_TABLE/), NOT a hermetic fixture.
+# The 3 rate-table facts the new arithmetic depends on are vendored at
+# rate_tables/SBRM_RATE_TABLE/fbt/lodgeit_au_sbrm/fy2026/{gross-up-type-1,
+# gross-up-type-2,fbt-rate}.md and verified by
+# test_production_bundle_contains_dispatch_rate_tables above.
+
+
+CAR_OC_URI = "urn:sbrm:calculator:fbt:car-operating-cost"
+CAR_SF_URI = "urn:sbrm:calculator:fbt:car-statutory-formula"
+
+
+def _mock_oc_gross_up_engine_response(fbt_type: str = "Type 2") -> dict:
+    """Mock engine response shape for Phase 2l OC with gross-up arithmetic.
+
+    Mirrors the live engine output dict shape introduced by LodgeiT_FBT PR
+    #44 (`mut-2026-06-19-mc06-ot-104-fbt-type-passthrough-gross-up`).
+    Numbers are arithmetically consistent with taxable_value=9120 (matches
+    Phase 3a `test_phase3a_gross_up_arithmetic.pl` § OC default-Type-2 case).
+    """
+    if fbt_type == "Type 1":
+        gross_up_factor = 2.0802
+        grossed_up = round(9120 * 2.0802, 2)  # 18971.42
+        fbt_payable = round(grossed_up * 0.47, 2)  # 8916.57
+        gross_up_uri = "urn:sbrm:rate:fbt:fy2026:gross-up-type-1"
+    else:
+        gross_up_factor = 1.8868
+        grossed_up = round(9120 * 1.8868, 2)  # 17207.62
+        fbt_payable = round(grossed_up * 0.47, 2)  # 8087.58
+        gross_up_uri = "urn:sbrm:rate:fbt:fy2026:gross-up-type-2"
+    rate_uris = [
+        "urn:sbrm:rate:fbt:fy2026:days-in-year",
+        gross_up_uri,
+        "urn:sbrm:rate:fbt:fy2026:fbt-rate",
+    ]
+    return {
+        "taxable_value": 9120.0,
+        "fbt_type": fbt_type,
+        "gross_up_factor": gross_up_factor,
+        "grossed_up_taxable_value": grossed_up,
+        "fbt_payable": fbt_payable,
+        "rfba_notional_taxable_value": 9120.0,
+        "rfba_notional_grossed_up_t2": round(9120 * 1.8868, 2),
+        "rate_uris_consumed": rate_uris,
+        "trace": {
+            "applied_rate_table_uris": rate_uris,
+            "tv_final": 9120.0,
+        },
+    }
+
+
+OC_GROSS_UP_INPUT = {
+    "leasePayments": 8000,
+    "fuelRepairsServicing": 2000,
+    "registrationInsurance": 1400,
+    "businessUsePercentage": 20,
+    "employeeContribution": 0,
+    "formOfFinance": "leased",
+}
+
+
+@pytest.mark.parametrize(
+    "fbt_type",
+    [None, "Type 1", "Type 2"],
+    ids=["default_omitted", "explicit_type_1", "explicit_type_2"],
+)
+def test_oc_gross_up_output_round_trips_through_production_bundle(
+    monkeypatch: pytest.MonkeyPatch,
+    fbt_type: str | None,
+) -> None:
+    """Assertion class A (Phase 3a gross-up output surface):
+
+    Phase 2l OC end-to-end gross-up fields round-trip through the calc-api
+    response model against the production resolver + production bundle. The
+    new output fields appear at the response top level (not in `trace`); the
+    pre-mc07 wire shape stays byte-stable in `taxable_value` + `manifest` +
+    `advisory`.
+    """
+    monkeypatch.delenv("CLAWDOG_RATE_TABLE_ROOT", raising=False)
+    monkeypatch.setenv("LODGEIT_FBT_REPO", str(PRODUCTION_BUNDLE_ROOT))
+
+    resolved_fbt_type = fbt_type or "Type 2"
+    engine_response = _mock_oc_gross_up_engine_response(resolved_fbt_type)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/calculate_fbt" and request.method == "POST":
+            return httpx.Response(200, json=engine_response)
+        if request.url.path == "/health" and request.method == "GET":
+            return httpx.Response(200, json={"status": "ok"})
+        return httpx.Response(404, json={"error": "unmocked route"})
+
+    transport = httpx.MockTransport(handler)
+    mock_client = httpx.AsyncClient(transport=transport)
+
+    from api.main import app
+    from api.prolog_client import PrologClient
+    from api.routes.calculators import get_prolog_client
+
+    async def _override() -> PrologClient:
+        return PrologClient(base_url="http://prolog.test", client=mock_client)
+
+    app.dependency_overrides[get_prolog_client] = _override
+    try:
+        with TestClient(app) as client:
+            url = (
+                f"/v1/calculators/{quote(CAR_OC_URI, safe='')}/"
+                f"{quote(PERIOD_URI, safe='')}?taxonomy=lodgeit_au_sbrm"
+            )
+            payload = dict(OC_GROSS_UP_INPUT)
+            if fbt_type is not None:
+                payload["fbtType"] = fbt_type
+            resp = client.post(url, json=payload)
+    finally:
+        app.dependency_overrides.pop(get_prolog_client, None)
+
+    assert resp.status_code == 200, (
+        f"OC gross-up surface failed with {resp.status_code}: {resp.text[:500]}"
+    )
+    body = resp.json()
+
+    # Pre-mc07 wire-shape byte-stability (regression gate).
+    assert body["taxable_value"] == pytest.approx(9120.0, abs=0.01)
+    assert "manifest" in body and "rate_table_uris" in body["manifest"]
+    assert "advisory" in body
+
+    # New mc07 output fields are surfaced at the top level.
+    assert body["fbt_type"] == resolved_fbt_type
+    expected_factor = 2.0802 if resolved_fbt_type == "Type 1" else 1.8868
+    assert body["gross_up_factor"] == pytest.approx(expected_factor, abs=0.0001)
+    expected_grossed = round(9120 * expected_factor, 2)
+    expected_fbt_payable = round(expected_grossed * 0.47, 2)
+    assert body["grossed_up_taxable_value"] == pytest.approx(expected_grossed, abs=0.01)
+    assert body["fbt_payable"] == pytest.approx(expected_fbt_payable, abs=0.01)
+    assert body["rfba_notional_taxable_value"] == pytest.approx(9120.0, abs=0.01)
+    assert body["rfba_notional_grossed_up_t2"] == pytest.approx(
+        round(9120 * 1.8868, 2), abs=0.01
+    )
+
+
+def test_oc_gross_up_rate_uris_present_in_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Assertion class B (manifest covers gross-up rate-table facts):
+
+    When gross-up arithmetic fires, the 3 consumed rate URIs (gross-up-type-{1
+    or 2}, fbt-rate, days-in-year) MUST appear in `manifest.rate_table_uris`
+    with valid content-hashes resolved against the production bundle.
+    """
+    monkeypatch.delenv("CLAWDOG_RATE_TABLE_ROOT", raising=False)
+    monkeypatch.setenv("LODGEIT_FBT_REPO", str(PRODUCTION_BUNDLE_ROOT))
+
+    engine_response = _mock_oc_gross_up_engine_response("Type 1")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/calculate_fbt" and request.method == "POST":
+            return httpx.Response(200, json=engine_response)
+        if request.url.path == "/health" and request.method == "GET":
+            return httpx.Response(200, json={"status": "ok"})
+        return httpx.Response(404, json={"error": "unmocked route"})
+
+    transport = httpx.MockTransport(handler)
+    mock_client = httpx.AsyncClient(transport=transport)
+
+    from api.main import app
+    from api.prolog_client import PrologClient
+    from api.routes.calculators import get_prolog_client
+
+    async def _override() -> PrologClient:
+        return PrologClient(base_url="http://prolog.test", client=mock_client)
+
+    app.dependency_overrides[get_prolog_client] = _override
+    try:
+        with TestClient(app) as client:
+            url = (
+                f"/v1/calculators/{quote(CAR_OC_URI, safe='')}/"
+                f"{quote(PERIOD_URI, safe='')}?taxonomy=lodgeit_au_sbrm"
+            )
+            payload = dict(OC_GROSS_UP_INPUT)
+            payload["fbtType"] = "Type 1"
+            resp = client.post(url, json=payload)
+    finally:
+        app.dependency_overrides.pop(get_prolog_client, None)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    manifest_uris = {e["uri"] for e in body["manifest"]["rate_table_uris"]}
+    required = {
+        "urn:sbrm:rate:fbt:fy2026:gross-up-type-1",
+        "urn:sbrm:rate:fbt:fy2026:fbt-rate",
+        "urn:sbrm:rate:fbt:fy2026:days-in-year",
+    }
+    assert required.issubset(manifest_uris), (
+        f"manifest missing gross-up rate URIs: required={required} got={manifest_uris}"
+    )
+    for entry in body["manifest"]["rate_table_uris"]:
+        if entry["uri"] in required:
+            assert entry["hash_algorithm"] == "sha256"
+            assert len(entry["content_hash"]) == 64
+
+
+@pytest.mark.parametrize("invalid_value", ["Type 3", "type 1", "Bogus", ""])
+def test_oc_invalid_fbt_type_rejected_at_pydantic(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_value: str,
+) -> None:
+    """Assertion class C (Lesson #14 strict-validation at Pydantic layer):
+
+    The Literal["Type 1", "Type 2"] constraint rejects unknown fbtType
+    values BEFORE the engine call (cleaner operator error surface than the
+    engine's domain_error(fbt_type, _)).
+    """
+    monkeypatch.delenv("CLAWDOG_RATE_TABLE_ROOT", raising=False)
+    monkeypatch.setenv("LODGEIT_FBT_REPO", str(PRODUCTION_BUNDLE_ROOT))
+
+    from api.main import app
+
+    with TestClient(app) as client:
+        url = (
+            f"/v1/calculators/{quote(CAR_OC_URI, safe='')}/"
+            f"{quote(PERIOD_URI, safe='')}?taxonomy=lodgeit_au_sbrm"
+        )
+        payload = dict(OC_GROSS_UP_INPUT)
+        payload["fbtType"] = invalid_value
+        resp = client.post(url, json=payload)
+
+    assert resp.status_code == 422, (
+        f"expected 422 from Pydantic Literal rejection of fbtType={invalid_value!r}; "
+        f"got {resp.status_code}: {resp.text[:300]}"
+    )
+
+
+def test_sf_gross_up_output_round_trips_through_production_bundle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Assertion class D (Phase 2l SF symmetric with OC):
+
+    Phase 2l SF gets the same gross-up output surface as OC. mc02
+    sheet-parity baseline (case 0: taxable_value=11400 stable at the
+    pre-mc07 field).
+    """
+    monkeypatch.delenv("CLAWDOG_RATE_TABLE_ROOT", raising=False)
+    monkeypatch.setenv("LODGEIT_FBT_REPO", str(PRODUCTION_BUNDLE_ROOT))
+
+    grossed_up = round(11400 * 1.8868, 2)  # 21509.52
+    fbt_payable = round(grossed_up * 0.47, 2)  # 10109.47
+    rate_uris = [
+        "urn:sbrm:rate:fbt:fy2026:statutory-fraction",
+        "urn:sbrm:rate:fbt:fy2026:days-in-year",
+        "urn:sbrm:rate:fbt:fy2026:gross-up-type-2",
+        "urn:sbrm:rate:fbt:fy2026:fbt-rate",
+    ]
+    engine_response = {
+        "taxable_value": 11400.0,
+        "gross_taxable_value": 11400.0,
+        "taxable_value_before_statutory": 11400.0,
+        "employee_contribution": 0,
+        "reductions": 0,
+        "fbt_type": "Type 2",
+        "gross_up_factor": 1.8868,
+        "grossed_up_taxable_value": grossed_up,
+        "fbt_payable": fbt_payable,
+        "rfba_notional_taxable_value": 11400.0,
+        "rfba_notional_grossed_up_t2": grossed_up,
+        "rate_uris_consumed": rate_uris,
+        "trace": {"applied_rate_table_uris": rate_uris},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/calculate_fbt" and request.method == "POST":
+            return httpx.Response(200, json=engine_response)
+        if request.url.path == "/health" and request.method == "GET":
+            return httpx.Response(200, json={"status": "ok"})
+        return httpx.Response(404, json={"error": "unmocked route"})
+
+    transport = httpx.MockTransport(handler)
+    mock_client = httpx.AsyncClient(transport=transport)
+
+    from api.main import app
+    from api.prolog_client import PrologClient
+    from api.routes.calculators import get_prolog_client
+
+    async def _override() -> PrologClient:
+        return PrologClient(base_url="http://prolog.test", client=mock_client)
+
+    app.dependency_overrides[get_prolog_client] = _override
+    try:
+        with TestClient(app) as client:
+            url = (
+                f"/v1/calculators/{quote(CAR_SF_URI, safe='')}/"
+                f"{quote(PERIOD_URI, safe='')}?taxonomy=lodgeit_au_sbrm"
+            )
+            payload = {
+                "baseValue": 45000,
+                "accessories": 12000,
+                "daysAvailable": 365,
+                "employeeContribution": 0,
+            }
+            resp = client.post(url, json=payload)
+    finally:
+        app.dependency_overrides.pop(get_prolog_client, None)
+
+    assert resp.status_code == 200, resp.text[:500]
+    body = resp.json()
+    assert body["taxable_value"] == pytest.approx(11400.0, abs=0.01)
+    assert body["fbt_type"] == "Type 2"
+    assert body["gross_up_factor"] == pytest.approx(1.8868, abs=0.0001)
+    assert body["grossed_up_taxable_value"] == pytest.approx(grossed_up, abs=0.01)
+    assert body["fbt_payable"] == pytest.approx(fbt_payable, abs=0.01)
+
+
+def test_other_calculator_response_byte_stable_without_gross_up_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Assertion class E (backward-compatibility regression gate):
+
+    Calculators that do not engage the gross-up arithmetic surface (e.g.
+    deemed-dispatch OC without fbt_type input) MUST return a response that
+    does NOT carry the 6 new fields (they should be absent, not None).
+    The pre-mc07 wire-shape is byte-stable for these calculators.
+    """
+    monkeypatch.delenv("CLAWDOG_RATE_TABLE_ROOT", raising=False)
+    monkeypatch.setenv("LODGEIT_FBT_REPO", str(PRODUCTION_BUNDLE_ROOT))
+
+    # Use the pre-mc07 deemed-dispatch engine response (no gross-up fields).
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/calculate_fbt" and request.method == "POST":
+            return httpx.Response(200, json=_mock_dispatch_engine_response())
+        if request.url.path == "/health" and request.method == "GET":
+            return httpx.Response(200, json={"status": "ok"})
+        return httpx.Response(404, json={"error": "unmocked route"})
+
+    transport = httpx.MockTransport(handler)
+    mock_client = httpx.AsyncClient(transport=transport)
+
+    from api.main import app
+    from api.prolog_client import PrologClient
+    from api.routes.calculators import get_prolog_client
+
+    async def _override() -> PrologClient:
+        return PrologClient(base_url="http://prolog.test", client=mock_client)
+
+    app.dependency_overrides[get_prolog_client] = _override
+    try:
+        with TestClient(app) as client:
+            url = (
+                f"/v1/calculators/{quote(CALC_URI, safe='')}/"
+                f"{quote(PERIOD_URI, safe='')}?taxonomy=lodgeit_au_sbrm"
+            )
+            resp = client.post(url, json=PR_D_CASE_5_INPUT)
+    finally:
+        app.dependency_overrides.pop(get_prolog_client, None)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    # Pre-mc07 wire-shape stable.
+    assert body["taxable_value"] == pytest.approx(5547.75, abs=0.01)
+    # The 6 new fields are absent (or None) when engine doesn't emit them.
+    for new_field in (
+        "fbt_type",
+        "gross_up_factor",
+        "grossed_up_taxable_value",
+        "fbt_payable",
+        "rfba_notional_taxable_value",
+        "rfba_notional_grossed_up_t2",
+    ):
+        assert body.get(new_field) is None, (
+            f"backward-compat regression: {new_field}={body.get(new_field)!r} "
+            f"present on response that did not emit gross-up arithmetic"
+        )
+
+
 __all__ = []
