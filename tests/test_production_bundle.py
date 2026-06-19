@@ -433,18 +433,24 @@ def test_mcp_route_registered_on_production_app() -> None:
     from api.main import app
 
     # mut-2026-06-19-mc07 SCOPE-CREEP-FIX (NOT part of OT #104 surface):
-    # newer FastAPI/Starlette versions on CI expose `_IncludedRouter` objects
-    # in `app.routes` that do not carry a `.path` attribute. The original
-    # set-comprehension at mut-2026-05-29-mc08 blew up with AttributeError
-    # on `_IncludedRouter`. Filter to routes that have a `.path` (sibling of
-    # Lesson #41 prose-vs-production-code-fidelity — CI environment drift
-    # surfaced a latent bug that the pre-mc07 fastapi/starlette pin masked).
-    # Pre-existing test logic is otherwise unchanged.
-    route_paths = {
-        route.path for route in app.routes if hasattr(route, "path")
-    }
-    assert "/mcp" in route_paths, (
-        f"/mcp route missing from production app; available={sorted(route_paths)}"
+    # the original test at mut-2026-05-29-mc08 walked `app.routes` directly
+    # and read `.path` off each entry. Newer FastAPI/Starlette versions on
+    # CI (fastapi 0.137.2 / starlette 1.3.1) hide included-router routes
+    # behind `_IncludedRouter` objects in `app.routes` that have neither
+    # `.path` nor a public sub-route accessor — walking the route table is
+    # version-coupled and brittle.
+    #
+    # Switch to the OpenAPI spec, which is what the test's docstring
+    # actually asserts (*"`/mcp` surfaces in the OpenAPI spec generated
+    # from the production app object"*). `app.openapi()` is the public,
+    # version-stable contract; if `/mcp` is in the spec, the deploy
+    # artefact will surface it. Sibling of Lesson #41 prose-vs-production-
+    # code-fidelity (the test wording was always about the OpenAPI spec;
+    # the original route-table walk was an implementation accident).
+    spec_paths = set(app.openapi().get("paths", {}).keys())
+    assert "/mcp" in spec_paths, (
+        f"/mcp route missing from production app OpenAPI spec; "
+        f"available={sorted(spec_paths)}"
     )
 
 
