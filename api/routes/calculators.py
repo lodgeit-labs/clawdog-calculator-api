@@ -12,7 +12,7 @@ holds under a second calculator.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
@@ -587,11 +587,33 @@ async def invoke_calculator(
             },
         ) from exc
 
+    # --- Phase 3a (mut-2026-06-19-mc07-ot-104-calc-api-fbttype-gross-up-output)
+    # OT #104 sprint PR β: surface engine's gross-up + RFBA notional fields
+    # at calc-api response. Engine PR α (LodgeiT_FBT PR #44) added:
+    #   * fbt_type / gross_up_factor / grossed_up_taxable_value / fbt_payable
+    #     on Phase 2l SF + Phase 2l OC.
+    #   * rfba_notional_taxable_value / rfba_notional_grossed_up_t2 already
+    #     emitted since Rung 3 mut-2026-05-21-mc06 but dropped here.
+    # We pass them through ONLY when the engine emits them (calculators that
+    # do not emit gross-up keep the pre-mc07 wire shape byte-stable).
+    gross_up_passthrough: dict[str, Any] = {}
+    for key in (
+        "fbt_type",
+        "gross_up_factor",
+        "grossed_up_taxable_value",
+        "fbt_payable",
+        "rfba_notional_taxable_value",
+        "rfba_notional_grossed_up_t2",
+    ):
+        if key in engine_response and engine_response[key] is not None:
+            gross_up_passthrough[key] = engine_response[key]
+
     response_payload = wrap_response(
         {
             "taxable_value": taxable_value,
             "trace": trace,
             "manifest": manifest,
+            **gross_up_passthrough,
         },
         jurisdiction=meta["jurisdiction"],
     )
