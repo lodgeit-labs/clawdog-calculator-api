@@ -432,7 +432,17 @@ def test_mcp_route_registered_on_production_app() -> None:
     """
     from api.main import app
 
-    route_paths = {route.path for route in app.routes}
+    # mut-2026-06-19-mc07 SCOPE-CREEP-FIX (NOT part of OT #104 surface):
+    # newer FastAPI/Starlette versions on CI expose `_IncludedRouter` objects
+    # in `app.routes` that do not carry a `.path` attribute. The original
+    # set-comprehension at mut-2026-05-29-mc08 blew up with AttributeError
+    # on `_IncludedRouter`. Filter to routes that have a `.path` (sibling of
+    # Lesson #41 prose-vs-production-code-fidelity — CI environment drift
+    # surfaced a latent bug that the pre-mc07 fastapi/starlette pin masked).
+    # Pre-existing test logic is otherwise unchanged.
+    route_paths = {
+        route.path for route in app.routes if hasattr(route, "path")
+    }
     assert "/mcp" in route_paths, (
         f"/mcp route missing from production app; available={sorted(route_paths)}"
     )
