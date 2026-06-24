@@ -27,9 +27,11 @@ objects (``code`` + ``message`` + optional ``data``), NEVER as bare 500
 HTML. The same defence-in-depth shape that ``api.routes.calculators``
 uses for REST 502/503.
 
-**Authentication:** inherits the same CORS + IP allow-list as the REST
-routes today; per the mc02-ratified sprint design, MCP-client auth +
-L402 gating land in later sprints (CLAWDOG/150).
+**Authentication:** same posture as the REST surface (currently public
+read-only with `allow_origins=["*"]` CORS middleware; auth / IP allow-list
+to be added in a future sprint when public-write surfaces land). Per the
+mc02-ratified sprint design, MCP-client auth + L402 gating land in later
+sprints (CLAWDOG/150).
 """
 from __future__ import annotations
 

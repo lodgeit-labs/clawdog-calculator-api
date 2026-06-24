@@ -6,6 +6,7 @@ for the Cloud Run / Docker HEALTHCHECK probe.
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from api import __version__
 from api.routes import calculators as calculators_routes
@@ -56,6 +57,32 @@ app = FastAPI(
             ),
         },
     ],
+)
+
+# CORS middleware — added at mut-2026-06-24-mc12.
+#
+# The calculator-constellation API is a PUBLIC READ-ONLY surface (no auth,
+# no rate-limit, no IP allow-list) consumed from multiple browser origins:
+# Office.js Excel add-ins (Waqas's Microsoft path), browser SPAs surfacing
+# the calculator URN constellation, and any future widget renderer
+# (CLAWDOG/151). Without CORS middleware, browsers reject the preflight
+# OPTIONS with 405 and the actual response carries no
+# `access-control-allow-origin` header, blocking every browser-origin
+# consumer. Server-side consumers (Python, curl, .NET) are unaffected —
+# Same-Origin Policy is browser-only.
+#
+# `allow_origins=["*"]` is the right posture for a public read-only
+# surface. When auth lands, tighten to a domain list (Waqas's add-in
+# domain, lodgeit.org, any other named consumer).
+#
+# Banked at clawdog-brain/memory/2026-06-24-mc12-cors-substrate-fix-sprint-design.md
+# + Lesson candidate (probe-substrate parity, n=1) on Brain PR merge.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+    max_age=3600,
 )
 
 app.include_router(calculators_routes.router)
