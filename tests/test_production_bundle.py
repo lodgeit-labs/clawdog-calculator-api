@@ -907,4 +907,73 @@ def test_other_calculator_response_byte_stable_without_gross_up_fields(
         )
 
 
+# ---------------------------------------------------------------------------
+# Residual live-PROD smoke gate (mut-2026-07-07-mc01)
+# ---------------------------------------------------------------------------
+#
+# Closes the coverage gap that Waqas Awan's 2026-07-05 Microsoft-path
+# proof-of-concept surfaced: prior to mc01-2026-07-07 the production-bundle
+# gate exercised Car OC deemed-dispatch only. The Residual + Residual-In-
+# House routes never smoke-tested end-to-end against PROD, so the wire-shape
+# mismatch between calc-api Pydantic (`gst_inclusive_value`) and the Prolog
+# engine (`residual_value`, FBT_Engine.pl:3906) stayed dormant until Waqas
+# exercised both routes. Same class as OT #91 depreciation-audit but on a
+# different route surface.
+#
+# This gate is opt-in via `CLAWDOG_LIVE_PROD_PROBE=1` env var so it does NOT
+# run in the standard hermetic CI cycle. Auto-deploy on merge to master
+# leaves the smoke-fire to the post-deploy step in the deploy workflow.
+
+_PROD_API_ROOT = (
+    "https://fbt-calculator-api-8340695160.australia-southeast1.run.app"
+)
+
+
+@pytest.mark.skipif(
+    not __import__("os").environ.get("CLAWDOG_LIVE_PROD_PROBE"),
+    reason="live PROD probe disabled; set CLAWDOG_LIVE_PROD_PROBE=1 to enable",
+)
+@pytest.mark.parametrize(
+    "calc_uri",
+    [
+        "urn:sbrm:calculator:fbt:residual",
+        "urn:sbrm:calculator:fbt:residual-in-house",
+    ],
+)
+def test_residual_live_prod_smoke(calc_uri: str) -> None:
+    """Live PROD probe against the residualValue wire contract.
+
+    Opt-in via ``CLAWDOG_LIVE_PROD_PROBE=1``. Fires the same shape Waqas
+    Awan hit at 2026-07-05 and asserts HTTP 200 with a numeric
+    ``taxable_value`` field. Failure surface is byte-identical to the
+    original 502 defect — that is intentional so the failure message
+    self-documents the class.
+    """
+    period_uri = "urn:sbrm:period:fbt:fy2026"
+    body = {
+        "residualValue": 2222,
+        "otherwiseDeductiblePercentage": 80,
+        "employeeContribution": 111,
+    }
+    if "in-house" in calc_uri:
+        body["inhouseBenefitClaimed"] = 500
+    url = (
+        f"{_PROD_API_ROOT}/v1/calculators/{quote(calc_uri, safe='')}/"
+        f"{quote(period_uri, safe='')}"
+    )
+    resp = httpx.post(url, json=body, timeout=30.0)
+    assert resp.status_code == 200, (
+        f"live PROD probe {calc_uri} returned HTTP {resp.status_code}: "
+        f"{resp.text}. This is the Waqas 2026-07-05 regression class — "
+        "the engine `calculate_fbt_residual_internal/3` reads "
+        "`DictIn.residual_value` and the calc-api Pydantic must send it "
+        "under that key."
+    )
+    doc = resp.json()
+    assert isinstance(doc.get("taxable_value"), (int, float)), (
+        f"live PROD probe {calc_uri} returned HTTP 200 but no numeric "
+        f"`taxable_value` field: {doc!r}"
+    )
+
+
 __all__ = []

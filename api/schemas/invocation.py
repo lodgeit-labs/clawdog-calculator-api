@@ -366,15 +366,47 @@ class FBTPropertyInHouseInput(_PropertyBaseInput):
 class _ResidualBaseInput(BaseModel):
     """Shared input shape for Phase 2e Residual (std + in-house variants).
 
-    FBTAA Division 12 (ss.45–52). Engine arithmetic at FBT_Engine.pl L3763.
+    FBTAA Division 12 (ss.45–52). Engine arithmetic at
+    ``LodgeiT_FBT/FBT_Engine.pl`` ``calculate_fbt_residual_internal/3`` (L3903).
     In-house variant consults the FY2026 ``in-house-benefit-cap`` rate-node.
+
+    **Field-name discipline (mut-2026-07-07-mc01, PR ships this file).**
+    Residual is the only benefit in the constellation whose primary
+    monetary input is named ``residual_value`` at the engine layer rather
+    than the cross-method ``gst_inclusive_value`` convention. Reason:
+    FBTAA s.50 defines the input as *"residual value"* — there is no
+    GST-inclusive framing in the Residual statute (unlike Property /
+    Expense-Payment / etc., where the GST-inclusive shape is statute-native).
+    The engine predicate at ``FBT_Engine.pl:3906`` reads
+    ``DictIn.residual_value``; ``populate_by_name=True`` + ``by_alias=False``
+    at the invoke bridge in ``api/routes/calculators.py:519`` mean the
+    Python attribute name IS the wire key on the outbound engine call.
+    Naming the attribute ``residual_value`` (instead of
+    ``gst_inclusive_value``) is therefore load-bearing — it is the wire
+    contract. The OpenAPI-facing camelCase alias ``residualValue`` follows
+    the statute directly.
+
+    Historical note: the pre-mc01-2026-07-07 field name
+    ``gst_inclusive_value`` (alias ``gstInclusiveValue``) was a
+    copy-paste artefact from ``_PropertyBaseInput`` when the Wave A public
+    surface landed 2026-05-31 (PR #18 ``mut-2026-05-31-mc15``). It was
+    never smoke-tested end-to-end against PROD — the
+    ``test_production_bundle.py`` gate covered Car OC deemed-dispatch only,
+    so the wire mismatch stayed dormant until Waqas Awan's Microsoft-path
+    proof-of-concept exercised both Residual routes on 2026-07-05
+    (screenshot surfaced to Andrew 2026-07-07 09:11 UTC). The
+    production-bundle gate is extended in the same PR to close the class.
     """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    gst_inclusive_value: float = Field(
-        ..., ge=0, alias="gstInclusiveValue",
-        description="GST-inclusive value of the residual benefit (AUD).",
+    residual_value: float = Field(
+        ..., ge=0, alias="residualValue",
+        description=(
+            "Residual value of the benefit (AUD). Statute-native input for "
+            "FBTAA Division 12 (s.50 defines 'residual value'). This is the "
+            "single monetary input the engine predicate reads."
+        ),
     )
     otherwise_deductible_percentage: float = Field(
         ..., ge=0, le=100, alias="otherwiseDeductiblePercentage",

@@ -97,26 +97,34 @@ _WAVE_A_CASES: list[tuple[str, str, dict[str, Any], str]] = [
         },
         "gstInclusiveValue",
     ),
+    # NOTE: Residual takes `residualValue` (statute-native per FBTAA s.50),
+    # NOT `gstInclusiveValue`. Pre-mc01-2026-07-07 this test wired
+    # `gstInclusiveValue` — which was accepted by the hermetic router
+    # dispatch but died at the engine boundary because
+    # `calculate_fbt_residual_internal/3` reads `DictIn.residual_value`.
+    # The engine-side wire-shape mismatch surfaced from Waqas Awan's
+    # 2026-07-05 Microsoft-path proof-of-concept and was fixed under
+    # `mut-2026-07-07-mc01-fbt-residual-wire-shape-fix`.
     (
         "urn:sbrm:calculator:fbt:residual",
         "residual",
         {
-            "gstInclusiveValue": 800,
+            "residualValue": 800,
             "otherwiseDeductiblePercentage": 0,
             "employeeContribution": 0,
         },
-        "gstInclusiveValue",
+        "residualValue",
     ),
     (
         "urn:sbrm:calculator:fbt:residual-in-house",
         "in_house_residual",
         {
-            "gstInclusiveValue": 800,
+            "residualValue": 800,
             "otherwiseDeductiblePercentage": 0,
             "employeeContribution": 0,
             "inhouseBenefitClaimed": 1000,
         },
-        "gstInclusiveValue",
+        "residualValue",
     ),
     # --- Wave B (mut-2026-05-31-mc17; Phase 2f–2i single-method calcs) ---
     (
