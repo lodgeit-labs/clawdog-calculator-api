@@ -1462,12 +1462,6 @@
             "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
             "title": "Fbttype"
           },
-          "gstInclusiveValue": {
-            "description": "GST-inclusive value of the residual benefit (AUD).",
-            "minimum": 0.0,
-            "title": "Gstinclusivevalue",
-            "type": "number"
-          },
           "inhouseBenefitClaimed": {
             "anyOf": [
               {
@@ -1487,10 +1481,16 @@
             "minimum": 0.0,
             "title": "Otherwisedeductiblepercentage",
             "type": "number"
+          },
+          "residualValue": {
+            "description": "Residual value of the benefit (AUD). Statute-native input for FBTAA Division 12 (s.50 defines 'residual value'). This is the single monetary input the engine predicate reads.",
+            "minimum": 0.0,
+            "title": "Residualvalue",
+            "type": "number"
           }
         },
         "required": [
-          "gstInclusiveValue",
+          "residualValue",
           "otherwiseDeductiblePercentage"
         ],
         "title": "FBTResidualInHouseInput",
@@ -1519,12 +1519,6 @@
             "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
             "title": "Fbttype"
           },
-          "gstInclusiveValue": {
-            "description": "GST-inclusive value of the residual benefit (AUD).",
-            "minimum": 0.0,
-            "title": "Gstinclusivevalue",
-            "type": "number"
-          },
           "inhouseBenefitClaimed": {
             "anyOf": [
               {
@@ -1544,10 +1538,16 @@
             "minimum": 0.0,
             "title": "Otherwisedeductiblepercentage",
             "type": "number"
+          },
+          "residualValue": {
+            "description": "Residual value of the benefit (AUD). Statute-native input for FBTAA Division 12 (s.50 defines 'residual value'). This is the single monetary input the engine predicate reads.",
+            "minimum": 0.0,
+            "title": "Residualvalue",
+            "type": "number"
           }
         },
         "required": [
-          "gstInclusiveValue",
+          "residualValue",
           "otherwiseDeductiblePercentage"
         ],
         "title": "FBTResidualInput",
