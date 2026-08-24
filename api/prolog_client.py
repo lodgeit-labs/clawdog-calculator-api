@@ -49,6 +49,12 @@ import httpx
 
 DEFAULT_PROLOG_URL = "http://localhost:8081"
 DEFAULT_DEPRECIATION_URL = "http://localhost:8082"
+# Phase D (mut-2026-08-24-mc20): Div7A_Engine gateway routing. Div7A_Engine
+# speaks native FastAPI (not Prolog HTTP), but the PrologClient's dispatch
+# abstraction is the constellation's canonical external-engine transport
+# entry point per L#28 single-concern. Naming preserved for consistency;
+# behaviour is HTTP JSON round-trip regardless of downstream engine tech.
+DEFAULT_DIV7A_URL = "http://localhost:8083"
 DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=5.0)
 
 # Engine identifiers for ``PrologClient.dispatch()``. Each maps to one
@@ -56,6 +62,7 @@ DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=5.0)
 # one row here — not a third ``calculate_*`` method.
 FBT_ENGINE = "fbt"
 DEPRECIATION_ENGINE = "depreciation"
+DIV7A_ENGINE = "div7a"  # Phase D (mut-2026-08-24-mc20): Div7A_Engine gateway routing
 
 # Per-asset Tier-1 classifier lookups in the depreciation engine dominate
 # the audit-batch runtime; raise the read timeout to match the run_audit.py
@@ -84,6 +91,21 @@ def depreciation_prolog_url() -> str:
     Phase 3c.4 generalises to a single resolver.
     """
     return os.environ.get("DEPRECIATION_PROLOG_URL", DEFAULT_DEPRECIATION_URL).rstrip("/")
+
+
+def div7a_engine_url() -> str:
+    """Return the upstream Div7A_Engine base URL.
+
+    Resolution order:
+        1. ``DIV7A_ENGINE_URL`` environment variable.
+        2. Module default ``http://localhost:8083``.
+
+    Phase D (mut-2026-08-24-mc20): Div7A_Engine speaks native FastAPI at
+    ``/v1/calculators/div7a/at/{period_uri}``; not the Prolog-shape endpoints
+    of the FBT and depreciation engines. Uses the same dispatch abstraction
+    as those engines for uniform transport-layer failure handling.
+    """
+    return os.environ.get("DIV7A_ENGINE_URL", DEFAULT_DIV7A_URL).rstrip("/")
 
 
 class PrologEngineUnavailable(RuntimeError):
@@ -170,12 +192,22 @@ class PrologClient:
             "path": "/api/v1/depreciation/audit",
             "timeout": DEPRECIATION_AUDIT_TIMEOUT,
         },
+        # Phase D (mut-2026-08-24-mc20): Div7A_Engine URN path is templated
+        # with the period_uri; dispatch() substitutes at call time via a
+        # per-engine path formatter. Timeout matches DEFAULT (30s connect 5s)
+        # since Div7A calc is bounded arithmetic (§109E annuity formula), not
+        # a batch classification like depreciation audit.
+        DIV7A_ENGINE: {
+            "path_template": "/v1/calculators/div7a/at/{period_uri}",
+            "timeout": DEFAULT_TIMEOUT,
+        },
     }
 
     def __init__(
         self,
         base_url: str | None = None,
         depreciation_base_url: str | None = None,
+        div7a_base_url: str | None = None,
         timeout: httpx.Timeout | None = None,
         client: httpx.AsyncClient | None = None,
     ) -> None:
@@ -183,6 +215,7 @@ class PrologClient:
         self._depreciation_base_url = (
             depreciation_base_url or depreciation_prolog_url()
         ).rstrip("/")
+        self._div7a_base_url = (div7a_base_url or div7a_engine_url()).rstrip("/")
         self._timeout = timeout or DEFAULT_TIMEOUT
         self._client = client
 
@@ -192,6 +225,8 @@ class PrologClient:
             return self._base_url
         if engine == DEPRECIATION_ENGINE:
             return self._depreciation_base_url
+        if engine == DIV7A_ENGINE:
+            return self._div7a_base_url
         raise ValueError(f"unknown engine id: {engine!r}")
 
     async def dispatch(
@@ -200,6 +235,7 @@ class PrologClient:
         payload: Mapping[str, Any],
         *,
         timeout_override: httpx.Timeout | None = None,
+        path_override: str | None = None,
     ) -> dict[str, Any]:
         """Send ``payload`` to ``engine`` and return the parsed JSON response.
 
@@ -218,7 +254,18 @@ class PrologClient:
             raise ValueError(f"unknown engine id: {engine!r}")
 
         base_url = self._base_url_for(engine)
-        url = f"{base_url}{meta['path']}"
+        # Phase D: templated engines (Div7A) supply path via path_override
+        # at call site; classic engines (FBT + depreciation) use registry `path`.
+        if path_override is not None:
+            path = path_override
+        elif "path" in meta:
+            path = meta["path"]
+        else:
+            raise ValueError(
+                f"engine {engine!r} has a `path_template` but no path_override supplied "
+                f"to dispatch(); call site must template the URI itself"
+            )
+        url = f"{base_url}{path}"
         timeout = timeout_override or meta["timeout"]
 
         try:
@@ -299,6 +346,23 @@ class PrologClient:
         """
         return await self.dispatch(DEPRECIATION_ENGINE, payload)
 
+    async def div7a_at(
+        self, period_uri: str, payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """POST to Div7A_Engine ``/v1/calculators/div7a/at/{period_uri}``.
+
+        Phase D (mut-2026-08-24-mc20): Div7A_Engine gateway routing. Unlike
+        FBT + depreciation which POST to a fixed path, Div7A's canonical
+        REST route templates the period_uri into the path per Div7A_Engine
+        `api/main.py::calculate_at`. Uses the shared ``dispatch()``
+        transport-failure machinery but with a per-call path override.
+        """
+        return await self.dispatch(
+            DIV7A_ENGINE,
+            payload,
+            path_override=f"/v1/calculators/div7a/at/{period_uri}",
+        )
+
     async def health(self) -> dict[str, Any]:
         """GET ``/health`` and return the parsed JSON response.
 
@@ -322,6 +386,7 @@ __all__ = [
     "DEFAULT_DEPRECIATION_URL",
     "FBT_ENGINE",
     "DEPRECIATION_ENGINE",
+    "DIV7A_ENGINE",
     "PrologClient",
     "PrologCalculationError",
     "PrologEngineUnavailable",

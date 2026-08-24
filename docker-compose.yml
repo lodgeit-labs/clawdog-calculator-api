@@ -56,6 +56,12 @@ services:
         condition: service_healthy
     environment:
       FBT_PROLOG_URL: "http://fbt-engine:8081"
+      # Phase D (mut-2026-08-24-mc20): Div7A_Engine gateway routing. For local
+      # docker-compose dev, points at a local div7a-engine service if you
+      # docker-compose up one; otherwise leave unset and the default
+      # http://localhost:8083 fires (which is what Div7A_Engine's own
+      # docker-compose exposes by convention).
+      DIV7A_ENGINE_URL: "http://div7a-engine:8000"
       LODGEIT_FBT_REPO: "/srv/lodgeit_fbt"
       LANG: "en_AU.UTF-8"
       LC_ALL: "en_AU.UTF-8"
