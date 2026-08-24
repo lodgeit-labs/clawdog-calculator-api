@@ -32,6 +32,7 @@ from api.prolog_client import (
     PrologEngineUnavailable,
 )
 from api.schemas.depreciation import DepreciationAuditInput
+from api.schemas.div7a import Div7aAtInput
 from api.schemas.invocation import (
     CalculatorInvocationResponse,
     CalculatorListing,
@@ -71,6 +72,15 @@ _FBT_CAR_OC_URI = "urn:sbrm:calculator:fbt:car-operating-cost"
 _FBT_FY2026 = "urn:sbrm:period:fbt:fy2026"
 _DEPRECIATION_AUDIT_URI = "urn:sbrm:calculator:depreciation:audit"
 _DEPRECIATION_FY2026 = "urn:sbrm:period:depreciation:fy2026"
+
+# --- Phase D URN constants (mut-2026-08-24-mc20) -----------------------------
+# Div7A_Engine gateway routing. Div7A is the third calculator in the
+# constellation (after FBT + Depreciation); Div7A_Engine speaks native
+# FastAPI (not Prolog HTTP), routed via PrologClient.div7a_at() using the
+# shared dispatch abstraction. Canonical URN + FY constants:
+_DIV7A_AT_URI = "urn:sbrm:calculator:div7a:at"
+_DIV7A_FY2025 = "urn:sbrm:period:div7a:fy2025"
+_DIV7A_FY2026 = "urn:sbrm:period:div7a:fy2026"
 
 # --- Wave A URN constants (mut-2026-05-31-mc15) -----------------------------
 # Phase 2a–2e original engine methods widened to the public REST + MCP surface.
@@ -295,6 +305,19 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
         "label": "Depreciation — Audit (Prime Cost / Diminishing Value)",
         "supported_periods": [_DEPRECIATION_FY2026],
         "input_schema_ref": "#/components/schemas/DepreciationAuditInput",
+    },
+    # Phase D (mut-2026-08-24-mc20): Div7A_Engine gateway routing. Third
+    # calculator in the constellation; Div7A_Engine speaks native FastAPI
+    # (routed via PrologClient.div7a_at() using shared dispatch machinery).
+    # Rate values consumed by Div7A_Engine's bundled YAML mirror of Brain
+    # canon SBRM_RATE_TABLE (canon 600 § statutory triad + canon 610/620).
+    _DIV7A_AT_URI: {
+        "engine_method": "at",
+        "engine_benefit_category": "div7a_myr",
+        "jurisdiction": "AU",
+        "label": "Division 7A — MYR (ITAA 1936 §§109D/109E/109N)",
+        "supported_periods": [_DIV7A_FY2025, _DIV7A_FY2026],
+        "input_schema_ref": "#/components/schemas/Div7aAtInput",
     },
 }
 
@@ -645,6 +668,94 @@ _DEPRECIATION_RESPONSE_FIELDS = (
     "method",
     "audited_standard_assets",
 )
+
+
+# --- Phase D Div7A route (mut-2026-08-24-mc20) --------------------------------
+#
+# Sibling route to /calculators/depreciation/audit/{period_uri}. Div7A_Engine
+# speaks native FastAPI at /v1/calculators/div7a/at/{period_uri}; gateway
+# forwards payload verbatim via PrologClient.div7a_at() which uses the shared
+# dispatch() machinery for uniform transport-failure handling.
+#
+# Canon anchors: GLOBAL_NOTES/CALCULATORS/Div7A/{600,610,620} on Brain side.
+# Constellation topology: third live Cloud Run service (after fbt-engine +
+# depreciation-engine) reachable via DIV7A_ENGINE_URL env var.
+
+
+@router.post(
+    "/calculators/div7a/at/{period_uri}",
+    summary="Invoke the Div 7A MYR endpoint for the given URN-encoded period.",
+    description=(
+        "Phase D — onboards Div7A_Engine's `/v1/calculators/div7a/at/{period_uri}` "
+        "endpoint through the constellation gateway. Computes the §109E Minimum "
+        "Yearly Repayment for a single income year with canon 610 §1.2 first-year "
+        "gotcha correctly applied (n_remaining = original_term − 1 in first real "
+        "MYR year). Aggregates periodic repayments per canon 620 daily-balance "
+        "discipline. Returns statutory MYR, actual aggregated repayments, shortfall "
+        "amount (deemed unfranked dividend under §109E(1) if non-zero), and interest "
+        "accrued over the income year."
+    ),
+)
+async def invoke_div7a_at(
+    period_uri: Annotated[str, PathParam(description="URL-encoded period URN.")],
+    body: Div7aAtInput,
+    prolog: Annotated[PrologClient, Depends(get_prolog_client)],
+) -> dict:
+    period_uri_decoded = unquote(period_uri)
+
+    try:
+        validate_period_uri(period_uri_decoded)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+
+    meta = _CALCULATOR_REGISTRY.get(_DIV7A_AT_URI)
+    if meta is None:  # pragma: no cover — registry is module-level constant
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="div7a_at calculator missing from registry",
+        )
+    if period_uri_decoded not in meta["supported_periods"]:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"period_uri={period_uri_decoded!r} is not supported by the "
+                f"div7a calculator. Supported: {meta['supported_periods']}"
+            ),
+        )
+
+    payload: dict = body.model_dump(by_alias=False, exclude_none=True)
+
+    try:
+        engine_response = await prolog.div7a_at(period_uri_decoded, payload)
+    except PrologEngineUnavailable as exc:
+        # Map engine-transport failures to gateway HTTP status codes per
+        # Standing Rule #12 clause (e) — never bare 500.
+        status_code = (
+            status.HTTP_504_GATEWAY_TIMEOUT
+            if exc.error_code == "timeout"
+            else status.HTTP_502_BAD_GATEWAY
+        )
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "error": "div7a_engine_unavailable",
+                "error_code": exc.error_code,
+                "detail": exc.detail,
+                "engine": exc.engine,
+            },
+        ) from exc
+    except PrologCalculationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "div7a_calculation_error",
+                "detail": exc.detail,
+            },
+        ) from exc
+
+    return engine_response
 
 
 @router.post(

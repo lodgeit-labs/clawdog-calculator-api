@@ -270,6 +270,106 @@
         "title": "DepreciationAuditInput",
         "type": "object"
       },
+      "Div7aAtInput": {
+        "description": "Div 7A single-income-year MYR request payload.\n\nCanonical URN: ``urn:sbrm:calculator:div7a:at`` per constellation naming\nconvention (matches ``urn:sbrm:calculator:depreciation:audit`` + ``urn:sbrm:calculator:fbt:*``).\n\nField discipline:\n  - ``amalgamated_base``: \u00a7109E amalgamated loan base amount at start of year (AUD)\n  - ``loan_term_years``: \u00a7109N complying-loan term (7 unsecured / 25 secured)\n  - ``loan_origination_date``: date the loan was made (ISO or dd/mm/yyyy)\n  - ``income_year_start_date``: 1 July of the FY to compute (ISO or dd/mm/yyyy)\n  - ``is_first_real_myr_year``: optional; derived from origination/year if omitted\n  - ``repayments``: list; may be empty (canon 620 \u00a71.1 single-annual or multi)",
+        "properties": {
+          "amalgamated_base": {
+            "description": "\u00a7109E amalgamated loan base amount (AUD)",
+            "title": "Amalgamated Base",
+            "type": "number"
+          },
+          "income_year_start_date": {
+            "description": "Start of the income year to compute (ISO YYYY-MM-DD or AU dd/mm/yyyy). AU income year: 1 July \u2013 30 June.",
+            "title": "Income Year Start Date",
+            "type": "string"
+          },
+          "is_first_real_myr_year": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Override for canon 610 \u00a71.2 first-year gotcha. If omitted, engine derives from origination_date vs income_year_start_date.",
+            "title": "Is First Real Myr Year"
+          },
+          "loan_origination_date": {
+            "description": "Loan origination date (ISO YYYY-MM-DD or AU dd/mm/yyyy)",
+            "title": "Loan Origination Date",
+            "type": "string"
+          },
+          "loan_term_years": {
+            "description": "\u00a7109N loan term in years (7 unsecured / 25 secured)",
+            "title": "Loan Term Years",
+            "type": "integer"
+          },
+          "repayments": {
+            "description": "Repayment events; canon 620 daily-balance aggregation",
+            "items": {
+              "$ref": "#/components/schemas/Div7aRepaymentIn"
+            },
+            "title": "Repayments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "amalgamated_base",
+          "loan_term_years",
+          "loan_origination_date",
+          "income_year_start_date"
+        ],
+        "title": "Div7aAtInput",
+        "type": "object"
+      },
+      "Div7aRepaymentIn": {
+        "description": "A single repayment event.",
+        "properties": {
+          "allocation_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "unallocated",
+            "description": "interest_first | principal_first | unallocated",
+            "title": "Allocation Hint"
+          },
+          "amount": {
+            "description": "Repayment amount (AUD)",
+            "title": "Amount",
+            "type": "number"
+          },
+          "date": {
+            "description": "Repayment date (ISO YYYY-MM-DD or AU dd/mm/yyyy)",
+            "title": "Date",
+            "type": "string"
+          },
+          "loan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "default",
+            "description": "Loan identifier",
+            "title": "Loan Id"
+          }
+        },
+        "required": [
+          "amount",
+          "date"
+        ],
+        "title": "Div7aRepaymentIn",
+        "type": "object"
+      },
       "FBTBoardInput": {
         "additionalProperties": false,
         "description": "Input for Phase 2h Board Fringe Benefit (engine: ``calculate_fbt_board``).\n\nFBTAA s.36 (Compilation No. 95). Engine arithmetic at FBT_Engine.pl L2586.\nType 2 only. Sheet row 35 sheet-vs-statute divergence is parked under\nOT #94; the predicate is statute-faithful.",
@@ -1888,6 +1988,63 @@
           }
         },
         "summary": "Invoke the Depreciation Audit endpoint for the given URN-encoded period.",
+        "tags": [
+          "calculators"
+        ]
+      }
+    },
+    "/v1/calculators/div7a/at/{period_uri}": {
+      "post": {
+        "description": "Phase D \u2014 onboards Div7A_Engine's `/v1/calculators/div7a/at/{period_uri}` endpoint through the constellation gateway. Computes the \u00a7109E Minimum Yearly Repayment for a single income year with canon 610 \u00a71.2 first-year gotcha correctly applied (n_remaining = original_term \u2212 1 in first real MYR year). Aggregates periodic repayments per canon 620 daily-balance discipline. Returns statutory MYR, actual aggregated repayments, shortfall amount (deemed unfranked dividend under \u00a7109E(1) if non-zero), and interest accrued over the income year.",
+        "operationId": "invoke_div7a_at_v1_calculators_div7a_at__period_uri__post",
+        "parameters": [
+          {
+            "description": "URL-encoded period URN.",
+            "in": "path",
+            "name": "period_uri",
+            "required": true,
+            "schema": {
+              "description": "URL-encoded period URN.",
+              "title": "Period Uri",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Div7aAtInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Invoke Div7A At V1 Calculators Div7A At  Period Uri  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Invoke the Div 7A MYR endpoint for the given URN-encoded period.",
         "tags": [
           "calculators"
         ]

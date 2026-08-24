@@ -43,6 +43,7 @@ from typing import Any
 
 from api.routes.calculators import _CALCULATOR_REGISTRY
 from api.schemas.depreciation import DepreciationAuditInput
+from api.schemas.div7a import Div7aAtInput
 from api.schemas.invocation import (
     FBTBoardInput,
     FBTCarOperatingCostInput,
@@ -103,6 +104,8 @@ _CALC_INPUT_MODEL: dict[str, type[Any]] = {
     "urn:sbrm:calculator:fbt:meal-entertainment-register-12wk": FBTMealEntertainmentRegister12WkInput,
     "urn:sbrm:calculator:fbt:car-statutory-formula": FBTCarStatutoryFormulaInput,
     "urn:sbrm:calculator:depreciation:audit": DepreciationAuditInput,
+    # Phase D (mut-2026-08-24-mc20): Div7A_Engine gateway routing.
+    "urn:sbrm:calculator:div7a:at": Div7aAtInput,
 }
 
 

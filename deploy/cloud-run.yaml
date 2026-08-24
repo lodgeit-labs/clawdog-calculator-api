@@ -67,6 +67,15 @@ spec:
               # at pre-flight smoke; a regex placeholder-guard now fires at
               # pre-push (scripts/check_deploy_placeholders.py).
               value: "https://fbt-engine-8340695160.australia-southeast1.run.app"
+            - name: DIV7A_ENGINE_URL
+              # Phase D (mut-2026-08-24-mc20): Div7A_Engine gateway routing.
+              # Points at the live div7a-engine Cloud Run service (Phase B
+              # merge deployed 2026-08-23; Phase B.1 fix-forward 2026-08-24;
+              # constellation calculator #3). Follows the FBT_PROLOG_URL
+              # placeholder-guard pattern per Lesson #40; do NOT leave as
+              # placeholder — `scripts/check_deploy_placeholders.py` at
+              # pre-push catches regressions.
+              value: "https://div7a-engine-qkp3j5bjnq-ts.a.run.app"
             - name: LODGEIT_FBT_REPO
               # Points the manifest-fidelity helper at the bundled SBRM
               # rate-table tree shipped inside this image (see Dockerfile).
