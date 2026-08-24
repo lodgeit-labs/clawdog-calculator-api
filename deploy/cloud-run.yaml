@@ -76,6 +76,21 @@ spec:
               # placeholder — `scripts/check_deploy_placeholders.py` at
               # pre-push catches regressions.
               value: "https://div7a-engine-qkp3j5bjnq-ts.a.run.app"
+            - name: DEPRECIATION_PROLOG_URL
+              # Phase D.1.a (mut-2026-08-24-mc22): depreciation-engine
+              # gateway routing backfill. OT #83 #1 anchor: gateway's
+              # depreciation-audit route was previously undirected in
+              # production (api/prolog_client.py:93 falls back to
+              # DEFAULT_DEPRECIATION_URL=http://localhost:8082 which fails
+              # in-container). Non-fatal to date because no live consumer;
+              # backfilled now to prevent engine_unreachable regression when
+              # a consumer wires up. Points at the live depreciation-engine
+              # Cloud Run service (project-number form per USER.md rule 10;
+              # wire-verified LIVE 2026-08-24 mc22 via HTTP 200 on `/`).
+              # Follows the FBT_PROLOG_URL placeholder-guard pattern per
+              # Lesson #40 + USER.md rule 12 (cross-Egress env var
+              # injection is manual, not auto-discovered by Cloud Run).
+              value: "https://depreciation-engine-8340695160.australia-southeast1.run.app"
             - name: LODGEIT_FBT_REPO
               # Points the manifest-fidelity helper at the bundled SBRM
               # rate-table tree shipped inside this image (see Dockerfile).
