@@ -80,7 +80,14 @@ def test_div7a_at_route_registered(client: TestClient) -> None:
 
 
 def test_div7a_at_forwards_engine_response(client: TestClient) -> None:
-    """Engine response is passed through byte-faithfully."""
+    """Engine response fields are passed through byte-faithfully.
+
+    Post-mc35-2026-08-28: the gateway now wraps the engine response with a
+    manifest (rate_table_uris + content_hash) and advisory block matching the
+    FBT+depreciation self-declaration shape. The engine's own fields must
+    still appear byte-faithfully in the response; the added envelope is
+    additive, not a rewrite.
+    """
     with patch(
         "api.routes.calculators.PrologClient.div7a_at",
         new_callable=AsyncMock,
@@ -92,9 +99,24 @@ def test_div7a_at_forwards_engine_response(client: TestClient) -> None:
         )
     assert resp.status_code == 200
     body = resp.json()
-    assert body == CANONICAL_ENGINE_RESPONSE, (
-        f"gateway must not rewrite engine response; got diff. Body: {body}"
+    # Engine's own fields survive verbatim.
+    for key, val in CANONICAL_ENGINE_RESPONSE.items():
+        assert body.get(key) == val, (
+            f"gateway must not rewrite engine field {key!r}; "
+            f"expected {val!r} got {body.get(key)!r}"
+        )
+    # Manifest block is added by the gateway wrap.
+    assert "manifest" in body, "gateway must add manifest block (mc35)"
+    manifest_uris = body["manifest"].get("rate_table_uris", [])
+    assert len(manifest_uris) >= 1, (
+        "manifest must cite ≥ 1 rate URI (benchmark-interest fallback)"
     )
+    for entry in manifest_uris:
+        assert entry.get("content_hash"), "each rate URI must carry content_hash"
+        assert entry.get("hash_algorithm") == "sha256"
+    # Advisory block added by wrap_response.
+    assert "advisory" in body, "gateway must add advisory block (mc35)"
+    assert body["advisory"].get("jurisdiction") == "AU"
 
 
 def test_div7a_at_rejects_malformed_input(client: TestClient) -> None:
