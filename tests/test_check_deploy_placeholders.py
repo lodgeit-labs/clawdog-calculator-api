@@ -23,7 +23,6 @@ SCRIPT_PATH = REPO_ROOT / "scripts" / "check_deploy_placeholders.py"
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 import check_deploy_placeholders as guard  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Unit tests: _parse_set_env_vars_names
 # ---------------------------------------------------------------------------

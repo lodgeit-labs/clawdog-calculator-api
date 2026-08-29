@@ -36,7 +36,6 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # Gateway-scoped basis literals per Fable rider 1: engine's five-literal
 # vocabulary narrowed to AU-only. `uk_frs102_s17` refused at the pydantic
 # layer so the gateway wire self-describes as AU-jurisdiction consistently.
