@@ -700,6 +700,16 @@ async def invoke_div7a_at(
     period_uri: Annotated[str, PathParam(description="URL-encoded period URN.")],
     body: Div7aAtInput,
     prolog: Annotated[PrologClient, Depends(get_prolog_client)],
+    taxonomy: Annotated[
+        str,
+        Query(
+            description=(
+                "Bare-atom taxonomy axis value per CLAWDOG/111 §2. "
+                "Ratified set: lodgeit_au_sbrm | hoffman_base. "
+                "At Phase D only lodgeit_au_sbrm is populated for div7a."
+            ),
+        ),
+    ] = DEFAULT_TAXONOMY,
 ) -> dict:
     period_uri_decoded = unquote(period_uri)
 
@@ -709,6 +719,15 @@ async def invoke_div7a_at(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
+
+    if taxonomy not in RATIFIED_TAXONOMIES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"taxonomy={taxonomy!r} is not in the ratified set "
+                f"{sorted(RATIFIED_TAXONOMIES)} per CLAWDOG/111 §2."
+            ),
+        )
 
     meta = _CALCULATOR_REGISTRY.get(_DIV7A_AT_URI)
     if meta is None:  # pragma: no cover — registry is module-level constant
@@ -755,7 +774,49 @@ async def invoke_div7a_at(
             },
         ) from exc
 
-    return engine_response
+    # --- mc35-2026-08-28 manifest+advisory wrap (mirror of
+    # invoke_depreciation_audit pattern lines 875-906).
+    #
+    # Prior state: this route did `return engine_response` — pass-through
+    # only, no manifest, no advisory. Div7A partial-failed Andrew-b in the
+    # mc34 constellation determinism sweep (correct math, no citation of
+    # rate artefact). This wrap closes the gap so the Div7A response matches
+    # the FBT+depreciation self-declaration shape:
+    #
+    #     response.manifest.rate_table_uris[].content_hash
+    #     response.advisory.disclaimer/statutory_basis
+    #
+    # The engine SHOULD emit `rate_uris_consumed` in its response (like FBT
+    # and depreciation do); the sibling engine PR at Div7A_Engine wires that.
+    # Pending that PR landing + redeploy, we fall back to pinning the
+    # benchmark-interest URI as the load-bearing manifest entry (matching
+    # the depreciation pattern at line 883-885).
+    rate_uris: list[str] = engine_response.get("rate_uris_consumed") or [
+        f"urn:sbrm:rate:div7a:{period_uri_decoded.split(':')[-1]}:benchmark-interest"
+    ]
+    rate_table_root = _rate_table_root_for(period_uri_decoded, taxonomy)
+    try:
+        manifest = build_manifest(rate_uris, rate_table_root)
+    except (FileNotFoundError, OSError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": "manifest_rate_table_unavailable",
+                "detail": (
+                    f"failed to build manifest for {len(rate_uris)} rate URI(s) "
+                    f"against root={rate_table_root!s}: {exc.__class__.__name__}: {exc}"
+                ),
+                "rate_uris": rate_uris,
+                "rate_table_root": str(rate_table_root),
+            },
+        ) from exc
+
+    response_payload = wrap_response(
+        {**engine_response, "manifest": manifest},
+        jurisdiction=meta["jurisdiction"],
+    )
+
+    return response_payload
 
 
 @router.post(

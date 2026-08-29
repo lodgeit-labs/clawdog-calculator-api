@@ -2008,6 +2008,18 @@
               "title": "Period Uri",
               "type": "string"
             }
+          },
+          {
+            "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. At Phase D only lodgeit_au_sbrm is populated for div7a.",
+            "in": "query",
+            "name": "taxonomy",
+            "required": false,
+            "schema": {
+              "default": "lodgeit_au_sbrm",
+              "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. At Phase D only lodgeit_au_sbrm is populated for div7a.",
+              "title": "Taxonomy",
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
