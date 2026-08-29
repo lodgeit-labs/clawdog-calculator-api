@@ -70,37 +70,94 @@ jobs:
           gcloud auth list
           gcloud config list
 
+      # mc40-2026-08-29 Andrew follow-up 1: pre-deploy live-env-var-set delta
+      # check. Reads the current live revision's env-var names and asserts
+      # every one is present in deploy/env_vars.json. Catches the class of
+      # failure "--set-env-vars declaration would silently drop names the
+      # live service currently carries" — the exact blind spot Andrew
+      # identified in the mc39.1 guard (a post-deploy assertion that reads
+      # its expected set from the same document as the --set-env-vars
+      # declaration is not mechanical; matched-drift passes both gates).
+      #
+      # The pre-deploy check reads the LIVE service, which is state
+      # independent of any document in this repo, so matched-drift cannot
+      # exist. If a name lives on the service that we're about to drop, this
+      # step fails BEFORE the deploy fires — no wipe, no rollback needed.
+      #
+      # On first-ever deploy (no live revision yet), gcloud run services
+      # describe exits non-zero with `NotFound`; the step handles that
+      # gracefully and passes (nothing to compare against).
+      #
+      # Bypass: CLAWDOG_ENVVAR_SET_GUARD_DISABLE=1 skips this check but
+      # emits a loud ::warning:: annotation per Andrew follow-up 2 — a
+      # binary-failure gate with a silent bypass is not binary.
+      - name: Pre-deploy live env-var-set delta check
+        id: pre_deploy_envvar_check
+        run: |
+          set -o pipefail
+          if [ "${CLAWDOG_ENVVAR_SET_GUARD_DISABLE:-0}" = "1" ]; then
+            echo "::warning title=🚨 env-var-set guard BYPASSED::CLAWDOG_ENVVAR_SET_GUARD_DISABLE=1 is set; pre-deploy live env-var-set delta check SKIPPED. A silent bypass on a binary-failure gate is not binary — the workflow logs this loudly per mc40-2026-08-29 Andrew follow-up 2 so any bypass leaves a mechanical audit trail. Post-deploy assertion still fires."
+            echo "🟡 BYPASSED (loud): pre-deploy live env-var-set delta check skipped by env-var flag; see workflow ::warning:: above."
+            exit 0
+          fi
+          declared=$(python3 -c "import json; print('\n'.join(sorted(json.load(open('deploy/env_vars.json'))['env'].keys())))")
+          live=$(gcloud run services describe "$SERVICE" \
+            --region="$GCP_REGION" \
+            --project="$GCP_PROJECT" \
+            --format='value(spec.template.spec.containers[0].env[].name)' \
+            2>/dev/null | tr ';' '\n' | sort -u | grep -v '^$' || echo "")
+          if [ -z "$live" ]; then
+            echo "🟢 First-ever deploy or service not found; no live env-vars to compare. Proceeding."
+            exit 0
+          fi
+          would_drop=()
+          while IFS= read -r name; do
+            if [ -n "$name" ] && ! grep -q -x "$name" <<<"$declared"; then
+              would_drop+=("$name")
+            fi
+          done <<< "$live"
+          if [ ${#would_drop[@]} -gt 0 ]; then
+            echo "::error title=🔴 pre-deploy env-var-set delta check FAILED::deploy would DROP live env-var(s): ${would_drop[*]}. Root cause: --set-env-vars REPLACES the entire env-var set; deploy/env_vars.json does not declare the above name(s) but the live service currently carries them. Fix: add the missing name(s) to deploy/env_vars.json before this deploy fires."
+            echo ""
+            echo "Declared in deploy/env_vars.json:"
+            echo "$declared" | sed 's/^/  /'
+            echo ""
+            echo "Live on service:"
+            echo "$live" | sed 's/^/  /'
+            echo ""
+            echo "Would-be-dropped by this deploy:"
+            printf '  %s\n' "${would_drop[@]}"
+            exit 1
+          fi
+          echo "🟢 PASS: live env-var-set is a subset of declared set; no names would be dropped by this deploy."
+
       - name: Deploy to Cloud Run
         id: deploy
         run: |
           set -o pipefail
           # mc39-2026-08-29 rung 5.5 (Fable verdict amendment 2 §A2.8 folded
-          # rung 5.5) + mc39.1-2026-08-29 block-clear correction: declarative
-          # env-vars at deploy time. Prior state was `gcloud run deploy
-          # --source .` with all engine URL env-vars set out-of-band via
-          # `gcloud run services update --set-env-vars=...`; any deploy that
-          # dropped them would silently break Andrew-a on all three calc
-          # engines (mc37 Fable brief §5 layer 4 latent bomb).
+          # rung 5.5) + mc39.1-2026-08-29 block-clear correction + mc40-
+          # 2026-08-29 Andrew follow-up 1: declarative env-vars at deploy
+          # time, sourced from deploy/env_vars.json as the ONE canonical
+          # manifest. Prior state was `gcloud run deploy --source .` with
+          # all engine URL env-vars set out-of-band via `gcloud run
+          # services update --set-env-vars=...`; any deploy that dropped
+          # them would silently break Andrew-a (mc37 Fable brief §5 layer 4
+          # latent bomb).
           #
-          # `--set-env-vars` on `gcloud run deploy` REPLACES the entire env-var
-          # set on the new revision; safest posture is to declare EVERY env-var
-          # this service needs at deploy time so no drift is possible. Andrew
-          # wire-verified the live gateway 2026-08-29 15:12 UTC carries SIX
-          # env-vars; declaring only the four engine-URL + repo values (mc39
-          # initial ship) would silently drop LANG + LC_ALL and the service
-          # would come up in default locale.
-          #
-          # If a seventh env-var lands on the live service without being
-          # added here, the next merge to main will silently drop it. The
-          # gate wired at rung 3 of the assertion step below (env-var-set
-          # presence check) is the load-bearing forward-defence perimeter.
+          # `--set-env-vars` REPLACES the entire env-var set on the new
+          # revision. The pre-deploy live-set delta check above catches any
+          # would-be silent drop mechanically (matched-drift blind spot
+          # per mc40 Andrew follow-up 1: cross-checking two documents that
+          # can both be wrong the same way is not a guard).
+          set_env_vars=$(python3 -c "import json; d = json.load(open('deploy/env_vars.json'))['env']; print('^|^' + '|'.join(f'{k}={v}' for k, v in d.items()))")
           gcloud run deploy "$SERVICE" \
             --source . \
             --region "$GCP_REGION" \
             --project "$GCP_PROJECT" \
             --platform managed \
             --allow-unauthenticated \
-            --set-env-vars="^|^FBT_PROLOG_URL=https://fbt-engine-8340695160.australia-southeast1.run.app|DIV7A_ENGINE_URL=https://div7a-engine-8340695160.australia-southeast1.run.app|DEPRECIATION_PROLOG_URL=https://depreciation-engine-8340695160.australia-southeast1.run.app|LODGEIT_FBT_REPO=/app|LANG=en_AU.UTF-8|LC_ALL=en_AU.UTF-8" \
+            --set-env-vars="$set_env_vars" \
             --quiet 2>&1 | tee deploy.log
           echo "Deploy complete. New revision:"
           gcloud run revisions list \
@@ -109,28 +166,17 @@ jobs:
             --limit 3 \
             --format='table(metadata.name,metadata.creationTimestamp.date(),status.conditions[0].status)'
 
-      # mc39.1-2026-08-29 block-clear: env-var-set presence assertion.
-      # Fable verdict amendment 2 §A2.8 rung 5.5 asked for the assertion
-      # gate to include env-var presence, not only route reachability.
-      # `--set-env-vars` REPLACES the env-var set; a partial declaration
-      # silently drops missing entries with no wire-observable failure until
-      # a caller trips over the absent locale / URL / helper var. This step
-      # reads the live revision's env-var set and asserts every expected
-      # name is present. Adding a new env-var to the live service requires
-      # updating BOTH the Deploy step above AND this expected list; the
-      # coupling is intentional — it makes drift mechanically caught.
+      # mc39.1-2026-08-29 block-clear: post-deploy env-var-set presence
+      # assertion. Reads deploy/env_vars.json for the expected set and
+      # asserts each is present on the freshly-deployed revision. Defence-
+      # in-depth alongside the mc40 pre-deploy check: pre-deploy catches
+      # would-be silent drops BEFORE the wipe; post-deploy confirms the
+      # deploy landed the set intended.
       - name: Post-deploy env-var-set presence assertion
         id: envvar_check
         run: |
           set -o pipefail
-          expected=(
-            FBT_PROLOG_URL
-            DIV7A_ENGINE_URL
-            DEPRECIATION_PROLOG_URL
-            LODGEIT_FBT_REPO
-            LANG
-            LC_ALL
-          )
+          mapfile -t expected < <(python3 -c "import json; print('\n'.join(sorted(json.load(open('deploy/env_vars.json'))['env'].keys())))")
           actual=$(gcloud run services describe "$SERVICE" \
             --region="$GCP_REGION" \
             --project="$GCP_PROJECT" \
@@ -144,11 +190,8 @@ jobs:
           done
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::🔴 env-var-set drift on freshly-deployed revision."
-            echo "::error::Expected env-vars declared in deploy.yml --set-env-vars"
-            echo "::error::are missing from the live service. Missing: ${missing[*]}"
-            echo "::error::Root cause: --set-env-vars REPLACES the entire env-var set;"
-            echo "::error::the Deploy step's --set-env-vars must declare every env-var"
-            echo "::error::the service needs, or the missing entries silently drop."
+            echo "::error::Expected env-vars from deploy/env_vars.json missing."
+            echo "::error::Missing: ${missing[*]}"
             echo ""
             echo "Actual env-vars present on live revision:"
             echo "$actual" | sed 's/^/  /'

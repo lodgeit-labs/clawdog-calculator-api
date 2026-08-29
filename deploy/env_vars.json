@@ -1,0 +1,14 @@
+{
+  "_public_repo_warning": "SECURITY: lodgeit-labs/clawdog-calculator-api is a PUBLIC repository. Every value in this file is world-readable. NEVER paste an API key, password, OAuth secret, PAT, database URL with credentials, or any other secret into this file. Secrets are bound at deploy time via Secret Manager and `--set-secrets=\"ENV_VAR=secret-name:version\"` \u2014 not here. If you need a new secret env-var, add it to the Deploy step in .github/workflows/deploy.yml as a `--set-secrets` argument, and create the underlying Secret Manager entry via `gcloud secrets create`. This file is exclusively for non-secret configuration (endpoint URLs of sibling public services, locale codes, feature flags, non-authenticated paths). If in doubt, treat it as secret and use Secret Manager.",
+  "_comment": "Canonical env-var manifest for the fbt-calculator-api Cloud Run service. Consumed by three sites in .github/workflows/deploy.yml (pre-deploy live-set check + Deploy step --set-env-vars + post-deploy presence assertion) and by scripts/check_deploy_placeholders.py which scans it as the single source of truth. All three consumers read from this file so a matched-drift blind spot cannot exist (mc40-2026-08-29 Andrew follow-up 1: cross-checking two documents that can both be wrong the same way is not a mechanical guard).",
+  "_provenance": "mc39.1-2026-08-29 initial declaration (6 vars, wire-verified by Andrew via `gcloud run services describe fbt-calculator-api ...` 15:12 UTC). mc40-2026-08-29 promoted to canonical JSON manifest.",
+  "_discipline": "Adding, removing, or renaming an entry MUST land here and NOWHERE ELSE. The pre-deploy live-set delta check (deploy.yml step 'Pre-deploy live env-var-set delta check') fires if the live service carries a name not declared here — mechanical detection of a would-be silent drop. To temporarily bypass the pre-deploy check on legitimate migrations (rare), set CLAWDOG_ENVVAR_SET_GUARD_DISABLE=1 in the workflow env; the bypass emits a loud ::warning:: annotation into the CI log per mc40 Andrew follow-up 2.",
+  "env": {
+    "FBT_PROLOG_URL": "https://fbt-engine-8340695160.australia-southeast1.run.app",
+    "DIV7A_ENGINE_URL": "https://div7a-engine-8340695160.australia-southeast1.run.app",
+    "DEPRECIATION_PROLOG_URL": "https://depreciation-engine-8340695160.australia-southeast1.run.app",
+    "LODGEIT_FBT_REPO": "/app",
+    "LANG": "en_AU.UTF-8",
+    "LC_ALL": "en_AU.UTF-8"
+  }
+}
