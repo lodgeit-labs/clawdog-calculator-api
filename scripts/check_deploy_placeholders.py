@@ -214,67 +214,21 @@ def _resolve_targets(argv: list[str]) -> list[Path]:
 # lists live in the same file precisely so dropping a name from either
 # fires the gate.
 
-# Match `--set-env-vars="..."` with an optional `^delimiter^` prefix per
-# gcloud CSV-list escape syntax. Group 1 captures the payload between the
-# double-quotes.
-_SET_ENV_VARS_RE = re.compile(r'--set-env-vars="([^"]+)"')
-
-# Match `expected=(` block (bash array literal) and capture through the
-# closing `)`. Non-greedy across newlines.
-_EXPECTED_ARRAY_RE = re.compile(
-    r"expected=\(\s*([\s\S]*?)\s*\)", re.MULTILINE
-)
-
-# Match bash array elements (whitespace-separated identifiers on their own
-# lines within the array literal). Excludes commented-out lines.
-_EXPECTED_ELEMENT_RE = re.compile(r"^\s*([A-Z_][A-Z0-9_]*)\s*$", re.MULTILINE)
-
-
-def _parse_set_env_vars_names(payload: str) -> list[str]:
-    """Extract env-var NAMEs from a `--set-env-vars=` payload string.
-
-    Supports both `^delimiter^` and default `,` delimiter forms per gcloud
-    CSV-list escape syntax. Payload shape:
-
-        default:      "NAME1=VALUE1,NAME2=VALUE2"
-        alt-delim:    "^|^NAME1=VALUE1|NAME2=VALUE2"  (delim `|` here)
-    """
-    payload = payload.strip()
-    if payload.startswith("^") and payload[2:3] == "^":
-        delim = payload[1]
-        payload = payload[3:]
-    else:
-        delim = ","
-    names: list[str] = []
-    for pair in payload.split(delim):
-        pair = pair.strip()
-        if not pair or "=" not in pair:
-            continue
-        name = pair.split("=", 1)[0].strip()
-        if name:
-            names.append(name)
-    return names
-
-
-def _extract_expected_names(text: str) -> list[str] | None:
-    """Extract the canonical env-var-set names from the workflow's
-    `expected=(...)` bash array.
-
-    Returns None if no expected-array is present (workflow doesn't declare
-    the assertion; env-var-set scan skips the file).
-    Returns [] if array is present but empty (a real defect).
-    """
-    m = _EXPECTED_ARRAY_RE.search(text)
-    if m is None:
-        return None
-    array_body = m.group(1)
-    return _EXPECTED_ELEMENT_RE.findall(array_body)
-
-
 # Match `--set-env-vars="NAME=value,..."` where the value is a hard-coded
 # literal (not `"$var"` templating). The pattern deliberately excludes bash
 # variable substitution forms so mc40's `--set-env-vars="$set_env_vars"`
 # construction (reading from deploy/env_vars.json) does NOT trip the gate.
+#
+# mc40 Andrew follow-up 4: the mc39.1-era regex constants and helper
+# functions (`_SET_ENV_VARS_RE`, `_EXPECTED_ARRAY_RE`, `_EXPECTED_ELEMENT_RE`,
+# `_parse_set_env_vars_names`, `_extract_expected_names`) that parsed
+# `--set-env-vars=` payloads and cross-checked them against `expected=()`
+# bash arrays were deleted here. The mc40 canonical-manifest discipline
+# reduces the workflow-YAML guard to a single check (no hard-coded
+# `--set-env-vars`); those parsers had no live consumer after the mc40
+# rewrite. Keeping dead code alive because tests cover it is how dead
+# code survives — the next reader assumes it's live. Deleted along with
+# the tests that exercised only the dead helpers.
 _HARDCODED_SET_ENV_VARS_RE = re.compile(
     r'--set-env-vars="(?!\$)(?![^"]*\$\{)([^"]*=[^"]*)"'
 )

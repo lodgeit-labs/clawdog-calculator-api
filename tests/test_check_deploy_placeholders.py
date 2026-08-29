@@ -29,36 +29,15 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 import check_deploy_placeholders as guard  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# Unit tests: _parse_set_env_vars_names (retained from mc39.1 for the
-# regex-parse contract; the ban on hard-coded --set-env-vars in workflow YAML
-# consumes this parse indirectly to detect the pattern shape)
-# ---------------------------------------------------------------------------
-
-
-def test_parse_default_delimiter_comma():
-    """Default gcloud CSV form: comma-delimited NAME=VALUE pairs."""
-    payload = "A=1,B=2,C=3"
-    assert guard._parse_set_env_vars_names(payload) == ["A", "B", "C"]
-
-
-def test_parse_alt_delimiter_pipe():
-    """`^|^` alt-delimiter form for embedding literal commas in values."""
-    payload = "^|^A=https://a.example|B=b,with,commas|C=/app"
-    assert guard._parse_set_env_vars_names(payload) == ["A", "B", "C"]
-
-
-def test_parse_skips_malformed_entries():
-    """Entries without `=` are silently skipped (not our failure to catch)."""
-    payload = "A=1,MALFORMED,B=2"
-    assert guard._parse_set_env_vars_names(payload) == ["A", "B"]
-
-
-def test_parse_empty_payload_yields_empty_list():
-    assert guard._parse_set_env_vars_names("") == []
-
-
-# ---------------------------------------------------------------------------
 # Unit tests: hard-coded --set-env-vars detection (mc40 shape)
+#
+# mc40 Andrew follow-up 4: the mc39.1-era parse-contract tests
+# (test_parse_default_delimiter_comma, test_parse_alt_delimiter_pipe,
+# test_parse_skips_malformed_entries, test_parse_empty_payload_yields_empty_list)
+# were deleted here alongside the helpers they exercised. The mc40
+# canonical-manifest discipline reduces the workflow-YAML guard to a
+# single check (no hard-coded --set-env-vars); the parsers had no live
+# consumer after the mc40 rewrite.
 # ---------------------------------------------------------------------------
 
 
