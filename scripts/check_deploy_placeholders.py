@@ -1,18 +1,42 @@
 #!/usr/bin/env python3
 """
-scripts/check_deploy_placeholders.py — deploy-YAML placeholder guard
+scripts/check_deploy_placeholders.py — deploy-YAML placeholder + env-var-set
+completeness guard
 
-Mechanical enforcement of the mc16-2026-05-25 watch-pattern:
+**Class-of-failure the gate defends against: SILENT ENV-VAR REPLACEMENT.**
 
-    `gcloud run services replace` is declarative. A placeholder env value in
-    `deploy/*.yaml` (e.g. "https://fbt-engine-XXXX-an.a.run.app") will
-    SILENTLY CLOBBER any working out-of-band `--set-env-vars` override that
-    has been keeping production alive, taking the route to HTTP 500 with no
-    deploy-time warning.
+Two instances of the class today:
 
-This script scans `deploy/*.yaml` (configurable) for known placeholder
-patterns and exits non-zero if any are present. Wired into `pre-push` and
-intended to also fire in CI before any `services replace` step.
+1. `gcloud run services replace` (mc16-2026-05-25 anchor):
+    A placeholder env value in `deploy/*.yaml` (e.g. "https://fbt-engine-XXXX-
+    an.a.run.app") will SILENTLY CLOBBER any working out-of-band `--set-env-
+    vars` override that has been keeping production alive, taking the route
+    to HTTP 500 with no deploy-time warning.
+
+2. `gcloud run deploy --set-env-vars=...` (mc39.1-2026-08-29 anchor):
+    `--set-env-vars` REPLACES the entire env-var set on the new revision.
+    A partial declaration (e.g. "FBT_PROLOG_URL=...|DEPRECIATION_PROLOG_URL=
+    ..." omitting LANG + LC_ALL) silently drops the missing names with no
+    wire-observable failure until a caller trips over the absent locale /
+    URL / helper var. Andrew wire-verified this drift class on mc39 PR #27
+    2026-08-29 15:12 UTC: the initial `--set-env-vars` declared four vars
+    when the live service carries six.
+
+Both failures share the shape *"a partial declaration silently wins over a
+working out-of-band override."* This script catches both.
+
+On the placeholder path (deploy/*.yaml scan): finds placeholder literals in
+declared env values and exits non-zero. Configurable target.
+
+On the env-var-set path (.github/workflows/*.yml scan): finds
+`--set-env-vars` occurrences in workflow YAML and cross-checks the declared
+name set against a canonical required-set. The required-set is DERIVED from
+the same workflow file's post-deploy env-var-set presence assertion step
+(the `expected=(...)` bash array); bidirectional coupling means dropping a
+name from either declaration site fires the gate.
+
+Wired into `pre-push` and intended to also fire in CI before any
+`services replace` step or `run deploy --set-env-vars` step.
 
 Mode-B exit-code contract (mirroring Standing Rule #8):
 
@@ -28,8 +52,13 @@ line. The reason must be non-empty (empty / whitespace-only fails the gate).
 This mirrors the secret-scanner allowlist shape on the Brain side.
 
 Usage:
-    python3 scripts/check_deploy_placeholders.py           # default: deploy/
+    python3 scripts/check_deploy_placeholders.py           # default: deploy/ + .github/workflows/
     python3 scripts/check_deploy_placeholders.py path/...  # override targets
+
+Environment:
+    CLAWDOG_PLACEHOLDER_GUARD_VERBOSE=1   emit 🟢 CLEAN detail on pass
+    CLAWDOG_ENVVAR_SET_GUARD_DISABLE=1    disable the env-var-set check only
+                                          (placeholder check still fires)
 
 The script is dependency-free (stdlib re + pathlib + sys + os) and POSIX-
 shell-friendly for git hook invocation.
@@ -121,18 +150,26 @@ def _scan_file(path: Path) -> list[tuple[int, str, str]]:
 
 
 def _resolve_targets(argv: list[str]) -> list[Path]:
-    """Resolve CLI args (or default `deploy/`) to a flat list of YAML files."""
+    """Resolve CLI args (or default `deploy/` + `.github/workflows/`) to a
+    flat list of YAML files."""
     if argv:
         raw_targets = [Path(p) for p in argv]
     else:
-        raw_targets = [Path("deploy")]
+        # Default: deploy/ (placeholder scan) + .github/workflows/ (env-var-set
+        # completeness scan). Both live behind the same class-of-failure gate.
+        raw_targets = [Path("deploy"), Path(".github/workflows")]
 
     yamls: list[Path] = []
     for target in raw_targets:
         if not target.exists():
-            raise SystemExit(
-                f"🟡 INFRA BROKEN: target does not exist: {target}"
-            )
+            # Missing target is not fatal at the default-scan level (repo may
+            # legitimately have no deploy/ yet at Phase 0). Only raise if the
+            # user explicitly listed it.
+            if argv:
+                raise SystemExit(
+                    f"🟡 INFRA BROKEN: target does not exist: {target}"
+                )
+            continue
         if target.is_file():
             yamls.append(target)
             continue
@@ -144,6 +181,139 @@ def _resolve_targets(argv: list[str]) -> list[Path]:
             f"🟡 INFRA BROKEN: target is neither file nor directory: {target}"
         )
     return sorted(set(yamls))
+
+
+# ---------------------------------------------------------------------------
+# env-var-set completeness scan (mc39.1-2026-08-29 addition)
+# ---------------------------------------------------------------------------
+# The scan looks for `--set-env-vars=` occurrences in workflow YAML and
+# cross-checks the declared name set against a canonical required-set. The
+# required-set is DERIVED from the same workflow file's `expected=(...)`
+# bash array in the post-deploy env-var-set presence assertion step. Both
+# lists live in the same file precisely so dropping a name from either
+# fires the gate.
+
+# Match `--set-env-vars="..."` with an optional `^delimiter^` prefix per
+# gcloud CSV-list escape syntax. Group 1 captures the payload between the
+# double-quotes.
+_SET_ENV_VARS_RE = re.compile(r'--set-env-vars="([^"]+)"')
+
+# Match `expected=(` block (bash array literal) and capture through the
+# closing `)`. Non-greedy across newlines.
+_EXPECTED_ARRAY_RE = re.compile(
+    r"expected=\(\s*([\s\S]*?)\s*\)", re.MULTILINE
+)
+
+# Match bash array elements (whitespace-separated identifiers on their own
+# lines within the array literal). Excludes commented-out lines.
+_EXPECTED_ELEMENT_RE = re.compile(r"^\s*([A-Z_][A-Z0-9_]*)\s*$", re.MULTILINE)
+
+
+def _parse_set_env_vars_names(payload: str) -> list[str]:
+    """Extract env-var NAMEs from a `--set-env-vars=` payload string.
+
+    Supports both `^delimiter^` and default `,` delimiter forms per gcloud
+    CSV-list escape syntax. Payload shape:
+
+        default:      "NAME1=VALUE1,NAME2=VALUE2"
+        alt-delim:    "^|^NAME1=VALUE1|NAME2=VALUE2"  (delim `|` here)
+    """
+    payload = payload.strip()
+    if payload.startswith("^") and payload[2:3] == "^":
+        delim = payload[1]
+        payload = payload[3:]
+    else:
+        delim = ","
+    names: list[str] = []
+    for pair in payload.split(delim):
+        pair = pair.strip()
+        if not pair or "=" not in pair:
+            continue
+        name = pair.split("=", 1)[0].strip()
+        if name:
+            names.append(name)
+    return names
+
+
+def _extract_expected_names(text: str) -> list[str] | None:
+    """Extract the canonical env-var-set names from the workflow's
+    `expected=(...)` bash array.
+
+    Returns None if no expected-array is present (workflow doesn't declare
+    the assertion; env-var-set scan skips the file).
+    Returns [] if array is present but empty (a real defect).
+    """
+    m = _EXPECTED_ARRAY_RE.search(text)
+    if m is None:
+        return None
+    array_body = m.group(1)
+    return _EXPECTED_ELEMENT_RE.findall(array_body)
+
+
+def _scan_envvar_set_completeness(
+    path: Path,
+) -> list[tuple[int, str, str]]:
+    """Return env-var-set completeness findings for a single file.
+
+    Each finding is (line_number, label, raw_line_or_diagnostic).
+    Empty list = file is clean (or file has no --set-env-vars in it).
+    """
+    if os.environ.get("CLAWDOG_ENVVAR_SET_GUARD_DISABLE"):
+        return []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        # Placeholder scan will already have raised on the same file.
+        return []
+    if "--set-env-vars=" not in text:
+        return []  # File doesn't participate in env-var-set replacement.
+
+    expected = _extract_expected_names(text)
+    if expected is None:
+        # File has --set-env-vars but no canonical expected-set to cross-check
+        # against. This is itself a defect: the assertion step is required to
+        # be co-located with the --set-env-vars step. Report drift.
+        findings: list[tuple[int, str, str]] = []
+        lines = text.splitlines()
+        for idx, line in enumerate(lines):
+            if "--set-env-vars=" in line:
+                findings.append((
+                    idx + 1,
+                    "--set-env-vars without co-located canonical expected=() assertion",
+                    line.strip(),
+                ))
+        return findings
+
+    findings = []
+    lines = text.splitlines()
+    for idx, line in enumerate(lines):
+        m = _SET_ENV_VARS_RE.search(line)
+        if m is None:
+            continue
+        declared = set(_parse_set_env_vars_names(m.group(1)))
+        expected_set = set(expected)
+        missing_in_declaration = expected_set - declared
+        missing_in_expected = declared - expected_set
+        if missing_in_declaration:
+            findings.append((
+                idx + 1,
+                (
+                    f"env-var-set drift: --set-env-vars omits "
+                    f"expected name(s): {sorted(missing_in_declaration)}"
+                ),
+                line.strip(),
+            ))
+        if missing_in_expected:
+            findings.append((
+                idx + 1,
+                (
+                    f"env-var-set drift: --set-env-vars declares name(s) "
+                    f"not in the expected=() assertion: "
+                    f"{sorted(missing_in_expected)}"
+                ),
+                line.strip(),
+            ))
+    return findings
 
 
 def main(argv: list[str]) -> int:
@@ -173,6 +343,8 @@ def main(argv: list[str]) -> int:
     for path in targets:
         for lineno, label, raw in _scan_file(path):
             all_findings.append((path, lineno, label, raw))
+        for lineno, label, raw in _scan_envvar_set_completeness(path):
+            all_findings.append((path, lineno, label, raw))
 
     if not all_findings:
         if os.environ.get("CLAWDOG_PLACEHOLDER_GUARD_VERBOSE"):
@@ -188,12 +360,22 @@ def main(argv: list[str]) -> int:
         print(f"      {raw.strip()}", file=sys.stderr)
     print("", file=sys.stderr)
     print(
-        "Fix: replace the placeholder with the production value, OR add an\n"
-        "explicit allow marker on (or above) the line:\n"
+        "Fix (placeholder path): replace the placeholder with the production\n"
+        "value, OR add an explicit allow marker on (or above) the line:\n"
         "    <!-- deploy-placeholder-allow: <non-empty reason> -->\n"
         "Why this gate exists: see mc16-2026-05-25 — placeholder env values\n"
         "in `deploy/*.yaml` are silently honoured by `gcloud run services\n"
-        "replace`, clobbering any working out-of-band --set-env-vars override.",
+        "replace`, clobbering any working out-of-band --set-env-vars override.\n"
+        "\n"
+        "Fix (env-var-set path): update the workflow's `--set-env-vars=` line\n"
+        "AND its co-located `expected=(...)` bash array so they declare the\n"
+        "same set of env-var names. Both lists are coupled by design so\n"
+        "dropping a name from either fires the gate. To temporarily disable\n"
+        "the env-var-set check only, set CLAWDOG_ENVVAR_SET_GUARD_DISABLE=1;\n"
+        "the placeholder check still fires.\n"
+        "Why this gate exists: see mc39.1-2026-08-29 — partial `--set-env-\n"
+        "vars` declarations silently drop unlisted names from the freshly-\n"
+        "deployed revision.",
         file=sys.stderr,
     )
     return _EXIT_DRIFT
