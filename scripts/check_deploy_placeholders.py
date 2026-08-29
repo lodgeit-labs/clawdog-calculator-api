@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 scripts/check_deploy_placeholders.py — deploy-YAML placeholder + env-var-set
-completeness guard
+canonical-manifest coupling guard
 
 **Class-of-failure the gate defends against: SILENT ENV-VAR REPLACEMENT.**
 
@@ -13,30 +13,41 @@ Two instances of the class today:
     vars` override that has been keeping production alive, taking the route
     to HTTP 500 with no deploy-time warning.
 
-2. `gcloud run deploy --set-env-vars=...` (mc39.1-2026-08-29 anchor):
+2. `gcloud run deploy --set-env-vars=...` (mc39.1-2026-08-29 anchor;
+    matched-drift blind-spot fix at mc40-2026-08-29 Andrew follow-up 1):
     `--set-env-vars` REPLACES the entire env-var set on the new revision.
-    A partial declaration (e.g. "FBT_PROLOG_URL=...|DEPRECIATION_PROLOG_URL=
-    ..." omitting LANG + LC_ALL) silently drops the missing names with no
-    wire-observable failure until a caller trips over the absent locale /
-    URL / helper var. Andrew wire-verified this drift class on mc39 PR #27
-    2026-08-29 15:12 UTC: the initial `--set-env-vars` declared four vars
-    when the live service carries six.
+    A partial declaration silently drops missing names with no wire-
+    observable failure until a caller trips over the absent locale /
+    URL / helper var.
 
-Both failures share the shape *"a partial declaration silently wins over a
-working out-of-band override."* This script catches both.
+    mc39.1 tried to catch this by cross-checking the workflow's
+    `--set-env-vars=` string against a co-located `expected=(...)` bash
+    array. Andrew caught the blind spot: *both* lists live in the same
+    document, both authored by the same hand at the same time; if both are
+    wrong the same way, both gates go green.
 
-On the placeholder path (deploy/*.yaml scan): finds placeholder literals in
-declared env values and exits non-zero. Configurable target.
+    mc40 fix: promote a single canonical env-var manifest
+    (`deploy/env_vars.json`) as the sole source of truth. The deploy
+    workflow's three env-var-related steps (pre-deploy live-set delta
+    check, Deploy `--set-env-vars`, post-deploy presence assertion) all
+    derive from this ONE file. This script's role reduces to two mechanical
+    checks:
 
-On the env-var-set path (.github/workflows/*.yml scan): finds
-`--set-env-vars` occurrences in workflow YAML and cross-checks the declared
-name set against a canonical required-set. The required-set is DERIVED from
-the same workflow file's post-deploy env-var-set presence assertion step
-(the `expected=(...)` bash array); bidirectional coupling means dropping a
-name from either declaration site fires the gate.
+    (a) The workflow YAML MUST NOT contain any hard-coded `--set-env-vars`
+        declarations (would re-introduce the two-document drift class).
 
-Wired into `pre-push` and intended to also fire in CI before any
-`services replace` step or `run deploy --set-env-vars` step.
+    (b) `deploy/env_vars.json` MUST parse and MUST contain a non-empty
+        `env` object.
+
+    The load-bearing runtime check now lives in deploy.yml itself as the
+    pre-deploy live-env-var-set delta step, which reads the LIVE service
+    (a state independent of any repo document, so matched-drift cannot
+    exist).
+
+On the placeholder path (deploy/*.yaml + deploy/*.json scan): finds
+placeholder literals in declared env values and exits non-zero.
+
+Wired into `pre-push` and CI before any deploy step.
 
 Mode-B exit-code contract (mirroring Standing Rule #8):
 
@@ -56,9 +67,13 @@ Usage:
     python3 scripts/check_deploy_placeholders.py path/...  # override targets
 
 Environment:
-    CLAWDOG_PLACEHOLDER_GUARD_VERBOSE=1   emit 🟢 CLEAN detail on pass
-    CLAWDOG_ENVVAR_SET_GUARD_DISABLE=1    disable the env-var-set check only
-                                          (placeholder check still fires)
+    CLAWDOG_PLACEHOLDER_GUARD_VERBOSE=1    emit 🟢 CLEAN detail on pass
+    CLAWDOG_ENVVAR_SET_GUARD_DISABLE=1     disable the env-var-set check only
+                                           (placeholder check still fires).
+                                           When bypass fires, script emits
+                                           a loud ::warning:: annotation to
+                                           stderr for the CI log audit trail
+                                           (mc40 Andrew follow-up 2).
 
 The script is dependency-free (stdlib re + pathlib + sys + os) and POSIX-
 shell-friendly for git hook invocation.
@@ -174,8 +189,14 @@ def _resolve_targets(argv: list[str]) -> list[Path]:
             yamls.append(target)
             continue
         if target.is_dir():
+            # YAML for workflow + deploy manifest placeholder scan.
             for ext in ("*.yaml", "*.yml"):
                 yamls.extend(sorted(target.rglob(ext)))
+            # JSON for mc40 canonical env-var manifest check
+            # (deploy/env_vars.json). Only scan JSON under deploy/, not
+            # under .github/workflows/.
+            if target.name == "deploy" or target.parts[-1:] == ("deploy",):
+                yamls.extend(sorted(target.rglob("*.json")))
             continue
         raise SystemExit(
             f"🟡 INFRA BROKEN: target is neither file nor directory: {target}"
@@ -250,70 +271,127 @@ def _extract_expected_names(text: str) -> list[str] | None:
     return _EXPECTED_ELEMENT_RE.findall(array_body)
 
 
+# Match `--set-env-vars="NAME=value,..."` where the value is a hard-coded
+# literal (not `"$var"` templating). The pattern deliberately excludes bash
+# variable substitution forms so mc40's `--set-env-vars="$set_env_vars"`
+# construction (reading from deploy/env_vars.json) does NOT trip the gate.
+_HARDCODED_SET_ENV_VARS_RE = re.compile(
+    r'--set-env-vars="(?!\$)(?![^"]*\$\{)([^"]*=[^"]*)"'
+)
+
+
 def _scan_envvar_set_completeness(
     path: Path,
 ) -> list[tuple[int, str, str]]:
-    """Return env-var-set completeness findings for a single file.
+    """Return env-var-set canonical-manifest coupling findings for a
+    single file.
 
     Each finding is (line_number, label, raw_line_or_diagnostic).
-    Empty list = file is clean (or file has no --set-env-vars in it).
+    Empty list = file is clean.
+
+    Post-mc40 (Andrew follow-up 1 blind-spot fix): the ONLY workflow YAML
+    check is *no hard-coded `--set-env-vars` declarations*. All env-var
+    declaration must derive from deploy/env_vars.json to avoid the
+    matched-drift blind spot where two co-authored documents can be wrong
+    the same way and both pass a cross-check.
+
+    The env-var-set completeness check itself runs at deploy time (pre-
+    deploy live-set delta + post-deploy presence assertion in deploy.yml),
+    reading the LIVE service state — a state independent of any document
+    in this repo.
     """
     if os.environ.get("CLAWDOG_ENVVAR_SET_GUARD_DISABLE"):
+        # Andrew follow-up 2: a binary-failure gate with a silent bypass is
+        # not binary. Warning is emitted ONCE at module-load time (see
+        # `_maybe_emit_bypass_warning`); this branch returns silently to
+        # avoid warning-per-file spam.
         return []
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
         # Placeholder scan will already have raised on the same file.
         return []
-    if "--set-env-vars=" not in text:
+    if "--set-env-vars" not in text:
         return []  # File doesn't participate in env-var-set replacement.
 
-    expected = _extract_expected_names(text)
-    if expected is None:
-        # File has --set-env-vars but no canonical expected-set to cross-check
-        # against. This is itself a defect: the assertion step is required to
-        # be co-located with the --set-env-vars step. Report drift.
-        findings: list[tuple[int, str, str]] = []
-        lines = text.splitlines()
-        for idx, line in enumerate(lines):
-            if "--set-env-vars=" in line:
-                findings.append((
-                    idx + 1,
-                    "--set-env-vars without co-located canonical expected=() assertion",
-                    line.strip(),
-                ))
-        return findings
-
-    findings = []
+    findings: list[tuple[int, str, str]] = []
     lines = text.splitlines()
     for idx, line in enumerate(lines):
-        m = _SET_ENV_VARS_RE.search(line)
-        if m is None:
+        # Comments are informational, not policy. Skip.
+        stripped = line.strip()
+        if stripped.startswith("#"):
             continue
-        declared = set(_parse_set_env_vars_names(m.group(1)))
-        expected_set = set(expected)
-        missing_in_declaration = expected_set - declared
-        missing_in_expected = declared - expected_set
-        if missing_in_declaration:
+        # Templated form `--set-env-vars="$var"` is the correct mc40 shape
+        # (bash variable expansion of a value derived from deploy/env_vars.json).
+        # Hard-coded literal form is what we ban.
+        if _HARDCODED_SET_ENV_VARS_RE.search(line):
             findings.append((
                 idx + 1,
                 (
-                    f"env-var-set drift: --set-env-vars omits "
-                    f"expected name(s): {sorted(missing_in_declaration)}"
-                ),
-                line.strip(),
-            ))
-        if missing_in_expected:
-            findings.append((
-                idx + 1,
-                (
-                    f"env-var-set drift: --set-env-vars declares name(s) "
-                    f"not in the expected=() assertion: "
-                    f"{sorted(missing_in_expected)}"
+                    "hard-coded --set-env-vars declaration in workflow YAML "
+                    "(mc40 discipline: derive from deploy/env_vars.json "
+                    "canonical manifest instead)"
                 ),
                 line.strip(),
             ))
     return findings
+
+
+_BYPASS_WARNED = False
+
+
+def _maybe_emit_bypass_warning() -> None:
+    """Emit the loud bypass warning to stderr exactly once per script run.
+
+    Called from main() before the per-file loop; ensures one audit-trail
+    entry per CLAWDOG_ENVVAR_SET_GUARD_DISABLE bypass, not one per file.
+    """
+    global _BYPASS_WARNED
+    if _BYPASS_WARNED:
+        return
+    if not os.environ.get("CLAWDOG_ENVVAR_SET_GUARD_DISABLE"):
+        return
+    print(
+        "::warning title=🚨 env-var-set guard BYPASSED::"
+        "CLAWDOG_ENVVAR_SET_GUARD_DISABLE=1 is set; "
+        "check_deploy_placeholders.py env-var-set canonical-manifest "
+        "coupling check SKIPPED across all files this run. A silent bypass "
+        "on a binary-failure gate is not binary — the script emits this "
+        "::warning:: for the CI log audit trail per mc40-2026-08-29 "
+        "Andrew follow-up 2. Placeholder scan still fires.",
+        file=sys.stderr,
+    )
+    _BYPASS_WARNED = True
+
+
+def _scan_env_vars_json(path: Path) -> list[tuple[int, str, str]]:
+    """Return findings for the deploy/env_vars.json canonical manifest.
+
+    Post-mc40: the file must parse as JSON and have a non-empty `env` object.
+    A missing or malformed manifest is drift; the deploy workflow's pre-
+    deploy check would fail at runtime, so surfacing this at pre-push /
+    CI is defence-in-depth.
+    """
+    import json  # local import; keep the module import list dependency-free
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [(0, f"cannot read canonical manifest: {exc}", str(path))]
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        return [(exc.lineno, f"malformed JSON in canonical manifest: {exc.msg}", "")]
+    if not isinstance(data, dict):
+        return [(1, "canonical manifest root is not a JSON object", "")]
+    env = data.get("env")
+    if env is None:
+        return [(1, "canonical manifest missing top-level `env` object", "")]
+    if not isinstance(env, dict):
+        return [(1, "canonical manifest `env` is not a JSON object", "")]
+    if not env:
+        return [(1, "canonical manifest `env` is empty (would deploy with no env-vars)", "")]
+    return []
 
 
 def main(argv: list[str]) -> int:
@@ -336,15 +414,24 @@ def main(argv: list[str]) -> int:
     if not targets:
         # Nothing to scan = clean. Don't fail; the project may legitimately
         # have no deploy/ directory yet.
-        print("🟢 CLEAN — no YAML files matched", file=sys.stderr)
+        print("🟢 CLEAN — no target files matched", file=sys.stderr)
         return _EXIT_CLEAN
+
+    _maybe_emit_bypass_warning()
 
     all_findings: list[tuple[Path, int, str, str]] = []
     for path in targets:
-        for lineno, label, raw in _scan_file(path):
-            all_findings.append((path, lineno, label, raw))
-        for lineno, label, raw in _scan_envvar_set_completeness(path):
-            all_findings.append((path, lineno, label, raw))
+        # YAML-shaped placeholder + workflow-YAML env-var-set scans apply
+        # only to YAML files.
+        if path.suffix in (".yaml", ".yml"):
+            for lineno, label, raw in _scan_file(path):
+                all_findings.append((path, lineno, label, raw))
+            for lineno, label, raw in _scan_envvar_set_completeness(path):
+                all_findings.append((path, lineno, label, raw))
+        # mc40 canonical manifest check applies only to env_vars.json.
+        if path.name == "env_vars.json":
+            for lineno, label, raw in _scan_env_vars_json(path):
+                all_findings.append((path, lineno, label, raw))
 
     if not all_findings:
         if os.environ.get("CLAWDOG_PLACEHOLDER_GUARD_VERBOSE"):
@@ -367,15 +454,20 @@ def main(argv: list[str]) -> int:
         "in `deploy/*.yaml` are silently honoured by `gcloud run services\n"
         "replace`, clobbering any working out-of-band --set-env-vars override.\n"
         "\n"
-        "Fix (env-var-set path): update the workflow's `--set-env-vars=` line\n"
-        "AND its co-located `expected=(...)` bash array so they declare the\n"
-        "same set of env-var names. Both lists are coupled by design so\n"
-        "dropping a name from either fires the gate. To temporarily disable\n"
-        "the env-var-set check only, set CLAWDOG_ENVVAR_SET_GUARD_DISABLE=1;\n"
-        "the placeholder check still fires.\n"
-        "Why this gate exists: see mc39.1-2026-08-29 — partial `--set-env-\n"
-        "vars` declarations silently drop unlisted names from the freshly-\n"
-        "deployed revision.",
+        "Fix (env-var-set path, mc40 canonical-manifest discipline): remove\n"
+        "any hard-coded `--set-env-vars=\"NAME=value,...\"` string from workflow\n"
+        "YAML and replace it with a bash-variable form that derives from\n"
+        "`deploy/env_vars.json`, e.g.:\n"
+        "    set_env_vars=$(python3 -c \"import json; d = json.load(open('deploy/env_vars.json'))['env']; print('^|^' + '|'.join(f'{k}={v}' for k, v in d.items()))\")\n"
+        "    gcloud run deploy ... --set-env-vars=\"$set_env_vars\"\n"
+        "To temporarily disable the env-var-set check only, set\n"
+        "CLAWDOG_ENVVAR_SET_GUARD_DISABLE=1; the placeholder check still\n"
+        "fires. A ::warning:: annotation is emitted to stderr when bypass\n"
+        "triggers (mc40 Andrew follow-up 2: silent bypass is not binary).\n"
+        "Why this gate exists: see mc39.1-2026-08-29 (partial --set-env-vars\n"
+        "declarations silently drop unlisted names) + mc40-2026-08-29 blind-\n"
+        "spot fix (matched-drift between two co-authored documents passes\n"
+        "cross-checks; one canonical source doesn't).",
         file=sys.stderr,
     )
     return _EXIT_DRIFT

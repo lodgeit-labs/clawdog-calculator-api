@@ -1,8 +1,11 @@
 """Tests for scripts/check_deploy_placeholders.py.
 
-Covers both branches of the gate:
+Covers all three branches of the gate:
   * Placeholder scan (mc16-2026-05-25 anchor)
-  * Env-var-set completeness scan (mc39.1-2026-08-29 anchor)
+  * Env-var-set canonical-manifest coupling scan (mc40-2026-08-29 shape;
+    replaces the mc39.1 expected=() cross-check per Andrew follow-up 1
+    matched-drift blind-spot fix)
+  * Canonical manifest structure check (deploy/env_vars.json parse + shape)
 
 Includes an integration test that fires the script against the live
 `deploy/` + `.github/workflows/` and asserts it exits 0 (any repo state
@@ -10,6 +13,7 @@ that would fail the gate is caught in CI before merge).
 """
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -21,10 +25,13 @@ SCRIPT_PATH = REPO_ROOT / "scripts" / "check_deploy_placeholders.py"
 
 # Ensure the script's module directory is importable for the unit tests.
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
 import check_deploy_placeholders as guard  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# Unit tests: _parse_set_env_vars_names
+# Unit tests: _parse_set_env_vars_names (retained from mc39.1 for the
+# regex-parse contract; the ban on hard-coded --set-env-vars in workflow YAML
+# consumes this parse indirectly to detect the pattern shape)
 # ---------------------------------------------------------------------------
 
 
@@ -51,47 +58,13 @@ def test_parse_empty_payload_yields_empty_list():
 
 
 # ---------------------------------------------------------------------------
-# Unit tests: _extract_expected_names
+# Unit tests: hard-coded --set-env-vars detection (mc40 shape)
 # ---------------------------------------------------------------------------
 
 
-def test_extract_expected_names_finds_bash_array():
-    """Extract identifier list from a bash `expected=(...)` array literal."""
-    text = """
-      - name: Post-deploy env-var-set presence assertion
-        run: |
-          expected=(
-            FBT_PROLOG_URL
-            DIV7A_ENGINE_URL
-            LANG
-            LC_ALL
-          )
-          echo "$expected"
-    """
-    result = guard._extract_expected_names(text)
-    assert result == ["FBT_PROLOG_URL", "DIV7A_ENGINE_URL", "LANG", "LC_ALL"]
-
-
-def test_extract_expected_names_returns_none_when_absent():
-    """No `expected=(...)` block → return None (workflow skips env-var-set scan)."""
-    text = "no expected array here"
-    assert guard._extract_expected_names(text) is None
-
-
-def test_extract_expected_names_empty_array():
-    """`expected=()` with no elements returns empty list (a real defect)."""
-    text = "expected=()"
-    assert guard._extract_expected_names(text) == []
-
-
-# ---------------------------------------------------------------------------
-# Unit tests: _scan_envvar_set_completeness (drift-detection matrix)
-# ---------------------------------------------------------------------------
-
-
-def _fixture(tmp_path: Path, content: str) -> Path:
-    """Write a YAML fixture to tmp_path and return its Path."""
-    p = tmp_path / "deploy.yml"
+def _fixture(tmp_path: Path, content: str, name: str = "deploy.yml") -> Path:
+    """Write a fixture to tmp_path and return its Path."""
+    p = tmp_path / name
     p.write_text(content, encoding="utf-8")
     return p
 
@@ -102,10 +75,10 @@ def test_scan_no_set_env_vars_returns_empty(tmp_path: Path):
     assert guard._scan_envvar_set_completeness(p) == []
 
 
-def test_scan_set_env_vars_without_expected_flags_drift(tmp_path: Path):
-    """A `--set-env-vars` without a co-located `expected=(...)` assertion
-    is itself the drift class (no bidirectional coupling to catch missing
-    names)."""
+def test_scan_hardcoded_set_env_vars_string_flags_drift(tmp_path: Path):
+    """A hard-coded --set-env-vars="NAME=value,..." string is banned per mc40
+    canonical-manifest discipline: hard-coding re-introduces the two-document
+    matched-drift blind spot Andrew identified in mc39.1."""
     p = _fixture(tmp_path, '''\
       - name: Deploy
         run: |
@@ -113,74 +86,58 @@ def test_scan_set_env_vars_without_expected_flags_drift(tmp_path: Path):
     ''')
     findings = guard._scan_envvar_set_completeness(p)
     assert len(findings) == 1
-    assert "without co-located canonical expected=() assertion" in findings[0][1]
+    assert "hard-coded --set-env-vars declaration in workflow YAML" in findings[0][1]
 
 
-def test_scan_set_env_vars_matches_expected_passes(tmp_path: Path):
-    """When --set-env-vars declaration matches expected=(...) exactly → no
-    findings."""
+def test_scan_hardcoded_set_env_vars_alt_delim_flags_drift(tmp_path: Path):
+    """`^|^`-delimited hard-coded form is also banned."""
     p = _fixture(tmp_path, '''\
       - name: Deploy
         run: |
           gcloud run deploy foo --set-env-vars="^|^A=1|B=2|C=3"
-      - name: Assert
+    ''')
+    findings = guard._scan_envvar_set_completeness(p)
+    assert len(findings) == 1
+
+
+def test_scan_variable_expansion_form_passes(tmp_path: Path):
+    """mc40 canonical shape: --set-env-vars="$var" where $var is built from
+    deploy/env_vars.json. Passes the guard because there's no hard-coded
+    literal to drift out of sync with the canonical manifest."""
+    p = _fixture(tmp_path, '''\
+      - name: Deploy
         run: |
-          expected=(
-            A
-            B
-            C
-          )
+          set_env_vars=$(python3 -c "import json; d=json.load(open('deploy/env_vars.json'))['env']; print('^|^' + '|'.join(f'{k}={v}' for k,v in d.items()))")
+          gcloud run deploy foo --set-env-vars="$set_env_vars"
     ''')
     assert guard._scan_envvar_set_completeness(p) == []
 
 
-def test_scan_set_env_vars_omits_expected_flags_drift(tmp_path: Path):
-    """When --set-env-vars omits a name that expected=() declares → drift.
-    This is the exact Andrew wire-truth failure mode on mc39 PR #27
-    (LANG + LC_ALL absent from --set-env-vars but present on live service)."""
+def test_scan_brace_expansion_form_passes(tmp_path: Path):
+    """`${var}` form also passes (bash brace expansion)."""
     p = _fixture(tmp_path, '''\
       - name: Deploy
         run: |
-          gcloud run deploy foo --set-env-vars="^|^A=1|B=2"
-      - name: Assert
-        run: |
-          expected=(
-            A
-            B
-            LANG
-            LC_ALL
-          )
+          gcloud run deploy foo --set-env-vars="${MY_VARS}"
     ''')
-    findings = guard._scan_envvar_set_completeness(p)
-    assert len(findings) == 1
-    label = findings[0][1]
-    assert "omits expected name(s)" in label
-    assert "LANG" in label
-    assert "LC_ALL" in label
+    assert guard._scan_envvar_set_completeness(p) == []
 
 
-def test_scan_set_env_vars_declares_extra_flags_drift(tmp_path: Path):
-    """When --set-env-vars declares a name NOT in expected=(...) → drift
-    on the reverse axis (someone added an env-var to deploy but forgot the
-    assertion)."""
+def test_scan_comment_lines_skipped(tmp_path: Path):
+    """Hard-coded --set-env-vars in comment lines is informational, not
+    policy; skip."""
     p = _fixture(tmp_path, '''\
       - name: Deploy
         run: |
-          gcloud run deploy foo --set-env-vars="^|^A=1|B=2|EXTRA=3"
-      - name: Assert
-        run: |
-          expected=(
-            A
-            B
-          )
+          # example: --set-env-vars="A=1,B=2"
+          gcloud run deploy foo
     ''')
-    findings = guard._scan_envvar_set_completeness(p)
-    assert len(findings) == 1
-    assert "declares name(s) not in the expected=() assertion" in findings[0][1]
-    assert "EXTRA" in findings[0][1]
+    assert guard._scan_envvar_set_completeness(p) == []
 
 
-def test_scan_disable_env_via_env_var(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_scan_disable_via_env_var(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     """CLAWDOG_ENVVAR_SET_GUARD_DISABLE=1 turns off env-var-set scan only.
     Placeholder scan still fires."""
     monkeypatch.setenv("CLAWDOG_ENVVAR_SET_GUARD_DISABLE", "1")
@@ -189,8 +146,51 @@ def test_scan_disable_env_via_env_var(tmp_path: Path, monkeypatch: pytest.Monkey
         run: |
           gcloud run deploy foo --set-env-vars="A=1"
     ''')
-    # No `expected=` co-located → would normally flag; disabled by env-var.
+    # Hard-coded --set-env-vars → would normally flag; disabled by env-var.
     assert guard._scan_envvar_set_completeness(p) == []
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: canonical manifest structure (deploy/env_vars.json)
+# ---------------------------------------------------------------------------
+
+
+def test_manifest_valid_shape(tmp_path: Path):
+    """Well-formed manifest with non-empty `env` object → no findings."""
+    p = _fixture(
+        tmp_path,
+        json.dumps({"env": {"A": "1", "B": "2"}}),
+        name="env_vars.json",
+    )
+    assert guard._scan_env_vars_json(p) == []
+
+
+def test_manifest_malformed_json_flags_drift(tmp_path: Path):
+    p = _fixture(tmp_path, "{not valid json", name="env_vars.json")
+    findings = guard._scan_env_vars_json(p)
+    assert len(findings) == 1
+    assert "malformed JSON" in findings[0][1]
+
+
+def test_manifest_missing_env_key_flags_drift(tmp_path: Path):
+    p = _fixture(tmp_path, json.dumps({"other": {}}), name="env_vars.json")
+    findings = guard._scan_env_vars_json(p)
+    assert len(findings) == 1
+    assert "missing top-level `env` object" in findings[0][1]
+
+
+def test_manifest_empty_env_flags_drift(tmp_path: Path):
+    p = _fixture(tmp_path, json.dumps({"env": {}}), name="env_vars.json")
+    findings = guard._scan_env_vars_json(p)
+    assert len(findings) == 1
+    assert "empty" in findings[0][1]
+
+
+def test_manifest_env_not_object_flags_drift(tmp_path: Path):
+    p = _fixture(tmp_path, json.dumps({"env": ["A", "B"]}), name="env_vars.json")
+    findings = guard._scan_env_vars_json(p)
+    assert len(findings) == 1
+    assert "not a JSON object" in findings[0][1]
 
 
 # ---------------------------------------------------------------------------
@@ -200,8 +200,9 @@ def test_scan_disable_env_via_env_var(tmp_path: Path, monkeypatch: pytest.Monkey
 
 def test_integration_live_repo_passes():
     """The default scan (deploy/ + .github/workflows/) against the live repo
-    state exits 0. This is the CI-side gate that mc39.1 wired the fix into
-    — if a future PR breaks the coupling, this test fires locally before push."""
+    state exits 0. Post-mc40: covers YAML placeholder scan +
+    workflow-YAML hard-coded --set-env-vars ban + deploy/env_vars.json
+    canonical manifest structure."""
     result = subprocess.run(
         [sys.executable, str(SCRIPT_PATH)],
         cwd=str(REPO_ROOT),
@@ -211,5 +212,32 @@ def test_integration_live_repo_passes():
     )
     assert result.returncode == 0, (
         f"check_deploy_placeholders.py exited {result.returncode}; "
+        f"stderr:\n{result.stderr}"
+    )
+
+
+def test_integration_bypass_warning_emitted_once(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """When CLAWDOG_ENVVAR_SET_GUARD_DISABLE=1, exactly ONE ::warning::
+    annotation is emitted to stderr (not one per file). mc40 Andrew
+    follow-up 2 — silent bypass on a binary-failure gate is not binary;
+    but warning-per-file spam obscures the audit trail."""
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH)],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        timeout=15,
+        env={**dict(__import__("os").environ), "CLAWDOG_ENVVAR_SET_GUARD_DISABLE": "1"},
+    )
+    assert result.returncode == 0
+    warning_lines = [
+        ln
+        for ln in result.stderr.splitlines()
+        if ln.startswith("::warning title=🚨 env-var-set guard BYPASSED::")
+    ]
+    assert len(warning_lines) == 1, (
+        f"expected exactly 1 bypass warning, got {len(warning_lines)}. "
         f"stderr:\n{result.stderr}"
     )
