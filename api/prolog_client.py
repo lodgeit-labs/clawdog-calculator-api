@@ -31,7 +31,7 @@ env var, so requests fall through to ``localhost:8082`` and throw an uncaught
 fix is defence-in-depth: if the FBT engine ever became unreachable, the same
 catch protects the FBT route from the symmetric bare-500 failure mode.
 
-The existing ``calculate_fbt()`` + ``depreciation_audit()`` methods are kept
+The existing ``calculate_fbt()`` + ``depreciation_at()`` methods are kept
 as thin wrappers calling ``dispatch()`` for backward compatibility with
 existing tests. Route-handler unification (collapsing the two routes into a
 single ``invoke_calculator`` with discriminated-union body type) is
@@ -171,7 +171,7 @@ class PrologClient:
     All four failure modes (ConnectError / TimeoutException / HTTPStatusError /
     other HTTPError) map to ``PrologEngineUnavailable``; structured Prolog-side
     errors continue to map to ``PrologCalculationError``. The two existing
-    ``calculate_fbt()`` + ``depreciation_audit()`` methods are retained as
+    ``calculate_fbt()`` + ``depreciation_at()`` methods are retained as
     thin wrappers calling ``dispatch()`` so the existing test suite continues
     to pass without surface drift.
 
@@ -188,8 +188,15 @@ class PrologClient:
             "path": "/calculate_fbt",
             "timeout": DEFAULT_TIMEOUT,
         },
+        # mc39-2026-08-29 rung 5 (Fable verdict amendment 2 §A2.8): the
+        # depreciation-engine URN path migrated from the mc-designed batch-
+        # audit stub `/api/v1/depreciation/audit` (never matched an engine)
+        # to the F1-UPHELD-ratified single-asset point-in-time route
+        # `/v1/calculators/depreciation/at/{period_uri}` (mc11-2026-08-02).
+        # Templated path per Div7A pattern; dispatch() substitutes via
+        # path_override at call site.
         DEPRECIATION_ENGINE: {
-            "path": "/api/v1/depreciation/audit",
+            "path_template": "/v1/calculators/depreciation/at/{period_uri}",
             "timeout": DEPRECIATION_AUDIT_TIMEOUT,
         },
         # Phase D (mut-2026-08-24-mc20): Div7A_Engine URN path is templated
@@ -332,19 +339,31 @@ class PrologClient:
         """
         return await self.dispatch(FBT_ENGINE, payload)
 
-    async def depreciation_audit(
-        self, payload: Mapping[str, Any]
+    async def depreciation_at(
+        self, period_uri: str, payload: Mapping[str, Any]
     ) -> dict[str, Any]:
-        """POST to ``/api/v1/depreciation/audit`` and return the parsed JSON.
+        """POST to depreciation-engine ``/v1/calculators/depreciation/at/{period_uri}``.
 
-        Thin wrapper around ``dispatch(DEPRECIATION_ENGINE, payload)`` retained
-        for backward compatibility with existing tests. New code should call
-        ``dispatch()`` directly. Raises ``PrologEngineUnavailable`` on
-        transport failure (Phase 3c.4 PR α; previously raised raw
-        ``httpx.HTTPStatusError``); raises ``PrologCalculationError`` on
-        structured engine-side error.
+        mc39-2026-08-29 rung 5 (Fable verdict amendment 2 §A2.8): the mc-
+        designed batch-audit stub ``depreciation_audit()`` on
+        ``/api/v1/depreciation/audit`` (never matched an engine) has been
+        superseded by this single-asset point-in-time wrapper on the
+        F1-UPHELD-ratified ``/v1/calculators/depreciation/at/{period_uri}``
+        route. Path templating pattern mirrors ``div7a_at`` exactly.
+
+        Gateway rider 2 (Fable §A2.4): the engine's `numeric_mode` field is
+        pinned to `"serving"` server-side and never accepted from the caller.
+        This wrapper enforces the pin by injecting the field into the
+        forwarded payload; any caller-supplied `numeric_mode` is silently
+        overwritten so `extra="forbid"` on the gateway `DepreciationAtInput`
+        cannot be a workaround.
         """
-        return await self.dispatch(DEPRECIATION_ENGINE, payload)
+        pinned_payload = {**dict(payload), "numeric_mode": "serving"}
+        return await self.dispatch(
+            DEPRECIATION_ENGINE,
+            pinned_payload,
+            path_override=f"/v1/calculators/depreciation/at/{period_uri}",
+        )
 
     async def div7a_at(
         self, period_uri: str, payload: Mapping[str, Any]

@@ -61,6 +61,19 @@ jobs:
         run: |
           ruff check api tests
 
+      - name: Binary-failure gate #5 — deploy placeholder + env-var-set completeness
+        # mc39.1-2026-08-29 addition: `scripts/check_deploy_placeholders.py`
+        # gates the class of failure "silent env-var replacement drops or
+        # clobbers a working out-of-band override" — first fuse
+        # (`services replace` with placeholder in deploy/*.yaml, mc16-2026-05-25
+        # anchor); second fuse (`run deploy --set-env-vars` with partial name
+        # list in .github/workflows/*.yml, mc39.1-2026-08-29 anchor).
+        # Wired at CI (client-side pre-push hook already fires; CI is the
+        # defence-in-depth surface per L#39 + L#42 mechanical-perimeter
+        # discipline).
+        run: |
+          python scripts/check_deploy_placeholders.py
+
       - name: Binary-failure gate #4 — OpenAPI drift
         # The drift check is run BEFORE pytest so any spec drift surfaces with
         # a clear, named failure (rather than as the slowest pytest line).

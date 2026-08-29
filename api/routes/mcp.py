@@ -273,10 +273,11 @@ async def _handle_tools_call(
     # with bridging support can dispatch through). The exact route shape
     # is REST-route-specific; today only FBT car operating-cost lives at
     # ``/v1/calculators/{calc_uri}/{period_uri}`` while depreciation lives
-    # at ``/v1/calculators/depreciation/audit/{period_uri}``.
+    # at ``/v1/calculators/depreciation/at/{period_uri}`` (mc39-2026-08-29
+    # rung 5: audit URN retired, at URN adopted per Fable F1 UPHELD).
     base_url = str(request.base_url).rstrip("/")
-    if calc_uri == "urn:sbrm:calculator:depreciation:audit":
-        rest_path = f"/v1/calculators/depreciation/audit/{quote(period_uri, safe='')}"
+    if calc_uri == "urn:sbrm:calculator:depreciation:at":
+        rest_path = f"/v1/calculators/depreciation/at/{quote(period_uri, safe='')}"
     else:
         rest_path = (
             f"/v1/calculators/{quote(calc_uri, safe='')}/"

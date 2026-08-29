@@ -74,12 +74,33 @@ jobs:
         id: deploy
         run: |
           set -o pipefail
+          # mc39-2026-08-29 rung 5.5 (Fable verdict amendment 2 §A2.8 folded
+          # rung 5.5) + mc39.1-2026-08-29 block-clear correction: declarative
+          # env-vars at deploy time. Prior state was `gcloud run deploy
+          # --source .` with all engine URL env-vars set out-of-band via
+          # `gcloud run services update --set-env-vars=...`; any deploy that
+          # dropped them would silently break Andrew-a on all three calc
+          # engines (mc37 Fable brief §5 layer 4 latent bomb).
+          #
+          # `--set-env-vars` on `gcloud run deploy` REPLACES the entire env-var
+          # set on the new revision; safest posture is to declare EVERY env-var
+          # this service needs at deploy time so no drift is possible. Andrew
+          # wire-verified the live gateway 2026-08-29 15:12 UTC carries SIX
+          # env-vars; declaring only the four engine-URL + repo values (mc39
+          # initial ship) would silently drop LANG + LC_ALL and the service
+          # would come up in default locale.
+          #
+          # If a seventh env-var lands on the live service without being
+          # added here, the next merge to main will silently drop it. The
+          # gate wired at rung 3 of the assertion step below (env-var-set
+          # presence check) is the load-bearing forward-defence perimeter.
           gcloud run deploy "$SERVICE" \
             --source . \
             --region "$GCP_REGION" \
             --project "$GCP_PROJECT" \
             --platform managed \
             --allow-unauthenticated \
+            --set-env-vars="^|^FBT_PROLOG_URL=https://fbt-engine-8340695160.australia-southeast1.run.app|DIV7A_ENGINE_URL=https://div7a-engine-8340695160.australia-southeast1.run.app|DEPRECIATION_PROLOG_URL=https://depreciation-engine-8340695160.australia-southeast1.run.app|LODGEIT_FBT_REPO=/app|LANG=en_AU.UTF-8|LC_ALL=en_AU.UTF-8" \
             --quiet 2>&1 | tee deploy.log
           echo "Deploy complete. New revision:"
           gcloud run revisions list \
@@ -87,6 +108,54 @@ jobs:
             --region "$GCP_REGION" \
             --limit 3 \
             --format='table(metadata.name,metadata.creationTimestamp.date(),status.conditions[0].status)'
+
+      # mc39.1-2026-08-29 block-clear: env-var-set presence assertion.
+      # Fable verdict amendment 2 §A2.8 rung 5.5 asked for the assertion
+      # gate to include env-var presence, not only route reachability.
+      # `--set-env-vars` REPLACES the env-var set; a partial declaration
+      # silently drops missing entries with no wire-observable failure until
+      # a caller trips over the absent locale / URL / helper var. This step
+      # reads the live revision's env-var set and asserts every expected
+      # name is present. Adding a new env-var to the live service requires
+      # updating BOTH the Deploy step above AND this expected list; the
+      # coupling is intentional — it makes drift mechanically caught.
+      - name: Post-deploy env-var-set presence assertion
+        id: envvar_check
+        run: |
+          set -o pipefail
+          expected=(
+            FBT_PROLOG_URL
+            DIV7A_ENGINE_URL
+            DEPRECIATION_PROLOG_URL
+            LODGEIT_FBT_REPO
+            LANG
+            LC_ALL
+          )
+          actual=$(gcloud run services describe "$SERVICE" \
+            --region="$GCP_REGION" \
+            --project="$GCP_PROJECT" \
+            --format='value(spec.template.spec.containers[0].env[].name)' \
+            | tr ';' '\n' | sort -u)
+          missing=()
+          for name in "${expected[@]}"; do
+            if ! grep -q -x "$name" <<<"$actual"; then
+              missing+=("$name")
+            fi
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::🔴 env-var-set drift on freshly-deployed revision."
+            echo "::error::Expected env-vars declared in deploy.yml --set-env-vars"
+            echo "::error::are missing from the live service. Missing: ${missing[*]}"
+            echo "::error::Root cause: --set-env-vars REPLACES the entire env-var set;"
+            echo "::error::the Deploy step's --set-env-vars must declare every env-var"
+            echo "::error::the service needs, or the missing entries silently drop."
+            echo ""
+            echo "Actual env-vars present on live revision:"
+            echo "$actual" | sed 's/^/  /'
+            exit 1
+          fi
+          echo "🟢 PASS: all ${#expected[@]} expected env-vars present on live revision"
+          echo "  ($(echo "${expected[*]}" | tr ' ' ','))"
 
       # Post-deploy smoke-prod is THE SR #12 gate firing at deploy boundary.
       # If this fails, the deploy succeeded but the live surface is broken;

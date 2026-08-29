@@ -42,7 +42,7 @@ from __future__ import annotations
 from typing import Any
 
 from api.routes.calculators import _CALCULATOR_REGISTRY
-from api.schemas.depreciation import DepreciationAuditInput
+from api.schemas.depreciation import DepreciationAtInput
 from api.schemas.div7a import Div7aAtInput
 from api.schemas.invocation import (
     FBTBoardInput,
@@ -103,7 +103,7 @@ _CALC_INPUT_MODEL: dict[str, type[Any]] = {
     "urn:sbrm:calculator:fbt:meal-entertainment-50-50": FBTMealEntertainment5050Input,
     "urn:sbrm:calculator:fbt:meal-entertainment-register-12wk": FBTMealEntertainmentRegister12WkInput,
     "urn:sbrm:calculator:fbt:car-statutory-formula": FBTCarStatutoryFormulaInput,
-    "urn:sbrm:calculator:depreciation:audit": DepreciationAuditInput,
+    "urn:sbrm:calculator:depreciation:at": DepreciationAtInput,
     # Phase D (mut-2026-08-24-mc20): Div7A_Engine gateway routing.
     "urn:sbrm:calculator:div7a:at": Div7aAtInput,
 }
@@ -209,7 +209,7 @@ def _tool_name_for(calc_uri: str) -> str:
 
     Pattern: take the URN's last two segments joined with hyphen. So
     ``urn:sbrm:calculator:fbt:car-operating-cost`` → ``fbt-car-operating-cost``
-    and ``urn:sbrm:calculator:depreciation:audit`` → ``depreciation-audit``.
+    and ``urn:sbrm:calculator:depreciation:at`` → ``depreciation-at``.
     """
     parts = calc_uri.split(":")
     if len(parts) < 2:
