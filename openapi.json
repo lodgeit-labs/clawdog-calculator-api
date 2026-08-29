@@ -38,6 +38,79 @@
         "title": "AdvisoryBlock",
         "type": "object"
       },
+      "AssetCreatedInput": {
+        "additionalProperties": false,
+        "description": "Asset ingestion input (mirrors engine's `AssetCreatedInput`).\n\nF10 amendment: `acquisition_date` is required (non-optional). Basis-\nconditional fields (`accounting_useful_life_years` + `accounting_method`\nwhen basis is accounting; `tax_asset_class` when basis is tax) are\nvalidated at the engine's schema layer (F13 UPHELD) rather than\nduplicated here; the gateway forwards the payload verbatim and lets the\nengine return the typed refusal on inconsistency.",
+        "properties": {
+          "accounting_method": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prime_cost",
+                  "diminishing_value"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Accounting depreciation method. Required when basis is 'accounting' or 'au_aasb116'. Values: 'prime_cost' (straight-line) or 'diminishing_value'.",
+            "title": "Accounting Method"
+          },
+          "accounting_useful_life_years": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Accounting useful life in years. Required when basis is 'accounting' or 'au_aasb116'; must be omitted when basis is 'tax' or 'au_itaa97' (tax path resolves effective_life from the SBRM rate table).",
+            "title": "Accounting Useful Life Years"
+          },
+          "acquisition_date": {
+            "description": "Asset acquisition date. Required per F10 amendment; determines fiscal-year placement + calculation_start record emission at fold entry.",
+            "format": "date",
+            "title": "Acquisition Date",
+            "type": "string"
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "description": "Initial cost basis. Positive Decimal; SR #3 fail-loud rejects zero or negative.",
+            "title": "Cost"
+          },
+          "tax_asset_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tax asset class URI resolving to a rate-table effective-life entry. Required when basis is 'tax' or 'au_itaa97'; must be omitted when basis is 'accounting' or 'au_aasb116'.",
+            "title": "Tax Asset Class"
+          }
+        },
+        "required": [
+          "cost",
+          "acquisition_date"
+        ],
+        "title": "AssetCreatedInput",
+        "type": "object"
+      },
       "CalculatorInvocationResponse": {
         "additionalProperties": true,
         "description": "Standard wire shape for any calculator invocation response.\n\nPhase 3a (mut-2026-06-19-mc07-ot-104) adds 6 optional fields to surface\nPhase 2l SF + Phase 2l OC end-to-end gross-up arithmetic introduced by\nengine PR \u03b1 (LodgeiT_FBT PR #44). Fields are optional because:\n\n* Phase 2l SF + OC emit them on every call.\n* Other calculators (Phase 2a Loan, 2b Debt Waiver, ...) do not currently\n  emit them; their responses simply omit the fields.\n* Legacy v1 `calculate_fbt_car_statutory` is not exposed at calc-api and\n  is therefore not relevant to this surface.\n\nThe pre-mc07 wire shape (`taxable_value` + `trace` + `manifest` +\n`advisory`) is byte-stable for all calculators that do not emit the new\nfields (backward-compat regression gate at SR #12 production-bundle).",
@@ -186,92 +259,50 @@
         "title": "CalculatorListing",
         "type": "object"
       },
-      "DepreciationAuditAssetInput": {
+      "DepreciationAtInput": {
         "additionalProperties": false,
-        "description": "One asset row in a depreciation-audit batch.\n\nMirrors the upstream Prolog handler's accepted shape\n(`app/server/depreciation_server.pl::handle_audit`); fields are\natom-pure carriers of identity per CLAWDOG/110 \u00a73.3.",
+        "description": "Request body for the gateway's depreciation `at` route.\n\nWire-shape mirrors the upstream depreciation-engine\n`/v1/calculators/depreciation/at/{period_uri}` endpoint (Fable F1 UPHELD\nmc11-2026-08-02 URN parity). Gateway-side amendments per Fable verdict\namendment 2 \u00a7A2.4 riders 1-2:\n\n  * Rider 1: `basis` narrowed to AU literals; UK is refused.\n  * Rider 2: `numeric_mode` is NOT a caller-visible field; the gateway\n    pins the engine to `numeric_mode=\"serving\"` internally.\n\nBasis-conditional field validation (which `asset` fields must be present\ngiven the `basis` value) is enforced at the engine's schema layer per\nF13 UPHELD; the gateway does not duplicate that validation.",
         "properties": {
-          "assetId": {
-            "description": "Caller-supplied stable identifier for the asset row.",
-            "title": "Assetid",
+          "asset": {
+            "$ref": "#/components/schemas/AssetCreatedInput",
+            "description": "Single-asset creation input (see AssetCreatedInput)."
+          },
+          "at_date": {
+            "description": "Query 'as at' date. WDV + period depreciation are returned as of this date; can be interior to a fiscal year (engine pro-rates per F12 amendment).",
+            "format": "date",
+            "title": "At Date",
             "type": "string"
           },
-          "assetName": {
-            "description": "Free-text asset description. Used by the Prolog Tier-1 classifier (keyword_map/2 + Stopwords.pl) to resolve effective-life category.",
-            "title": "Assetname",
-            "type": "string"
-          },
-          "currentBookAccumDep": {
-            "description": "Current ledger-side accumulated depreciation balance at the transition date (AUD). The audit compares this against the ideal-method projection to detect material variance.",
-            "minimum": 0.0,
-            "title": "Currentbookaccumdep",
-            "type": "number"
-          },
-          "originalCost": {
-            "description": "Acquisition cost (AUD).",
-            "minimum": 0.0,
-            "title": "Originalcost",
-            "type": "number"
-          },
-          "purchaseDate": {
-            "description": "ISO-8601 date of acquisition (e.g. 2015-01-30).",
-            "title": "Purchasedate",
-            "type": "string"
-          },
-          "taxMethod": {
-            "description": "The depreciation method historically applied on the tax side. Common values: 'dv' (diminishing value), 'pc' (prime cost). Used by the engine to surface a method-flag warning when the accounting-side ideal differs from the tax-side recorded method.",
-            "title": "Taxmethod",
-            "type": "string"
-          }
-        },
-        "required": [
-          "assetId",
-          "assetName",
-          "purchaseDate",
-          "originalCost",
-          "taxMethod",
-          "currentBookAccumDep"
-        ],
-        "title": "DepreciationAuditAssetInput",
-        "type": "object"
-      },
-      "DepreciationAuditInput": {
-        "additionalProperties": false,
-        "description": "Input for the Depreciation Audit endpoint.\n\nWire-shape mirrors the upstream Prolog `/api/v1/depreciation/audit`\nhandler: a transition_date, a method discriminator, and an\n`assets_to_audit` batch.\n\nThe `method` field is constrained to the accounting-engine scope per\nAndrew (2026-05-12 05:54 UTC): prime cost + diminishing value only.\nThe engine's `normalize_method/2` accepts `'dvmethod'` for DV; legacy\naliases on input are coerced to canonical strings before forwarding.",
-        "properties": {
-          "assetsToAudit": {
-            "description": "Batch of asset rows to audit. The engine processes them sequentially; total runtime is dominated by Tier-1 classifier lookups (keyword_map/2).",
-            "items": {
-              "$ref": "#/components/schemas/DepreciationAuditAssetInput"
-            },
-            "minItems": 1,
-            "title": "Assetstoaudit",
-            "type": "array"
-          },
-          "method": {
-            "default": "primecost",
-            "description": "Accounting-side ideal method to project. 'primecost' = straight-line; 'dvmethod' = diminishing value. The engine default is 'primecost' (matches handle_audit fall-through).",
+          "basis": {
+            "description": "Depreciation basis discriminator. Gateway rider 1 narrows the engine's five-literal vocabulary to the four AU literals: 'accounting' (AASB 116 alias), 'tax' (ITAA97 alias), 'au_aasb116' (explicit AAS), 'au_itaa97' (explicit ATO Div 40). UK framework 'uk_frs102_s17' is refused at this gateway; UK becomes its own registry entry when a UK consumer arrives.",
             "enum": [
-              "primecost",
-              "dvmethod"
+              "accounting",
+              "tax",
+              "au_itaa97",
+              "au_aasb116"
             ],
-            "title": "Method",
+            "title": "Basis",
             "type": "string"
           },
-          "transitionDate": {
-            "description": "ISO-8601 date marking the audit anchor (e.g. 2025-07-01 = FY2026 opening). The engine projects accumulated depreciation to this date and compares against current_book_accum_dep.",
-            "title": "Transitiondate",
-            "type": "string"
+          "events": {
+            "description": "Per-asset lifecycle events (cost additions, useful-life reassessments, opening balance). Engine caps at 10 000 items per request.",
+            "items": {
+              "$ref": "#/components/schemas/EventInput"
+            },
+            "title": "Events",
+            "type": "array"
           }
         },
         "required": [
-          "transitionDate",
-          "assetsToAudit"
+          "basis",
+          "asset",
+          "at_date"
         ],
-        "title": "DepreciationAuditInput",
+        "title": "DepreciationAtInput",
         "type": "object"
       },
       "Div7aAtInput": {
-        "description": "Div 7A single-income-year MYR request payload.\n\nCanonical URN: ``urn:sbrm:calculator:div7a:at`` per constellation naming\nconvention (matches ``urn:sbrm:calculator:depreciation:audit`` + ``urn:sbrm:calculator:fbt:*``).\n\nField discipline:\n  - ``amalgamated_base``: \u00a7109E amalgamated loan base amount at start of year (AUD)\n  - ``loan_term_years``: \u00a7109N complying-loan term (7 unsecured / 25 secured)\n  - ``loan_origination_date``: date the loan was made (ISO or dd/mm/yyyy)\n  - ``income_year_start_date``: 1 July of the FY to compute (ISO or dd/mm/yyyy)\n  - ``is_first_real_myr_year``: optional; derived from origination/year if omitted\n  - ``repayments``: list; may be empty (canon 620 \u00a71.1 single-annual or multi)",
+        "description": "Div 7A single-income-year MYR request payload.\n\nCanonical URN: ``urn:sbrm:calculator:div7a:at`` per constellation naming\nconvention (matches ``urn:sbrm:calculator:depreciation:at`` + ``urn:sbrm:calculator:fbt:*``).\n\nField discipline:\n  - ``amalgamated_base``: \u00a7109E amalgamated loan base amount at start of year (AUD)\n  - ``loan_term_years``: \u00a7109N complying-loan term (7 unsecured / 25 secured)\n  - ``loan_origination_date``: date the loan was made (ISO or dd/mm/yyyy)\n  - ``income_year_start_date``: 1 July of the FY to compute (ISO or dd/mm/yyyy)\n  - ``is_first_real_myr_year``: optional; derived from origination/year if omitted\n  - ``repayments``: list; may be empty (canon 620 \u00a71.1 single-annual or multi)",
         "properties": {
           "amalgamated_base": {
             "description": "\u00a7109E amalgamated loan base amount (AUD)",
@@ -368,6 +399,79 @@
           "date"
         ],
         "title": "Div7aRepaymentIn",
+        "type": "object"
+      },
+      "EventInput": {
+        "additionalProperties": false,
+        "description": "Per-asset lifecycle event (mirrors engine's `EventInput`).\n\nEvents layer on top of `asset` at construction and let the fold\nreconstitute the WDV trajectory. Engine caps events at 10 000 items per\nrequest (F19 item 12); the gateway does not re-validate that cap here\nsince the engine's schema layer is authoritative.",
+        "properties": {
+          "cost_delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cost addition amount for event_type='cost_addition'.",
+            "title": "Cost Delta"
+          },
+          "event_date": {
+            "description": "Effective date of the event.",
+            "format": "date",
+            "title": "Event Date",
+            "type": "string"
+          },
+          "event_type": {
+            "description": "F19 item 13 frozen event vocabulary.",
+            "enum": [
+              "cost_addition",
+              "useful_life_reassessment",
+              "opening_balance"
+            ],
+            "title": "Event Type",
+            "type": "string"
+          },
+          "new_useful_life_years": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reassessed useful life for event_type='useful_life_reassessment'.",
+            "title": "New Useful Life Years"
+          },
+          "opening_balance_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Opening balance for event_type='opening_balance'.",
+            "title": "Opening Balance Amount"
+          }
+        },
+        "required": [
+          "event_type",
+          "event_date"
+        ],
+        "title": "EventInput",
         "type": "object"
       },
       "FBTBoardInput": {
@@ -1924,10 +2028,10 @@
         ]
       }
     },
-    "/v1/calculators/depreciation/audit/{period_uri}": {
+    "/v1/calculators/depreciation/at/{period_uri}": {
       "post": {
-        "description": "Phase 3c.3.B \u2014 onboards the upstream Depreciation Prolog engine's `/api/v1/depreciation/audit` endpoint through the REST surface. Cross-checks ledger-side `current_book_accum_dep` against the accounting-method projection (prime cost or diminishing value) at the supplied `transition_date`; surfaces a variance flag against the Brain-canon variance threshold (SBRM_RATE_TABLE/depreciation/<taxonomy>/<period>/audit-variance-threshold.md). Out of scope for \u03b2.2.B: `/resurrect` (asset register migration) and `/adjustment_journal` (Phase II pipeline) \u2014 each will land as a sibling route at the next depreciation onboarding rung.",
-        "operationId": "invoke_depreciation_audit_v1_calculators_depreciation_audit__period_uri__post",
+        "description": "mc39-2026-08-29 rung 5 (Fable verdict amendment 2 \u00a7A2.8). Onboards depreciation-engine's F1-UPHELD `/v1/calculators/depreciation/at/{period_uri}` endpoint through the REST surface. Computes WDV + period depreciation at a nominated `at_date` for a single asset. Individually-depreciated assets only \u2014 pooled assets (SBE pool, low-value pool, software pool) are refused with typed refusal `pool_asset_out_of_t6_scope` from the engine (T6 scope; passed through as HTTP 400 with the engine's refusal envelope). Gateway applies Fable riders 1-2: `basis` narrowed to AU literals; `numeric_mode` pinned to 'serving' server-side.",
+        "operationId": "invoke_depreciation_at_v1_calculators_depreciation_at__period_uri__post",
         "parameters": [
           {
             "description": "URL-encoded period URN.",
@@ -1941,13 +2045,13 @@
             }
           },
           {
-            "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. At Phase 3c.3.B only lodgeit_au_sbrm is populated for depreciation; hoffman_base bundle authoring is deferred.",
+            "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm populated for depreciation; hoffman_base bundle authoring deferred.",
             "in": "query",
             "name": "taxonomy",
             "required": false,
             "schema": {
               "default": "lodgeit_au_sbrm",
-              "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. At Phase 3c.3.B only lodgeit_au_sbrm is populated for depreciation; hoffman_base bundle authoring is deferred.",
+              "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm populated for depreciation; hoffman_base bundle authoring deferred.",
               "title": "Taxonomy",
               "type": "string"
             }
@@ -1957,7 +2061,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DepreciationAuditInput"
+                "$ref": "#/components/schemas/DepreciationAtInput"
               }
             }
           },
@@ -1969,7 +2073,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Invoke Depreciation Audit V1 Calculators Depreciation Audit  Period Uri  Post",
+                  "title": "Response Invoke Depreciation At V1 Calculators Depreciation At  Period Uri  Post",
                   "type": "object"
                 }
               }
@@ -1987,7 +2091,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Invoke the Depreciation Audit endpoint for the given URN-encoded period.",
+        "summary": "Invoke depreciation single-asset point-in-time query for the given URN-encoded period.",
         "tags": [
           "calculators"
         ]

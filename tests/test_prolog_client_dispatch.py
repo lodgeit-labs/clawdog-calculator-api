@@ -5,7 +5,7 @@ Lessons honoured:
   #40 — these are hermetic tests; the production-bundle gate covers the
          deployed-URL surface separately (Lesson #40 sibling at the Python layer).
   #37 — these tests exercise the dispatcher (the production interface) directly,
-         not via the wrapping calculate_fbt() / depreciation_audit() methods.
+         not via the wrapping calculate_fbt() / depreciation_at() methods.
   #36 — assertions name the exception class and error_code, not paraphrase the
          transport-layer details.
 
@@ -59,20 +59,35 @@ async def test_dispatch_fbt_success_returns_dict():
 
 
 @pytest.mark.anyio
-async def test_dispatch_depreciation_success_returns_dict():
-    """dispatch(DEPRECIATION_ENGINE, payload) returns parsed JSON on success."""
-    expected_response = {"status": "ok", "audited_standard_assets": []}
+async def test_dispatch_depreciation_at_success_returns_dict():
+    """dispatch(DEPRECIATION_ENGINE, payload, path_override=...) returns parsed
+    JSON on success. mc39-2026-08-29 rung 5: DEPRECIATION_ENGINE now uses a
+    templated path per Fable F1 UPHELD; caller must supply path_override."""
+    expected_response = {
+        "basis": "au_aasb116",
+        "at_date": "2025-06-30",
+        "wdv_at": "3500.00",
+        "period_dep_at": "500.00",
+    }
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
-        assert request.url.path == "/api/v1/depreciation/audit"
+        assert request.url.path == (
+            "/v1/calculators/depreciation/at/urn:sbrm:period:depreciation:fy2026"
+        )
         return httpx.Response(200, json=expected_response)
 
     client = PrologClient(
         depreciation_base_url="http://dep-engine.test",
         client=_mock_transport(handler),
     )
-    result = await client.dispatch(DEPRECIATION_ENGINE, {"foo": "bar"})
+    result = await client.dispatch(
+        DEPRECIATION_ENGINE,
+        {"foo": "bar"},
+        path_override=(
+            "/v1/calculators/depreciation/at/urn:sbrm:period:depreciation:fy2026"
+        ),
+    )
     assert result == expected_response
 
 
@@ -95,7 +110,16 @@ async def test_dispatch_connect_error_maps_to_engine_unreachable():
         client=_mock_transport(handler),
     )
     with pytest.raises(PrologEngineUnavailable) as excinfo:
-        await client.dispatch(DEPRECIATION_ENGINE, {})
+        # mc39-2026-08-29 rung 5: DEPRECIATION_ENGINE uses templated path
+        # per Fable F1 UPHELD; caller must supply path_override.
+        await client.dispatch(
+            DEPRECIATION_ENGINE,
+            {},
+            path_override=(
+                "/v1/calculators/depreciation/at/"
+                "urn:sbrm:period:depreciation:fy2026"
+            ),
+        )
 
     exc = excinfo.value
     assert exc.error_code == "engine_unreachable"
@@ -212,20 +236,43 @@ async def test_calculate_fbt_wrapper_still_works_via_dispatch():
 
 
 @pytest.mark.anyio
-async def test_depreciation_audit_wrapper_still_works_via_dispatch():
-    """Backward-compat: depreciation_audit() is a thin wrapper around dispatch(DEPRECIATION_ENGINE)."""
-    expected = {"status": "ok", "audited_standard_assets": []}
+async def test_depreciation_at_wrapper_pins_numeric_mode_serving():
+    """mc39-2026-08-29 rung 5 rider 2: depreciation_at() wrapper pins
+    `numeric_mode="serving"` in the payload before dispatch so the engine
+    never receives a caller-supplied value even if it slipped past the
+    gateway pydantic layer."""
+    expected = {
+        "basis": "au_aasb116",
+        "at_date": "2025-06-30",
+        "wdv_at": "3500.00",
+        "period_dep_at": "500.00",
+    }
+    seen_payloads: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v1/depreciation/audit"
+        assert request.url.path == (
+            "/v1/calculators/depreciation/at/urn:sbrm:period:depreciation:fy2026"
+        )
+        import json as _json
+        seen_payloads.append(_json.loads(request.content))
         return httpx.Response(200, json=expected)
 
     client = PrologClient(
         depreciation_base_url="http://dep-engine.test",
         client=_mock_transport(handler),
     )
-    result = await client.depreciation_audit({"foo": "bar"})
+    # Caller supplies numeric_mode="corpus_compare"; wrapper must overwrite
+    # to "serving" before dispatch.
+    result = await client.depreciation_at(
+        "urn:sbrm:period:depreciation:fy2026",
+        {"foo": "bar", "numeric_mode": "corpus_compare"},
+    )
     assert result == expected
+    assert len(seen_payloads) == 1
+    assert seen_payloads[0]["numeric_mode"] == "serving", (
+        "rider 2: wrapper must pin numeric_mode='serving'; got "
+        f"{seen_payloads[0]['numeric_mode']!r}"
+    )
 
 
 @pytest.mark.anyio

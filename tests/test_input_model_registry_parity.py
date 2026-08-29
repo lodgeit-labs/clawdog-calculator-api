@@ -30,7 +30,9 @@ from api.services.mcp_tool_registry import _CALC_INPUT_MODEL
 # /v1/calculators/{calc_uri}/{period_uri} dispatch). These appear in the MCP
 # input model registry but not in the REST generic-route dispatch.
 _DEDICATED_ROUTE_URN_ALLOWLIST = {
-    "urn:sbrm:calculator:depreciation:audit",
+    # mc39-2026-08-29 rung 5: depreciation URN migrated from :audit to :at
+    # per Fable verdict amendment 2 §A2.8 rider 4.
+    "urn:sbrm:calculator:depreciation:at",
     # Phase D (mut-2026-08-24-mc20): Div7A_Engine has its own dedicated
     # REST route /calculators/div7a/at/{period_uri} with native FastAPI
     # response shape; does NOT dispatch through the generic route.

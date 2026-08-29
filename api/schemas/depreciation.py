@@ -1,189 +1,296 @@
-"""Depreciation calculator pydantic schemas.
+"""Pydantic input + response models for the depreciation-engine wire boundary.
 
-Phase 3c.3.B (Andrew + Tracer ratified 2026-05-12 05:54 UTC) onboards the
-Depreciation calculator's `/api/v1/depreciation/audit` Prolog endpoint
-through the REST surface per Option α (minimum-viable; CLAWDOG/109 §8.3
-abstraction-leak test data point).
+mc39-2026-08-29 rung 5 (Fable verdict amendment 2 §A2.8): the batch-audit
+model (`DepreciationAuditInput` + `DepreciationAuditAssetInput` +
+`DepreciationAuditResponse` + `DepreciationAuditPerAssetReport`) has been
+REMOVED and superseded by the single-asset point-in-time model
+(`DepreciationAtInput` + `DepreciationAtResponse`) mirroring the T6
+depreciation-engine wire exactly.
 
-Engine context (per Andrew 2026-05-12 05:54 UTC):
-    Our accounting engine supports prime cost + diminishing value only.
-    The /audit endpoint cross-checks ledger-side accumulated depreciation
-    against straight-line / DV ideals so accountants can spot variance
-    between LodgeiT tax-depreciation (often accelerated via IAWO/pool)
-    and the more conservative accounting-side method. /resurrect and
-    /adjustment_journal are upstream/downstream pipeline shapes; both
-    out of scope for β.2.B.
+**Fable rider 1 (§A2.4):** gateway constrains `basis` to the AU literals
+(`accounting`, `tax`, `au_itaa97`, `au_aasb116`). The engine's fifth
+literal `uk_frs102_s17` is refused at the gateway with a typed refusal
+(gateway registry `jurisdiction: "AU"` remains true; UK becomes its own
+registry entry the day someone wants it).
 
-Atom-vs-bridge boundary (CLAWDOG/110 §3.3): per-asset fields are atom-pure
-carriers. The audit interpretation (variance threshold, method-flag
-warning, Hoffman-Seattle modal types) lives in the Prolog engine; this
-schema only ferries identity-carrying values across the bridge.
+**Fable rider 2 (§A2.4):** gateway pins `numeric_mode: "serving"` and does
+not expose the field. Corpus-compare is a T6 regression-testing knob for
+internal LodgeiT-parity discipline; not a partner-developer affordance.
 
-Standing Rule #6 (Hoffman Temporal-Dimension Discipline): every audit
-request carries a `transition_date` that anchors the audit to a point in
-time. Period URI in the URL path; transition_date in the body.
+**Fable rider 3 (§A2.4):** T6 pool exclusion surfaced in the gateway
+manifest (see `_CALCULATOR_REGISTRY[urn:sbrm:calculator:depreciation:at]`
+manifest text in `api/routes/calculators.py`); the engine's typed refusal
+(`refusal_class="pool_asset_out_of_t6_scope"`) is passed through cleanly
+rather than flattened to a generic 400.
 
-Phase 3c.4 will generalise the FBT-shaped PrologClient + invoke route
-into a calc-uri-dispatched shape that covers both FBT and Depreciation
-cleanly. This schema is built to slot into that generalisation without
-breaking shape.
+Sibling shape: Div7A_Engine `Div7aAtInput` (mut-2026-08-24-mc20 mirror
+pattern; extra="forbid" + templated period_uri path + basis-conditional
+field validation deferred to the engine which is F13 UPHELD schema-layer
+authority).
 """
 from __future__ import annotations
 
-import re
-from typing import Any, Literal
+from datetime import date
+from decimal import Decimal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-# --- Per-asset input ---------------------------------------------------------
-
-# ISO-8601 calendar date (no time component).
-_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class DepreciationAuditAssetInput(BaseModel):
-    """One asset row in a depreciation-audit batch.
+# Gateway-scoped basis literals per Fable rider 1: engine's five-literal
+# vocabulary narrowed to AU-only. `uk_frs102_s17` refused at the pydantic
+# layer so the gateway wire self-describes as AU-jurisdiction consistently.
+GatewayBasisLiteral = Literal[
+    "accounting",     # legacy alias for "au_aasb116" (F19 freeze preserved)
+    "tax",            # legacy alias for "au_itaa97" (F19 freeze preserved)
+    "au_itaa97",      # AU tax; ATO Div 40 ITAA 1997 s 40-72; days_held/365
+    "au_aasb116",     # AU accounting; AASB 116 §50/§60; actual/actual per FY
+]
 
-    Mirrors the upstream Prolog handler's accepted shape
-    (`app/server/depreciation_server.pl::handle_audit`); fields are
-    atom-pure carriers of identity per CLAWDOG/110 §3.3.
+
+AccountingMethodLiteral = Literal["prime_cost", "diminishing_value"]
+
+
+class AssetCreatedInput(BaseModel):
+    """Asset ingestion input (mirrors engine's `AssetCreatedInput`).
+
+    F10 amendment: `acquisition_date` is required (non-optional). Basis-
+    conditional fields (`accounting_useful_life_years` + `accounting_method`
+    when basis is accounting; `tax_asset_class` when basis is tax) are
+    validated at the engine's schema layer (F13 UPHELD) rather than
+    duplicated here; the gateway forwards the payload verbatim and lets the
+    engine return the typed refusal on inconsistency.
     """
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid")
 
-    asset_id: str = Field(
-        ..., alias="assetId",
-        description="Caller-supplied stable identifier for the asset row.",
-    )
-    asset_name: str = Field(
-        ..., alias="assetName",
-        description=(
-            "Free-text asset description. Used by the Prolog Tier-1 classifier "
-            "(keyword_map/2 + Stopwords.pl) to resolve effective-life category."
+    cost: Annotated[
+        Decimal,
+        Field(
+            gt=0,
+            description=(
+                "Initial cost basis. Positive Decimal; SR #3 fail-loud "
+                "rejects zero or negative."
+            ),
         ),
-    )
-    purchase_date: str = Field(
-        ..., alias="purchaseDate",
-        description="ISO-8601 date of acquisition (e.g. 2015-01-30).",
-    )
-    original_cost: float = Field(
-        ..., ge=0, alias="originalCost",
-        description="Acquisition cost (AUD).",
-    )
-    tax_method: str = Field(
-        ..., alias="taxMethod",
-        description=(
-            "The depreciation method historically applied on the tax side. "
-            "Common values: 'dv' (diminishing value), 'pc' (prime cost). "
-            "Used by the engine to surface a method-flag warning when the "
-            "accounting-side ideal differs from the tax-side recorded method."
+    ]
+
+    acquisition_date: Annotated[
+        date,
+        Field(
+            description=(
+                "Asset acquisition date. Required per F10 amendment; "
+                "determines fiscal-year placement + calculation_start "
+                "record emission at fold entry."
+            ),
         ),
-    )
-    current_book_accum_dep: float = Field(
-        ..., ge=0, alias="currentBookAccumDep",
-        description=(
-            "Current ledger-side accumulated depreciation balance at the "
-            "transition date (AUD). The audit compares this against the "
-            "ideal-method projection to detect material variance."
+    ]
+
+    # Accounting-basis fields (populated when basis='accounting' or
+    # 'au_aasb116'; validated at engine schema layer).
+    accounting_useful_life_years: Annotated[
+        int | None,
+        Field(
+            default=None,
+            gt=0,
+            description=(
+                "Accounting useful life in years. Required when "
+                "basis is 'accounting' or 'au_aasb116'; must be omitted "
+                "when basis is 'tax' or 'au_itaa97' (tax path resolves "
+                "effective_life from the SBRM rate table)."
+            ),
         ),
-    )
+    ] = None
 
-    @field_validator("purchase_date")
-    @classmethod
-    def _check_iso_date(cls, value: str) -> str:
-        if not _ISO_DATE_RE.match(value):
-            raise ValueError(
-                f"purchase_date={value!r} is not ISO-8601 YYYY-MM-DD. "
-                f"Convert at the client boundary; the engine does not "
-                f"parse other date shapes."
-            )
-        return value
+    accounting_method: Annotated[
+        AccountingMethodLiteral | None,
+        Field(
+            default=None,
+            description=(
+                "Accounting depreciation method. Required when basis is "
+                "'accounting' or 'au_aasb116'. Values: 'prime_cost' "
+                "(straight-line) or 'diminishing_value'."
+            ),
+        ),
+    ] = None
+
+    # Tax-basis field (populated when basis='tax' or 'au_itaa97';
+    # validated at engine schema layer).
+    tax_asset_class: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "Tax asset class URI resolving to a rate-table effective-life "
+                "entry. Required when basis is 'tax' or 'au_itaa97'; must be "
+                "omitted when basis is 'accounting' or 'au_aasb116'."
+            ),
+        ),
+    ] = None
 
 
-# --- Top-level input ---------------------------------------------------------
+class EventInput(BaseModel):
+    """Per-asset lifecycle event (mirrors engine's `EventInput`).
 
-
-class DepreciationAuditInput(BaseModel):
-    """Input for the Depreciation Audit endpoint.
-
-    Wire-shape mirrors the upstream Prolog `/api/v1/depreciation/audit`
-    handler: a transition_date, a method discriminator, and an
-    `assets_to_audit` batch.
-
-    The `method` field is constrained to the accounting-engine scope per
-    Andrew (2026-05-12 05:54 UTC): prime cost + diminishing value only.
-    The engine's `normalize_method/2` accepts `'dvmethod'` for DV; legacy
-    aliases on input are coerced to canonical strings before forwarding.
+    Events layer on top of `asset` at construction and let the fold
+    reconstitute the WDV trajectory. Engine caps events at 10 000 items per
+    request (F19 item 12); the gateway does not re-validate that cap here
+    since the engine's schema layer is authoritative.
     """
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid")
 
-    transition_date: str = Field(
-        ..., alias="transitionDate",
-        description=(
-            "ISO-8601 date marking the audit anchor (e.g. 2025-07-01 = "
-            "FY2026 opening). The engine projects accumulated depreciation "
-            "to this date and compares against current_book_accum_dep."
+    event_type: Annotated[
+        Literal[
+            "cost_addition",
+            "useful_life_reassessment",
+            "opening_balance",
+        ],
+        Field(description="F19 item 13 frozen event vocabulary."),
+    ]
+
+    event_date: Annotated[
+        date,
+        Field(description="Effective date of the event."),
+    ]
+
+    # Optional per-event fields; engine schema layer validates conditional
+    # requiredness per event_type.
+    cost_delta: Annotated[
+        Decimal | None,
+        Field(
+            default=None,
+            description="Cost addition amount for event_type='cost_addition'.",
         ),
-    )
-    method: Literal["primecost", "dvmethod"] = Field(
-        "primecost", alias="method",
-        description=(
-            "Accounting-side ideal method to project. 'primecost' = "
-            "straight-line; 'dvmethod' = diminishing value. The engine "
-            "default is 'primecost' (matches handle_audit fall-through)."
+    ] = None
+
+    new_useful_life_years: Annotated[
+        int | None,
+        Field(
+            default=None,
+            gt=0,
+            description=(
+                "Reassessed useful life for "
+                "event_type='useful_life_reassessment'."
+            ),
         ),
-    )
-    assets_to_audit: list[DepreciationAuditAssetInput] = Field(
-        ..., min_length=1, alias="assetsToAudit",
-        description=(
-            "Batch of asset rows to audit. The engine processes them "
-            "sequentially; total runtime is dominated by Tier-1 classifier "
-            "lookups (keyword_map/2)."
+    ] = None
+
+    opening_balance_amount: Annotated[
+        Decimal | None,
+        Field(
+            default=None,
+            description=(
+                "Opening balance for event_type='opening_balance'."
+            ),
         ),
-    )
-
-    @field_validator("transition_date")
-    @classmethod
-    def _check_iso_date(cls, value: str) -> str:
-        if not _ISO_DATE_RE.match(value):
-            raise ValueError(
-                f"transition_date={value!r} is not ISO-8601 YYYY-MM-DD."
-            )
-        return value
+    ] = None
 
 
-# --- Output ------------------------------------------------------------------
-#
-# Note: the depreciation Prolog `/audit` endpoint returns a heterogeneous
-# response shape including a list of per-asset audit reports with
-# Hoffman-Seattle modal types embedded. Phase 3c.3.B does NOT reshape
-# that response in the bridge — it is forwarded with `extra="allow"` so
-# downstream consumers see the engine's native shape unchanged. Phase
-# 3c.4 (PrologClient generalisation) can decide whether to typed-wrap
-# this; for now the discipline is "no reshape across the bridge"
-# (CLAWDOG/110 §3.3 atom-vs-bridge — interpretation lives in the engine,
-# not the API).
+class DepreciationAtInput(BaseModel):
+    """Request body for the gateway's depreciation `at` route.
 
+    Wire-shape mirrors the upstream depreciation-engine
+    `/v1/calculators/depreciation/at/{period_uri}` endpoint (Fable F1 UPHELD
+    mc11-2026-08-02 URN parity). Gateway-side amendments per Fable verdict
+    amendment 2 §A2.4 riders 1-2:
 
-class DepreciationAuditPerAssetReport(BaseModel):
-    """One per-asset audit report. Permissive shape — engine adds fields."""
+      * Rider 1: `basis` narrowed to AU literals; UK is refused.
+      * Rider 2: `numeric_mode` is NOT a caller-visible field; the gateway
+        pins the engine to `numeric_mode="serving"` internally.
 
-    model_config = ConfigDict(extra="allow")
-
-
-class DepreciationAuditResponse(BaseModel):
-    """Envelope for the depreciation /audit response.
-
-    Mirrors the engine's `_{status, transition_date, method, audited_standard_assets}`
-    dict, wrapped with the standard manifest + advisory blocks per
-    CLAWDOG/109 §6 / §7.
+    Basis-conditional field validation (which `asset` fields must be present
+    given the `basis` value) is enforced at the engine's schema layer per
+    F13 UPHELD; the gateway does not duplicate that validation.
     """
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
-    status: str
-    transition_date: str
-    method: str
-    audited_standard_assets: list[dict[str, Any]]
-    # manifest + advisory injected by api.lib.advisory_boundary.wrap_response
+    basis: Annotated[
+        GatewayBasisLiteral,
+        Field(
+            description=(
+                "Depreciation basis discriminator. Gateway rider 1 narrows "
+                "the engine's five-literal vocabulary to the four AU "
+                "literals: 'accounting' (AASB 116 alias), 'tax' (ITAA97 "
+                "alias), 'au_aasb116' (explicit AAS), 'au_itaa97' "
+                "(explicit ATO Div 40). UK framework 'uk_frs102_s17' is "
+                "refused at this gateway; UK becomes its own registry "
+                "entry when a UK consumer arrives."
+            ),
+        ),
+    ]
+
+    asset: Annotated[
+        AssetCreatedInput,
+        Field(description="Single-asset creation input (see AssetCreatedInput)."),
+    ]
+
+    at_date: Annotated[
+        date,
+        Field(
+            description=(
+                "Query 'as at' date. WDV + period depreciation are returned "
+                "as of this date; can be interior to a fiscal year "
+                "(engine pro-rates per F12 amendment)."
+            ),
+        ),
+    ]
+
+    events: Annotated[
+        list[EventInput],
+        Field(
+            default_factory=list,
+            description=(
+                "Per-asset lifecycle events (cost additions, useful-life "
+                "reassessments, opening balance). Engine caps at 10 000 "
+                "items per request."
+            ),
+        ),
+    ]
+
+
+class DepreciationAtResponse(BaseModel):
+    """Response envelope for the gateway's depreciation `at` route.
+
+    Field passthrough of engine's `DepreciationAtResponse` extended with
+    the constellation `manifest` + `advisory` blocks per mc35 Div7A
+    pattern. F4 UPHELD naming preserved: `wdv_at` is tax vocabulary but
+    equals carrying amount on the accounting basis (AASB 116); the field
+    name is retained for internal-fold vocabulary consistency across the
+    engine's D2 AccountingFold + TaxFold implementations.
+    """
+
+    model_config = ConfigDict(extra="allow")  # engine may return extra fields
+
+    basis: Annotated[
+        GatewayBasisLiteral,
+        Field(description="Echoed basis from request."),
+    ]
+
+    at_date: Annotated[
+        date,
+        Field(description="Echoed at_date from request."),
+    ]
+
+    wdv_at: Annotated[
+        Decimal,
+        Field(
+            description=(
+                "WDV (written-down value) at at_date. WDV is tax "
+                "vocabulary; on the accounting basis this equals "
+                "carrying amount (AASB 116)."
+            ),
+        ),
+    ]
+
+    period_dep_at: Annotated[
+        Decimal,
+        Field(
+            description=(
+                "Period depreciation for the fiscal year containing "
+                "at_date, computed pro-rata to at_date when at_date is "
+                "interior to a FY."
+            ),
+        ),
+    ]

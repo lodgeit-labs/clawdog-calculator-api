@@ -36,7 +36,7 @@ class Div7aAtInput(BaseModel):
     """Div 7A single-income-year MYR request payload.
 
     Canonical URN: ``urn:sbrm:calculator:div7a:at`` per constellation naming
-    convention (matches ``urn:sbrm:calculator:depreciation:audit`` + ``urn:sbrm:calculator:fbt:*``).
+    convention (matches ``urn:sbrm:calculator:depreciation:at`` + ``urn:sbrm:calculator:fbt:*``).
 
     Field discipline:
       - ``amalgamated_base``: §109E amalgamated loan base amount at start of year (AUD)

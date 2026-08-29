@@ -66,7 +66,11 @@ command -v python3 >/dev/null 2>&1 || { echo "🟡 INFRA BROKEN: python3 not ins
 
 # Pre-flight: confirm sidecar fixtures exist
 [ -f "$SIDECARS_DIR/ntaa_row_3_response.json" ] || { echo "🟡 INFRA BROKEN: sidecar tests/sidecars/ntaa_row_3_response.json missing" >&2; exit 2; }
-[ -f "$SIDECARS_DIR/depreciation_engine_unavailable_response.json" ] || { echo "🟡 INFRA BROKEN: sidecar tests/sidecars/depreciation_engine_unavailable_response.json missing" >&2; exit 2; }
+# mc39-2026-08-29 rung 5.5: depreciation_engine_unavailable_response.json
+# sidecar precondition removed; check 3 no longer asserts the 502
+# engine_unreachable shape (that was the OT #83 #1 mc-designed defect
+# closure). Post-mc39 check 3 asserts happy-path 200 + manifest+advisory
+# + URN retirement 404.
 
 echo "============================================================"
 echo "smoke_prod — Option-C PR β binary-failure gate"
@@ -170,67 +174,104 @@ fi
 rm -f "$NTAA_TMP"
 
 # ----------------------------------------------------------------------
-# Check 3: Depreciation route returns structured 502 with sidecar-matching body
+# Check 3: Depreciation route returns HTTP 200 with manifest+advisory
+# (mc39-2026-08-29 rung 5.5 assertion per Fable verdict amendment 2 §A2.8).
+#
+# Prior state (mc06-2026-05-28 through mc38-2026-08-29): this check
+# asserted the depreciation route returned structured 502 with
+# error_code=engine_unreachable, because production had no
+# DEPRECIATION_PROLOG_URL env-var set (OT #83 #1). rung 5.5 fixes that at
+# deploy time (declarative env-vars in .github/workflows/deploy.yml).
+#
+# Post-mc39 the depreciation route SHOULD reach the T6 engine and return
+# HTTP 200 with the F1-UPHELD DepreciationAtResponse shape wrapped in the
+# gateway's manifest+advisory envelope. Also asserts URN retirement: the
+# legacy /v1/calculators/depreciation/audit/ path MUST return HTTP 404
+# (Fable rider 4 explicit retirement of the F1-rejected URN).
 # ----------------------------------------------------------------------
 echo ""
-echo "--- Check 3: Depreciation route structured 502 (OT #83 #1 closure) ---"
+echo "--- Check 3a: Legacy depreciation /audit URN retired (Fable rider 4) ---"
+DEP_LEGACY_TMP=$(mktemp)
+HTTP_STATUS=$(curl -sS -o "$DEP_LEGACY_TMP" -w "%{http_code}" -X POST \
+    "$API_BASE_URL/v1/calculators/depreciation/audit/$DEP_PERIOD_URI" \
+    -H "Content-Type: application/json" \
+    -d '{}' 2>&1) || {
+    echo "🟡 INFRA BROKEN: curl failed against legacy depreciation audit route"
+    rm -f "$DEP_LEGACY_TMP"
+    exit 2
+}
+if [ "$HTTP_STATUS" != "404" ]; then
+    echo "🔴 FAIL: legacy depreciation:audit URN MUST return HTTP 404 (retired at mc39); got $HTTP_STATUS"
+    head -c 500 "$DEP_LEGACY_TMP"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+else
+    echo "🟢 PASS: legacy /v1/calculators/depreciation/audit/{period_uri} returns HTTP 404 (URN retired per Fable rider 4)"
+    PASS_COUNT=$((PASS_COUNT + 1))
+fi
+rm -f "$DEP_LEGACY_TMP"
+
+echo ""
+echo "--- Check 3b: Depreciation :at happy-path returns 200 with manifest+advisory ---"
 DEP_TMP=$(mktemp)
 DEP_HEADERS_TMP=$(mktemp)
 HTTP_STATUS=$(curl -sS -D "$DEP_HEADERS_TMP" -o "$DEP_TMP" -w "%{http_code}" -X POST \
-    "$API_BASE_URL/v1/calculators/depreciation/audit/$DEP_PERIOD_URI" \
+    "$API_BASE_URL/v1/calculators/depreciation/at/$DEP_PERIOD_URI" \
     -H "Content-Type: application/json" \
     -d '{
-      "transitionDate": "2025-07-01",
-      "method": "primecost",
-      "assetsToAudit": [{
-        "assetId": "test-1",
-        "assetName": "Toyota Corolla",
-        "purchaseDate": "2020-07-01",
-        "originalCost": 30000,
-        "taxMethod": "pc",
-        "currentBookAccumDep": 15000
-      }]
+      "basis": "au_aasb116",
+      "asset": {
+        "cost": "5000.00",
+        "acquisition_date": "2022-07-01",
+        "accounting_useful_life_years": 10,
+        "accounting_method": "prime_cost"
+      },
+      "at_date": "2025-06-30",
+      "events": []
     }' 2>&1) || {
-    echo "🟡 INFRA BROKEN: curl failed against depreciation route"
+    echo "🟡 INFRA BROKEN: curl failed against depreciation :at route"
     rm -f "$DEP_TMP" "$DEP_HEADERS_TMP"
     exit 2
 }
-if [ "$HTTP_STATUS" != "502" ]; then
-    echo "🔴 FAIL: expected HTTP 502 (engine unreachable), got $HTTP_STATUS"
+if [ "$HTTP_STATUS" != "200" ]; then
+    echo "🔴 FAIL: expected HTTP 200 (rung 5 happy-path), got $HTTP_STATUS"
     head -c 500 "$DEP_TMP"
     FAIL_COUNT=$((FAIL_COUNT + 1))
 else
-    # Assert content-type is application/json (NEVER text/plain bare HTML)
     CONTENT_TYPE=$(grep -i "^content-type:" "$DEP_HEADERS_TMP" | head -1 | tr -d '\r')
     case "$CONTENT_TYPE" in
         *application/json*)
             CHECK_RESULT=$(python3 -c "
 import json
 live = json.load(open('$DEP_TMP'))
-sidecar = json.load(open('$SIDECARS_DIR/depreciation_engine_unavailable_response.json'))
-ldetail = live.get('detail', {})
-sdetail = sidecar.get('detail', {})
-mismatches = []
-for k in ['error', 'error_code', 'engine']:
-    if ldetail.get(k) != sdetail.get(k):
-        mismatches.append(f'detail.{k}: live={ldetail.get(k)!r} sidecar={sdetail.get(k)!r}')
-if mismatches:
-    print('FAIL:' + '|'.join(mismatches))
-else:
-    print('OK')
+fails = []
+# Engine's own fields byte-faithful.
+for k in ['basis', 'at_date', 'wdv_at', 'period_dep_at']:
+    if k not in live:
+        fails.append(f'missing engine field {k!r}')
+if live.get('basis') != 'au_aasb116':
+    fails.append(f'basis echoed wrong: {live.get(\"basis\")!r}')
+# Gateway envelope.
+if 'manifest' not in live:
+    fails.append('missing manifest block (Andrew-b gateway wrap)')
+elif 'rate_table_uris' not in live.get('manifest', {}):
+    fails.append('manifest missing rate_table_uris key')
+if 'advisory' not in live:
+    fails.append('missing advisory block')
+elif live.get('advisory', {}).get('jurisdiction') != 'AU':
+    fails.append(f'advisory jurisdiction wrong: {live.get(\"advisory\",{}).get(\"jurisdiction\")!r}')
+print('OK' if not fails else 'FAIL:' + '|'.join(fails))
 ")
             if [ "$CHECK_RESULT" = "OK" ]; then
-                echo "🟢 PASS: HTTP 502 application/json with error_code=engine_unreachable engine=depreciation (matches sidecar)"
+                echo "🟢 PASS: HTTP 200 with engine fields + manifest + advisory (Andrew-a + Andrew-b clear)"
                 PASS_COUNT=$((PASS_COUNT + 1))
             else
-                echo "🔴 FAIL: body shape mismatch against sidecar:"
+                echo "🔴 FAIL: body shape mismatch:"
                 echo "  $CHECK_RESULT"
                 FAIL_COUNT=$((FAIL_COUNT + 1))
             fi
             ;;
         *)
             echo "🔴 FAIL: content-type not application/json: $CONTENT_TYPE"
-            echo "  (This means the bare-HTML 500 regression has reappeared; OT #83 #1 has NOT been closed)"
             head -c 200 "$DEP_TMP"
             FAIL_COUNT=$((FAIL_COUNT + 1))
             ;;
@@ -309,7 +350,7 @@ required = [
     '/healthz',
     '/v1/calculators',
     '/v1/calculators/{calc_uri}/{period_uri}',
-    '/v1/calculators/depreciation/audit/{period_uri}',
+    '/v1/calculators/depreciation/at/{period_uri}',
     '/v1/rates/{period_uri}',
     '/v1/rates/{period_uri}/{rate_id}',
 ]
@@ -372,7 +413,7 @@ required = {
     'urn:sbrm:calculator:fbt:meal-entertainment-50-50',
     'urn:sbrm:calculator:fbt:meal-entertainment-register-12wk',
     'urn:sbrm:calculator:fbt:car-statutory-formula',
-    'urn:sbrm:calculator:depreciation:audit',
+    'urn:sbrm:calculator:depreciation:at',
 }
 missing = required - uris
 if missing:
@@ -435,7 +476,7 @@ required = {
     'fbt-meal-entertainment-50-50',
     'fbt-meal-entertainment-register-12wk',
     'fbt-car-statutory-formula',
-    'depreciation-audit',
+    'depreciation-at',
 }
 missing = required - names
 if missing:

@@ -67,7 +67,7 @@ curl -fsS https://fbt-calculator-api-8340695160.australia-southeast1.run.app/ope
 **Expected:**
 
 ```
-paths: ['/healthz', '/v1/calculators', '/v1/calculators/depreciation/audit/{period_uri}', '/v1/calculators/{calc_uri}/{period_uri}', '/v1/rates/{period_uri}', '/v1/rates/{period_uri}/{rate_id}']
+paths: ['/healthz', '/v1/calculators', '/v1/calculators/depreciation/at/{period_uri}', '/v1/calculators/{calc_uri}/{period_uri}', '/v1/rates/{period_uri}', '/v1/rates/{period_uri}/{rate_id}']
 title: ClawDog Calculator-Constellation REST API
 version: 0.1.0a0
 ```
@@ -83,7 +83,7 @@ curl -fsS https://fbt-calculator-api-8340695160.australia-southeast1.run.app/v1/
 
 **Expected:** a JSON array with **2 entries**, one with
 `"calc_uri": "urn:sbrm:calculator:fbt:car-operating-cost"` and one with
-`"calc_uri": "urn:sbrm:calculator:depreciation:audit"`. Both must have
+`"calc_uri": "urn:sbrm:calculator:depreciation:at"` (mc39-2026-08-29 rung 5: URN retired from `:audit` per Fable amendment 2 §A2.3). Both must have
 `"jurisdiction": "AU"`.
 
 ---

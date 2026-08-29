@@ -31,7 +31,7 @@ from api.prolog_client import (
     PrologClient,
     PrologEngineUnavailable,
 )
-from api.schemas.depreciation import DepreciationAuditInput
+from api.schemas.depreciation import DepreciationAtInput
 from api.schemas.div7a import Div7aAtInput
 from api.schemas.invocation import (
     CalculatorInvocationResponse,
@@ -70,7 +70,15 @@ router = APIRouter(prefix="/v1", tags=["calculators"])
 
 _FBT_CAR_OC_URI = "urn:sbrm:calculator:fbt:car-operating-cost"
 _FBT_FY2026 = "urn:sbrm:period:fbt:fy2026"
-_DEPRECIATION_AUDIT_URI = "urn:sbrm:calculator:depreciation:audit"
+# mc39-2026-08-29 rung 5 (Fable verdict amendment 2 §A2.8 + §A2.3): the mc-
+# designed batch-audit stub URN `urn:sbrm:calculator:depreciation:audit`
+# has been RETIRED (F1 UPHELD mc11-2026-08-02 chose path parity over
+# `depreciation-audit-at`; gateway had been publishing the F1-rejected
+# name). Superseded by the single-asset point-in-time URN
+# `urn:sbrm:calculator:depreciation:at`. Cost of retirement today is zero
+# (§A1.1 "nothing in production"); minted as deliberate URN retirement
+# with F1 citation rather than a silent edit.
+_DEPRECIATION_AT_URI = "urn:sbrm:calculator:depreciation:at"
 _DEPRECIATION_FY2026 = "urn:sbrm:period:depreciation:fy2026"
 
 # --- Phase D URN constants (mut-2026-08-24-mc20) -----------------------------
@@ -291,20 +299,29 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
         "supported_periods": [_FBT_FY2026],
         "input_schema_ref": "#/components/schemas/FBTCarStatutoryFormulaInput",
     },
-    # End Wave C registry entries; the existing depreciation entry follows.
-    _DEPRECIATION_AUDIT_URI: {
-        # Phase 3c.3.B onboarding (Andrew + Tracer ratified 2026-05-12 05:54 UTC).
-        # Scope per Andrew: accounting-engine depreciation supports prime cost
-        # + diminishing value only; /audit cross-checks ledger-side accumulated
-        # depreciation against the accounting-method ideal. /resurrect and
-        # /adjustment_journal are out of scope for β.2.B (separate registry
-        # entries can be added later when those pipeline shapes are wired).
-        "engine_method": "audit",
-        "engine_benefit_category": "depreciation_audit",
+    # End Wave C registry entries; the depreciation entry follows.
+    # mc39-2026-08-29 rung 5 (Fable verdict amendment 2 §A2.8 riders 3+4):
+    # migrated from mc-designed batch-audit stub to F1-UPHELD single-asset
+    # point-in-time route. Rider 3 pool-exclusion in `label` per verbatim
+    # Andrew-ratified text; rider 4 (URN retirement + F1 citation) banked
+    # in _DEPRECIATION_AT_URI comment above.
+    _DEPRECIATION_AT_URI: {
+        "engine_method": "at",
+        "engine_benefit_category": "depreciation_at",
         "jurisdiction": "AU",
-        "label": "Depreciation — Audit (Prime Cost / Diminishing Value)",
+        # Fable rider 3 (§A2.4) manifest text — Andrew-ratified verbatim
+        # (2026-08-29 14:48 UTC). Framing decision: narrow-primitive per
+        # §A2.5, described in consumer language (no internal tranche
+        # markers on the public discovery surface).
+        "label": (
+            "Single-asset depreciation. Prime cost or diminishing value, "
+            "on Australian tax (ITAA97 Div 40) or accounting (AASB 116) "
+            "basis, valued at a nominated date. Individually-depreciated "
+            "assets only — pooled assets (small business, low-value, "
+            "software) are out of scope and are refused."
+        ),
         "supported_periods": [_DEPRECIATION_FY2026],
-        "input_schema_ref": "#/components/schemas/DepreciationAuditInput",
+        "input_schema_ref": "#/components/schemas/DepreciationAtInput",
     },
     # Phase D (mut-2026-08-24-mc20): Div7A_Engine gateway routing. Third
     # calculator in the constellation; Div7A_Engine speaks native FastAPI
@@ -662,17 +679,21 @@ async def invoke_calculator(
 # When Phase 3c.4 unifies the surface, both routes converge under
 # /v1/calculators/{calc_uri}/{period_uri} with discriminated dispatch.
 
-_DEPRECIATION_RESPONSE_FIELDS = (
-    "status",
-    "transition_date",
-    "method",
-    "audited_standard_assets",
+# mc39-2026-08-29 rung 5: response shape migrated to engine's real
+# DepreciationAtResponse (basis + at_date + wdv_at + period_dep_at).
+# `wdv_at` is F4 UPHELD vocabulary — tax nomenclature that equals AASB 116
+# carrying amount on the accounting basis.
+_DEPRECIATION_AT_RESPONSE_FIELDS = (
+    "basis",
+    "at_date",
+    "wdv_at",
+    "period_dep_at",
 )
 
 
 # --- Phase D Div7A route (mut-2026-08-24-mc20) --------------------------------
 #
-# Sibling route to /calculators/depreciation/audit/{period_uri}. Div7A_Engine
+# Sibling route to /calculators/depreciation/at/{period_uri}. Div7A_Engine
 # speaks native FastAPI at /v1/calculators/div7a/at/{period_uri}; gateway
 # forwards payload verbatim via PrologClient.div7a_at() which uses the shared
 # dispatch() machinery for uniform transport-failure handling.
@@ -775,7 +796,7 @@ async def invoke_div7a_at(
         ) from exc
 
     # --- mc35-2026-08-28 manifest+advisory wrap (mirror of
-    # invoke_depreciation_audit pattern lines 875-906).
+    # invoke_depreciation_at pattern below).
     #
     # Prior state: this route did `return engine_response` — pass-through
     # only, no manifest, no advisory. Div7A partial-failed Andrew-b in the
@@ -820,24 +841,27 @@ async def invoke_div7a_at(
 
 
 @router.post(
-    "/calculators/depreciation/audit/{period_uri}",
-    summary="Invoke the Depreciation Audit endpoint for the given URN-encoded period.",
+    "/calculators/depreciation/at/{period_uri}",
+    summary=(
+        "Invoke depreciation single-asset point-in-time query for the given "
+        "URN-encoded period."
+    ),
     description=(
-        "Phase 3c.3.B — onboards the upstream Depreciation Prolog engine's "
-        "`/api/v1/depreciation/audit` endpoint through the REST surface. "
-        "Cross-checks ledger-side `current_book_accum_dep` against the "
-        "accounting-method projection (prime cost or diminishing value) at "
-        "the supplied `transition_date`; surfaces a variance flag against "
-        "the Brain-canon variance threshold "
-        "(SBRM_RATE_TABLE/depreciation/<taxonomy>/<period>/audit-variance-threshold.md). "
-        "Out of scope for β.2.B: `/resurrect` (asset register migration) and "
-        "`/adjustment_journal` (Phase II pipeline) — each will land as a "
-        "sibling route at the next depreciation onboarding rung."
+        "mc39-2026-08-29 rung 5 (Fable verdict amendment 2 §A2.8). Onboards "
+        "depreciation-engine's F1-UPHELD `/v1/calculators/depreciation/at/"
+        "{period_uri}` endpoint through the REST surface. Computes WDV + "
+        "period depreciation at a nominated `at_date` for a single asset. "
+        "Individually-depreciated assets only — pooled assets (SBE pool, "
+        "low-value pool, software pool) are refused with typed refusal "
+        "`pool_asset_out_of_t6_scope` from the engine (T6 scope; passed "
+        "through as HTTP 400 with the engine's refusal envelope). Gateway "
+        "applies Fable riders 1-2: `basis` narrowed to AU literals; "
+        "`numeric_mode` pinned to 'serving' server-side."
     ),
 )
-async def invoke_depreciation_audit(
+async def invoke_depreciation_at(
     period_uri: Annotated[str, PathParam(description="URL-encoded period URN.")],
-    body: DepreciationAuditInput,
+    body: DepreciationAtInput,
     prolog: Annotated[PrologClient, Depends(get_prolog_client)],
     taxonomy: Annotated[
         str,
@@ -845,8 +869,8 @@ async def invoke_depreciation_audit(
             description=(
                 "Bare-atom taxonomy axis value per CLAWDOG/111 §2. "
                 "Ratified set: lodgeit_au_sbrm | hoffman_base. "
-                "At Phase 3c.3.B only lodgeit_au_sbrm is populated for "
-                "depreciation; hoffman_base bundle authoring is deferred."
+                "Only lodgeit_au_sbrm populated for depreciation; "
+                "hoffman_base bundle authoring deferred."
             ),
         ),
     ] = DEFAULT_TAXONOMY,
@@ -869,34 +893,51 @@ async def invoke_depreciation_audit(
             ),
         )
 
-    meta = _CALCULATOR_REGISTRY.get(_DEPRECIATION_AUDIT_URI)
+    meta = _CALCULATOR_REGISTRY.get(_DEPRECIATION_AT_URI)
     if meta is None:  # pragma: no cover — registry is module-level constant
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="depreciation_audit calculator missing from registry",
+            detail="depreciation_at calculator missing from registry",
         )
     if period_uri_decoded not in meta["supported_periods"]:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=(
                 f"period_uri={period_uri_decoded!r} is not supported by the "
-                f"depreciation audit calculator. Supported: "
+                f"depreciation-at calculator. Supported: "
                 f"{meta['supported_periods']}"
             ),
         )
 
-    payload: dict = body.model_dump(by_alias=False, exclude_none=True)
+    payload: dict = body.model_dump(by_alias=False, exclude_none=True, mode="json")
 
     try:
-        engine_response = await prolog.depreciation_audit(payload)
+        engine_response = await prolog.depreciation_at(period_uri_decoded, payload)
     except PrologEngineUnavailable as exc:
-        # mc06-2026-05-28 Option-C PR α: catch transport-layer failures and
-        # surface structured 502/503. This is the LIVE-FAILURE path closing
-        # OT #83 #1 — production deploy has no DEPRECIATION_PROLOG_URL env
-        # var, so depreciation_audit() falls through to localhost:8082 and
-        # raises httpx.ConnectError which previously propagated as bare-HTML
-        # 500 (Standing Rule #12 clause (e) violation; wire-verified mc03
-        # 06:05 UTC + mc06 pre-flight 10:30 UTC).
+        # Fable rider 3 (§A2.4) says surface typed refusals cleanly. When
+        # the engine returns HTTP 400 with `refusal_class`, PrologClient
+        # maps that to `PrologEngineUnavailable(error_code=
+        # "engine_http_error", detail={"status_code": 400, "body": …})`.
+        # Detect that shape here and re-emit as HTTP 400 preserving the
+        # engine's typed refusal envelope, rather than flattening to a
+        # generic 502.
+        if (
+            exc.error_code == "engine_http_error"
+            and isinstance(exc.detail, dict)
+            and exc.detail.get("status_code") == 400
+        ):
+            try:
+                import json as _json
+                refusal_body = _json.loads(exc.detail.get("body", "{}"))
+            except (ValueError, TypeError):
+                refusal_body = None
+            if isinstance(refusal_body, dict) and refusal_body.get("refusal_class"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=refusal_body,
+                ) from exc
+
+        # Otherwise, transport-layer failure per SR #12 clause (e).
         status_code = (
             status.HTTP_503_SERVICE_UNAVAILABLE
             if exc.error_code == "engine_timeout"
@@ -917,10 +958,9 @@ async def invoke_depreciation_audit(
             detail={"error": exc.error, "detail": exc.detail},
         ) from exc
 
-    # Engine response shape: {status, transition_date, method, audited_standard_assets}.
-    # Any missing primary field is a structural-defence-tier failure (Lesson #34
-    # surface-do-not-paper-over).
-    for required in _DEPRECIATION_RESPONSE_FIELDS:
+    # Engine response shape (mc39): {basis, at_date, wdv_at, period_dep_at}.
+    # Any missing primary field is a structural-defence-tier failure (L#34).
+    for required in _DEPRECIATION_AT_RESPONSE_FIELDS:
         if required not in engine_response:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -931,16 +971,19 @@ async def invoke_depreciation_audit(
                 },
             )
 
-    # Manifest fidelity: the depreciation engine consumes the variance
-    # threshold rate from rates.pl. The Brain canon URI is fixed for the
-    # period; we surface it in the manifest the same way FBT surfaces its
-    # rate URIs. Future depreciation methods may consume more rate nodes;
-    # the engine should populate `rate_uris_consumed` in its response so the
-    # bridge does not need to know which rates a method touched. For now,
-    # pin the audit-variance-threshold URI as the load-bearing manifest entry.
-    rate_uris: list[str] = engine_response.get("rate_uris_consumed") or [
-        f"urn:sbrm:rate:depreciation:{period_uri_decoded.split(':')[-1]}:audit-variance-threshold"
-    ]
+    # Manifest fidelity: the T6 depreciation engine (accounting-first cut)
+    # currently doesn't consume any SBRM_RATE_TABLE nodes at the fold — the
+    # variance threshold rate that the batch-audit stub anchored against is
+    # unrelated to point-in-time WDV+period_dep computation. The engine
+    # SHOULD emit `rate_uris_consumed` in the response (like FBT and Div7A)
+    # when future basis expansions (au_itaa97 tax-basis rate-table
+    # consumption; UK bases) actually reference rate-table nodes. For the
+    # current AU-accounting-only cut, `rate_uris_consumed` is expected to
+    # be empty and the manifest emits an empty rate_table_uris array.
+    # Fable rider 4 URN retirement is the load-bearing artefact here; the
+    # manifest self-declaration surface stays honest by emitting `[]`
+    # rather than pinning a fake anchor.
+    rate_uris: list[str] = engine_response.get("rate_uris_consumed") or []
     rate_table_root = _rate_table_root_for(period_uri_decoded, taxonomy)
     try:
         manifest = build_manifest(rate_uris, rate_table_root)
@@ -959,13 +1002,7 @@ async def invoke_depreciation_audit(
         ) from exc
 
     response_payload = wrap_response(
-        {
-            "status": engine_response["status"],
-            "transition_date": engine_response["transition_date"],
-            "method": engine_response["method"],
-            "audited_standard_assets": engine_response["audited_standard_assets"],
-            "manifest": manifest,
-        },
+        {**engine_response, "manifest": manifest},
         jurisdiction=meta["jurisdiction"],
     )
 

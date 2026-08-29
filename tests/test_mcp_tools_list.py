@@ -75,7 +75,7 @@ def test_tools_list_surfaces_twenty_one_calculators(mcp_client: TestClient) -> N
 
     History:
     - Phase 3a (n=1): fbt-car-operating-cost only.
-    - Phase 3c.3.B (n=2): + depreciation-audit.
+    - Phase 3c.3.B (n=2): + depreciation-at (mc39-2026-08-29 rung 5: URN retired per Fable amendment 2 §A2.3).
     - mut-2026-05-31-mc15 Wave A (n=10): + 8 Phase 2a–2e originals.
     - mut-2026-05-31-mc17 Wave B (n=14): + 4 Phase 2f–2i single-method.
     - mut-2026-05-31-mc19 Wave C (n=20): + 6 Phase 2j–2k + Car-SF.
@@ -92,7 +92,7 @@ def test_tools_list_surfaces_twenty_one_calculators(mcp_client: TestClient) -> N
     names = {tool["name"] for tool in tools}
     expected_names = {
         "fbt-car-operating-cost",
-        "depreciation-audit",
+        "depreciation-at",
         # Wave A (mut-2026-05-31-mc15)
         "fbt-loan",
         "fbt-debt-waiver",

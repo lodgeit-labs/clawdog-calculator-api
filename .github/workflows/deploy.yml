@@ -74,12 +74,23 @@ jobs:
         id: deploy
         run: |
           set -o pipefail
+          # mc39-2026-08-29 rung 5.5 (Fable verdict amendment 2 §A2.8 folded
+          # rung 5.5): declarative env-vars at deploy time. Prior state was
+          # `gcloud run deploy --source .` with all engine URL env-vars set
+          # out-of-band via `gcloud run services update --set-env-vars=...`;
+          # any deploy that dropped them would silently break Andrew-a on
+          # all three calc engines (mc37 Fable brief §5 layer 4 latent bomb).
+          # `--set-env-vars` on `gcloud run deploy` REPLACES the entire
+          # env-var set on the new revision; safest posture is to declare
+          # every env-var this service needs at deploy time so no drift is
+          # possible.
           gcloud run deploy "$SERVICE" \
             --source . \
             --region "$GCP_REGION" \
             --project "$GCP_PROJECT" \
             --platform managed \
             --allow-unauthenticated \
+            --set-env-vars="^|^FBT_PROLOG_URL=https://fbt-engine-8340695160.australia-southeast1.run.app|DIV7A_ENGINE_URL=https://div7a-engine-8340695160.australia-southeast1.run.app|DEPRECIATION_PROLOG_URL=https://depreciation-engine-8340695160.australia-southeast1.run.app|LODGEIT_FBT_REPO=/app" \
             --quiet 2>&1 | tee deploy.log
           echo "Deploy complete. New revision:"
           gcloud run revisions list \

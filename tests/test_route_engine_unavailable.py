@@ -58,19 +58,18 @@ FBT_VALID_PAYLOAD = {
     "acquisitionDate": "2024-01-01",
 }
 
+# mc39-2026-08-29 rung 5: DEP_VALID_PAYLOAD migrated to the DepreciationAtInput
+# shape per Fable verdict amendment 2 §A2.8.
 DEP_VALID_PAYLOAD = {
-    "transitionDate": "2025-07-01",
-    "method": "primecost",
-    "assetsToAudit": [
-        {
-            "assetId": "test-1",
-            "assetName": "Toyota Corolla",
-            "purchaseDate": "2020-07-01",
-            "originalCost": 30000,
-            "taxMethod": "pc",
-            "currentBookAccumDep": 15000,
-        }
-    ],
+    "basis": "au_aasb116",
+    "asset": {
+        "cost": "5000.00",
+        "acquisition_date": "2022-07-01",
+        "accounting_useful_life_years": 10,
+        "accounting_method": "prime_cost",
+    },
+    "at_date": "2025-06-30",
+    "events": [],
 }
 
 
@@ -214,7 +213,7 @@ def test_depreciation_route_returns_structured_502_on_connect_error(
         transport, monkeypatch, use_depreciation_rate_root=True
     )
     try:
-        url = f"/v1/calculators/depreciation/audit/{quote(DEP_PERIOD_URI, safe='')}"
+        url = f"/v1/calculators/depreciation/at/{quote(DEP_PERIOD_URI, safe='')}"
         resp = client.post(url, json=DEP_VALID_PAYLOAD)
     finally:
         from api.main import app
@@ -241,7 +240,7 @@ def test_depreciation_route_returns_503_on_timeout(
         transport, monkeypatch, use_depreciation_rate_root=True
     )
     try:
-        url = f"/v1/calculators/depreciation/audit/{quote(DEP_PERIOD_URI, safe='')}"
+        url = f"/v1/calculators/depreciation/at/{quote(DEP_PERIOD_URI, safe='')}"
         resp = client.post(url, json=DEP_VALID_PAYLOAD)
     finally:
         from api.main import app
@@ -264,7 +263,7 @@ def test_depreciation_route_returns_502_on_transport_error(
         transport, monkeypatch, use_depreciation_rate_root=True
     )
     try:
-        url = f"/v1/calculators/depreciation/audit/{quote(DEP_PERIOD_URI, safe='')}"
+        url = f"/v1/calculators/depreciation/at/{quote(DEP_PERIOD_URI, safe='')}"
         resp = client.post(url, json=DEP_VALID_PAYLOAD)
     finally:
         from api.main import app
@@ -296,7 +295,7 @@ def test_depreciation_route_returns_502_on_transport_error(
         ),
         pytest.param(
             (
-                f"/v1/calculators/depreciation/audit/{quote(DEP_PERIOD_URI, safe='')}",
+                f"/v1/calculators/depreciation/at/{quote(DEP_PERIOD_URI, safe='')}",
                 DEP_VALID_PAYLOAD,
                 "depreciation",
                 True,
