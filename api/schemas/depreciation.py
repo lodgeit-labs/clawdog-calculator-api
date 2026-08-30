@@ -39,11 +39,14 @@ from pydantic import BaseModel, ConfigDict, Field
 # Gateway-scoped basis literals per Fable rider 1: engine's five-literal
 # vocabulary narrowed to AU-only. `uk_frs102_s17` refused at the pydantic
 # layer so the gateway wire self-describes as AU-jurisdiction consistently.
+# Narrowed 2026-08-30: the engine declares five basis literals but computes
+# only two. `au_itaa97`, `au_aasb116` and `uk_frs102_s17` pass the engine's own
+# validation and then raise MissingAssetCreatedFieldError in the fold, so the
+# gateway advertises only what returns a number. Widen again once the engine
+# wires the explicit framework literals through basis_registry.
 GatewayBasisLiteral = Literal[
-    "accounting",     # legacy alias for "au_aasb116" (F19 freeze preserved)
-    "tax",            # legacy alias for "au_itaa97" (F19 freeze preserved)
-    "au_itaa97",      # AU tax; ATO Div 40 ITAA 1997 s 40-72; days_held/365
-    "au_aasb116",     # AU accounting; AASB 116 §50/§60; actual/actual per FY
+    "accounting",     # AASB 116 useful-life basis (engine-verified 2026-08-30)
+    "tax",            # ATO Div 40 basis (engine-verified 2026-08-30)
 ]
 
 

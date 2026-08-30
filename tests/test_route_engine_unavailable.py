@@ -61,7 +61,7 @@ FBT_VALID_PAYLOAD = {
 # mc39-2026-08-29 rung 5: DEP_VALID_PAYLOAD migrated to the DepreciationAtInput
 # shape per Fable verdict amendment 2 §A2.8.
 DEP_VALID_PAYLOAD = {
-    "basis": "au_aasb116",
+    "basis": "accounting",
     "asset": {
         "cost": "5000.00",
         "acquisition_date": "2022-07-01",

@@ -218,7 +218,7 @@ HTTP_STATUS=$(curl -sS -D "$DEP_HEADERS_TMP" -o "$DEP_TMP" -w "%{http_code}" -X 
     "$API_BASE_URL/v1/calculators/depreciation/at/$DEP_PERIOD_URI" \
     -H "Content-Type: application/json" \
     -d '{
-      "basis": "au_aasb116",
+      "basis": "accounting",
       "asset": {
         "cost": "5000.00",
         "acquisition_date": "2022-07-01",
@@ -248,7 +248,7 @@ fails = []
 for k in ['basis', 'at_date', 'wdv_at', 'period_dep_at']:
     if k not in live:
         fails.append(f'missing engine field {k!r}')
-if live.get('basis') != 'au_aasb116':
+if live.get('basis') != 'accounting':
     fails.append(f'basis echoed wrong: {live.get(\"basis\")!r}')
 # Gateway envelope.
 if 'manifest' not in live:
