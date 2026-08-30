@@ -362,7 +362,7 @@ class PrologClient:
         return await self.dispatch(
             DEPRECIATION_ENGINE,
             pinned_payload,
-            path_override=f"/v1/calculators/depreciation/at/{period_uri}",
+            path_override=f"/v1/calculators/depreciation/at/{period_uri.rsplit(':', 1)[-1]}",
         )
 
     async def div7a_at(
