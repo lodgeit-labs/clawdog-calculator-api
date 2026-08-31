@@ -43,7 +43,7 @@ PERIOD_URI = "urn:sbrm:period:depreciation:fy2026"
 # Canonical single-asset happy-path input mirroring the engine's
 # DepreciationAtRequest schema (basis + asset + at_date + events[]).
 SAMPLE_INPUT = {
-    "basis": "au_aasb116",
+    "basis": "accounting",
     "asset": {
         "cost": "5000.00",
         "acquisition_date": "2022-07-01",
@@ -58,7 +58,7 @@ SAMPLE_INPUT = {
 # Values: prime-cost, useful life 10 years, at_date 3 FY-ends after
 # acquisition → wdv_at ≈ 3500 (5000 - 3 * 500), period_dep_at = 500.
 CANONICAL_ENGINE_RESPONSE = {
-    "basis": "au_aasb116",
+    "basis": "accounting",
     "at_date": "2025-06-30",
     "wdv_at": "3500.00",
     "period_dep_at": "500.00",
@@ -177,7 +177,7 @@ def _invoke(client: TestClient, payload: dict | None = None) -> dict:
 
 def test_endpoint_registered(depreciation_test_client: TestClient) -> None:
     body = _invoke(depreciation_test_client)
-    assert body["basis"] == "au_aasb116"
+    assert body["basis"] == "accounting"
 
 
 # --- Assertion class #2: engine fields byte-faithful + manifest+advisory ---

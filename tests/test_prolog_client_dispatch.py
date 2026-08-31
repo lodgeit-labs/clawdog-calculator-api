@@ -64,7 +64,7 @@ async def test_dispatch_depreciation_at_success_returns_dict():
     JSON on success. mc39-2026-08-29 rung 5: DEPRECIATION_ENGINE now uses a
     templated path per Fable F1 UPHELD; caller must supply path_override."""
     expected_response = {
-        "basis": "au_aasb116",
+        "basis": "accounting",
         "at_date": "2025-06-30",
         "wdv_at": "3500.00",
         "period_dep_at": "500.00",
@@ -73,7 +73,7 @@ async def test_dispatch_depreciation_at_success_returns_dict():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
         assert request.url.path == (
-            "/v1/calculators/depreciation/at/urn:sbrm:period:depreciation:fy2026"
+            "/v1/calculators/depreciation/at/fy2026"
         )
         return httpx.Response(200, json=expected_response)
 
@@ -85,7 +85,7 @@ async def test_dispatch_depreciation_at_success_returns_dict():
         DEPRECIATION_ENGINE,
         {"foo": "bar"},
         path_override=(
-            "/v1/calculators/depreciation/at/urn:sbrm:period:depreciation:fy2026"
+            "/v1/calculators/depreciation/at/fy2026"
         ),
     )
     assert result == expected_response
@@ -242,7 +242,7 @@ async def test_depreciation_at_wrapper_pins_numeric_mode_serving():
     never receives a caller-supplied value even if it slipped past the
     gateway pydantic layer."""
     expected = {
-        "basis": "au_aasb116",
+        "basis": "accounting",
         "at_date": "2025-06-30",
         "wdv_at": "3500.00",
         "period_dep_at": "500.00",
@@ -251,7 +251,7 @@ async def test_depreciation_at_wrapper_pins_numeric_mode_serving():
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == (
-            "/v1/calculators/depreciation/at/urn:sbrm:period:depreciation:fy2026"
+            "/v1/calculators/depreciation/at/fy2026"
         )
         import json as _json
         seen_payloads.append(_json.loads(request.content))
