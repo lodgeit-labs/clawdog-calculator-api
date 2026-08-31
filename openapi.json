@@ -277,9 +277,7 @@
             "description": "Depreciation basis discriminator. Gateway rider 1 narrows the engine's five-literal vocabulary to the four AU literals: 'accounting' (AASB 116 alias), 'tax' (ITAA97 alias), 'au_aasb116' (explicit AAS), 'au_itaa97' (explicit ATO Div 40). UK framework 'uk_frs102_s17' is refused at this gateway; UK becomes its own registry entry when a UK consumer arrives.",
             "enum": [
               "accounting",
-              "tax",
-              "au_itaa97",
-              "au_aasb116"
+              "tax"
             ],
             "title": "Basis",
             "type": "string"
