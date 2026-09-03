@@ -130,6 +130,62 @@ class AssetCreatedInput(BaseModel):
         ),
     ] = None
 
+    # F2-α field (RATIFIED mc11-2026-08-31; ratifying-doc
+    # `memory/proposals/2026-08-31-depreciation-product-scope-RATIFIED.md`
+    # §2 Ask 2 revised at mc12 §9.d): `dv_rate_factor` was previously
+    # excluded by `extra="forbid"`, which made diminishing-value method
+    # unreachable through the gateway (rung 5 case 6a returned HTTP 422
+    # `extra_forbidden`; 6b returned HTTP 502 engine_unavailable). Field is
+    # now declared at the gateway so the payload reaches the engine; the
+    # conditional validation ("required when accounting_method='diminishing_value'")
+    # stays at the engine's schema layer per F13 UPHELD schema-authority.
+    dv_rate_factor: Annotated[
+        Decimal | None,
+        Field(
+            default=None,
+            gt=0,
+            description=(
+                "Diminishing-value rate factor as a multiplier of 1/life. "
+                "ATO Div 40 default is 2 (200% method); prime-cost equivalent "
+                "is 1. REQUIRED at the engine when accounting_method is "
+                "'diminishing_value'; conditional validation is enforced at "
+                "the engine schema layer per F13 UPHELD (the gateway does not "
+                "duplicate). MUST be omitted when accounting_method is "
+                "'prime_cost'. Unit convention: rate factor (e.g. 2.0 for the "
+                "200% method), NOT the resulting per-year rate."
+            ),
+        ),
+    ] = None
+
+    # F2-β field (RATIFIED mc11-2026-08-31 §2 Ask 2 CONDITIONAL revised at
+    # mc12 10:38 UTC to UNCONDITIONAL): `pool_type` was previously excluded
+    # by `extra="forbid"`, which meant a pooled asset received a generic
+    # `extra_forbidden` schema error rather than the typed
+    # `pool_asset_out_of_t6_scope` refusal the manifest promises. Rider 3
+    # typed-refusal passthrough (rung 5 case 7 wire-verified via depreciation
+    # route's `refusal_class`-preserving 400 branch) makes the manifest
+    # exclusion demonstrable rather than aspirational. Conditional validation
+    # ("pool_type is refused by the engine's D2 fold with typed refusal_class
+    # `pool_asset_out_of_t6_scope`") stays at the engine per F13 UPHELD;
+    # gateway accepts the field so the payload reaches the engine and the
+    # typed refusal fires.
+    pool_type: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "Pool membership discriminator. Any non-null value is refused "
+                "by the engine's D2 fold with typed refusal_class "
+                "'pool_asset_out_of_t6_scope' (rider 3 passthrough: gateway "
+                "returns HTTP 400 with refusal envelope preserved rather than "
+                "flattening to 502). T6 first-cut scope is single asset only; "
+                "pool machinery lands in the T6.1 pool-retrofit sprint. "
+                "Documented exclusion in the manifest is now wire-demonstrable "
+                "because the field reaches the engine's typed refusal path."
+            ),
+        ),
+    ] = None
+
 
 class EventInput(BaseModel):
     """Per-asset lifecycle event (mirrors engine's `EventInput`).

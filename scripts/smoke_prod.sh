@@ -414,15 +414,28 @@ required = {
     'urn:sbrm:calculator:fbt:meal-entertainment-register-12wk',
     'urn:sbrm:calculator:fbt:car-statutory-formula',
     'urn:sbrm:calculator:depreciation:at',
+    'urn:sbrm:calculator:div7a:at',
 }
+# OT #131 fold (RATIFIED mc11-2026-08-31): bidirectional declared-vs-live
+# check. `missing = required - uris` catches under-registration (a URN
+# canon lists but the wire does not serve); `unexpected = uris - required`
+# catches over-registration (a URN the wire serves but canon does not
+# list). Same discipline as OT #130 contract-parity corpus and mc40 env-var
+# check. Required-floor rises 20 → 21 to include div7a:at (native FastAPI
+# route registered since mc35 but never in the smoke required-set).
 missing = required - uris
-if missing:
+unexpected = uris - required
+if missing and unexpected:
+    print('MISSING:' + ','.join(sorted(missing)) + ' UNEXPECTED:' + ','.join(sorted(unexpected)))
+elif missing:
     print('MISSING:' + ','.join(sorted(missing)))
+elif unexpected:
+    print('UNEXPECTED:' + ','.join(sorted(unexpected)))
 else:
     print('OK')
 ")
     if [ "$CALCS_OK" = "OK" ]; then
-        echo "🟢 PASS: all 20 expected calculator URNs registered (2 existing + 8 Wave A + 4 Wave B + 6 Wave C)"
+        echo "🟢 PASS: all 21 expected calculator URNs registered (2 existing + 8 Wave A + 4 Wave B + 6 Wave C + 1 Div7A) and no unexpected URNs"
         PASS_COUNT=$((PASS_COUNT + 1))
     else
         echo "🔴 FAIL: $CALCS_OK"

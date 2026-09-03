@@ -91,6 +91,35 @@
             "description": "Initial cost basis. Positive Decimal; SR #3 fail-loud rejects zero or negative.",
             "title": "Cost"
           },
+          "dv_rate_factor": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Diminishing-value rate factor as a multiplier of 1/life. ATO Div 40 default is 2 (200% method); prime-cost equivalent is 1. REQUIRED at the engine when accounting_method is 'diminishing_value'; conditional validation is enforced at the engine schema layer per F13 UPHELD (the gateway does not duplicate). MUST be omitted when accounting_method is 'prime_cost'. Unit convention: rate factor (e.g. 2.0 for the 200% method), NOT the resulting per-year rate.",
+            "title": "Dv Rate Factor"
+          },
+          "pool_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pool membership discriminator. Any non-null value is refused by the engine's D2 fold with typed refusal_class 'pool_asset_out_of_t6_scope' (rider 3 passthrough: gateway returns HTTP 400 with refusal envelope preserved rather than flattening to 502). T6 first-cut scope is single asset only; pool machinery lands in the T6.1 pool-retrofit sprint. Documented exclusion in the manifest is now wire-demonstrable because the field reaches the engine's typed refusal path.",
+            "title": "Pool Type"
+          },
           "tax_asset_class": {
             "anyOf": [
               {
