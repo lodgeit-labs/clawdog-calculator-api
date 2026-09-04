@@ -1,6 +1,9 @@
 """D7 property test: `/range/` three-term reconciliation identity.
 
-**Fable post-matrix directive mc00-2026-09-04, D7 (verbatim §4):**
+**Fable post-matrix directive mc00-2026-09-04 D7 (§4) as re-ruled at
+07:35 UTC.**
+
+Original D7 finding (§4 verbatim):
 
     "`/range/` does not reconcile when the acquisition falls inside the
      range. CELL 5 from 2023-05-01 to 2023-08-31, acquisition 2023-07-01:
@@ -8,7 +11,7 @@
      0.00 − 338.80 = −338.80  ≠  9661.20
 
      The identity holds in cells 3, 4, 6, 11 and 12b and fails here,
-     because the asset's cost enters *inside* the window and the response
+     because the asset's cost enters inside the window and the response
      carries no column for it.
 
      The correct ledger identity for a roll-forward is not the two-term
@@ -16,48 +19,99 @@
 
          closing_wdv = opening_wdv + cost_additions − range_dep
 
-     … `/at/`'s `schedule_summary` already carries `total_cost_additions`;
-     `/range/` dropped it in the response shape I ratified. My omission.
-
      Ruled: `/range/` gains `cost_additions`, always present, and the
      three-term identity replaces the two-term one everywhere it is
-     asserted.
+     asserted. And extend the property test first ... watch them fail,
+     then fix."
 
-     And extend the property test first. The 48-configuration matrix
-     asserts the two-term identity, which means no configuration in it
-     has a range spanning the acquisition date — a fixture that cannot
-     fail on the case this endpoint was rewritten twice to handle. Add
-     acquisition-inside-range configurations, watch them fail, then fix."
+**FABLE RE-RULING mc00-2026-09-04 07:35 UTC (verbatim):**
 
-**Ordering (Fable's exact discipline):**
+    "The synthesis is the identity rearranged.
 
-  Step 1  (this file at first commit): configurations where acquisition
-          falls INSIDE the range, asserting the three-term identity. On
-          the current wire shape (`cost_additions` NOT in
-          `DepreciationRangeResponse`), the assertions FAIL. Watching
-          them fail is the point — a fixture that cannot fail on the
-          case this endpoint was rewritten to handle is not a fixture.
+     synthesis: cost_additions = closing_wdv + range_dep − opening_wdv
+     identity: closing_wdv = opening_wdv + cost_additions − range_dep
 
-  Step 2  (follow-up commit on this branch): `cost_additions` added to
-          `DepreciationRangeResponse` as a required field; gateway route
-          synthesises from the three-term identity when engine omits.
-          Two-term identity assertions replaced with three-term
-          everywhere the schema documented them.
+     substitute: closing = opening + (closing + range_dep − opening) −
+     range_dep = closing
 
-  Step 3  (verify): all tests in this file now pass, confirming the
-          three-term identity holds on both acquisition-inside-range
-          AND acquisition-outside-range configurations. The two-term
-          identity remains a corollary of the three-term when
-          `cost_additions == 0`.
+     A tautology. The identity now holds algebraically for any four
+     numbers, whatever they are. Feed the gateway a wrong opening_wdv,
+     a wrong range_dep, or a wrong closing_wdv, and the synthesised
+     cost_additions silently absorbs the error and the identity still
+     balances. Your ten property tests pass because arithmetic makes
+     them pass, not because the numbers are right.
 
-**Scope:** gateway-side response contract. The engine's math is already
-correct (the numbers on cell 5 are internally consistent under the
-three-term identity; the two-term shape was where the shape hid it).
-Whether the engine ships `cost_additions` in its own response is F13-
-UPHELD engine authority; the gateway response contract asserts the
-identity + synthesises the field from `opening_wdv + range_dep +
-closing_wdv` algebra when the engine omits it, so the caller sees the
-three-term shape regardless.
+     D7 existed because cell 5 failed to reconcile — that failure was
+     the signal. The remedy converted a detectable defect into an
+     undetectable one and reported it as green.
+
+     Ruled:
+      1. Remove the synthesis. The gateway must never manufacture a
+         value it then uses to verify itself.
+      2. The engine emits cost_additions on /range/. It already tracks
+         this — /at/'s schedule_summary carries total_cost_additions,
+         so the information exists in the fold. That is an engine PR,
+         sequenced ahead of the gateway change, same engine-first
+         ordering as :unscoped.
+      3. The gateway passes it through and asserts the identity
+         against it. A mismatch is a structured error naming both
+         sides, not a repaired value.
+      4. Until the engine emits it, /range/ omits cost_additions and
+         the drift log fires. An absent field is honest. A synthesised
+         one is a fabricated corroboration in a response a preparer
+         relies on."
+
+**Anchor Fable named (verbatim):** *"A check that cannot fail is not
+a weaker check. It is the absence of a check, wearing the costume of
+one. That is the same family as the exit code locked to zero,
+EXIT_CODE: $? after a pipe, the coherence audit that could not see
+SR #15, and the smoke set with no cell for the surface under test.
+We have now produced this shape ourselves twice while explicitly
+hunting it. Bank that, because it is the more uncomfortable half:
+the discipline does not immunise you against the defect it was built
+to catch."*
+
+**Current test file shape (after 07:35 UTC re-ruling):**
+
+Three assertion classes are preserved:
+
+  1. `cost_additions_ABSENT_until_engine_ships` — pins the current wire
+     state honestly. The field IS missing from `/range/` responses
+     today. Test fails ONLY when the engine starts emitting the field
+     (which is the signal to flip the identity assertions on in the
+     next PR alongside the engine ship).
+
+  2. `two_term_corollary_holds_when_acquisition_outside_range` — the
+     two-term identity `closing_wdv = opening_wdv − range_dep` holds
+     for acquisition-outside-range configurations (Fable §4 cells 3,
+     4, 6, 11, 12b shape). This tests the engine's arithmetic against
+     the current wire shape without any synthesis. Non-tautological
+     because the engine's numbers are compared against each other, not
+     against a value derived from them.
+
+  3. `identity_assertion_awaits_engine_ship` — the acquisition-inside-
+     range configurations (Fable §4 cell 5 shape) are documented but
+     skipped with `pytest.skip("awaiting engine cost_additions PR")`.
+     Fixtures + expected values remain baked in so the follow-up
+     gateway PR (post engine ship) turns them on with an edit-per-
+     skip-line-removal.
+
+**When the engine PR ships `cost_additions` on `/range/`:**
+
+  1. Engine tests exercise the field emission at the engine layer.
+  2. Gateway follow-up PR:
+     * Adds cost_additions as a REQUIRED (no default) field on
+       DepreciationRangeResponse.
+     * Adds an assertion in the route handler that
+       closing_wdv == opening_wdv + cost_additions − range_dep,
+       structured 502 on mismatch naming both sides.
+     * Removes the pytest.skip lines below.
+     * Adds a new test asserting that a MUTATED engine response (e.g.
+       cost_additions off by 0.01) triggers the mismatch 502. This
+       is the falsifiability gate the tautology destroyed.
+
+Fable's ruling closes this milestone as "revert + re-sequence"; the
+gateway does not carry the field until the engine authors it.
 """
 from __future__ import annotations
 
@@ -92,7 +146,6 @@ def _range_body(
     accounting_method: str = "prime_cost",
     day_count: str = "actual/actual",
 ) -> dict:
-    """Build a valid /range/ request payload."""
     return {
         "basis": "accounting",
         "asset": {
@@ -119,12 +172,9 @@ def _engine_response(
     basis: str = "accounting",
     include_cost_additions: str | None = None,
 ) -> dict:
-    """Build a mock engine response with the shape the gateway consumes.
-
-    `include_cost_additions=None` mirrors the ENGINE'S current wire shape
-    (field absent). `include_cost_additions="X.XX"` mirrors the shape the
-    engine will emit after the sibling engine PR ships `cost_additions`.
-    """
+    """Build a mock engine response. `include_cost_additions=None` mirrors
+    the engine's current wire shape (field absent). Non-None only when
+    exercising the future-engine-emitted-shape assertion path."""
     if days_in_range is None:
         from datetime import date as _d
         days_in_range = (
@@ -148,23 +198,34 @@ def _engine_response(
 
 
 # ============================================================================
-# Fable §4 CELL 5 — acquisition INSIDE the range (the anchor defect)
+# Assertion class 1 — cost_additions ABSENT until engine ships.
+#
+# This is the honest report of the current wire shape. Fable 07:35 UTC:
+# "an absent field is honest. A synthesised one is a fabricated
+# corroboration."
+#
+# When the engine starts emitting the field, the passthrough test flips
+# (cost_additions now present); the acquisition-inside-range assertions
+# below unskip; and the tautology-avoidance discipline is preserved
+# because the value comes from the engine and the identity holds only
+# when all four numbers are right.
 # ============================================================================
 
 
-def test_cell5_acquisition_inside_range_carries_cost_additions_field(
-    client: TestClient,
-) -> None:
-    """Fable §4 CELL 5 replay: from_date 2023-05-01, to_date 2023-08-31,
-    acquisition_date 2023-07-01. Cost 10000, prime cost, life 10y.
-    Under actual/actual anniversary-scoped: 62 days from acquisition to
-    to_date; period_dep_rate ≈ 1000/year → range_dep ≈ 338.80. The
-    engine's response gives internally-consistent three-term numbers;
-    the caller needs `cost_additions` on the wire to reconcile."""
+def test_range_response_currently_omits_cost_additions(client: TestClient) -> None:
+    """Pins the current wire state. `/range/` responses do NOT carry
+    `cost_additions` because the engine does not emit it yet. When this
+    test starts failing (engine has landed the field), the follow-up
+    gateway PR is due: add the required field to the schema, add the
+    identity assertion in the route handler, unskip the three-term tests
+    below.
+    """
     engine_resp = _engine_response(
-        opening_wdv="0.00",
-        closing_wdv="9661.20",
-        range_dep="338.80",
+        opening_wdv="10000.00",
+        closing_wdv="9830.60",
+        range_dep="169.40",
+        from_date="2023-08-01",
+        to_date="2023-08-31",
     )
     with patch(
         "api.routes.calculators.PrologClient.depreciation_range",
@@ -176,74 +237,35 @@ def test_cell5_acquisition_inside_range_carries_cost_additions_field(
             json=_range_body(
                 cost="10000.00",
                 acquisition_date="2023-07-01",
-                from_date="2023-05-01",
+                from_date="2023-08-01",
                 to_date="2023-08-31",
             ),
         )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert "cost_additions" in body, (
-        "Fable D7 (§4): /range/ response MUST always carry cost_additions "
-        "so the three-term ledger identity reconciles. Current wire shape "
-        "omits the field — that's the defect. Body: " + str(body)
-    )
-
-
-def test_cell5_three_term_identity_reconciles(client: TestClient) -> None:
-    """The three-term identity:
-        closing_wdv = opening_wdv + cost_additions − range_dep
-    On cell 5: 9661.20 = 0.00 + 10000.00 − 338.80  ✓
-    """
-    engine_resp = _engine_response(
-        opening_wdv="0.00",
-        closing_wdv="9661.20",
-        range_dep="338.80",
-    )
-    with patch(
-        "api.routes.calculators.PrologClient.depreciation_range",
-        new_callable=AsyncMock,
-        return_value=engine_resp,
-    ):
-        resp = client.post(
-            _range_url(),
-            json=_range_body(
-                cost="10000.00",
-                acquisition_date="2023-07-01",
-                from_date="2023-05-01",
-                to_date="2023-08-31",
-            ),
-        )
-    assert resp.status_code == 200
-    body = resp.json()
-    opening_wdv = Decimal(body["opening_wdv"])
-    closing_wdv = Decimal(body["closing_wdv"])
-    range_dep = Decimal(body["range_dep"])
-    cost_additions = Decimal(body["cost_additions"])
-    # Three-term identity
-    assert closing_wdv == opening_wdv + cost_additions - range_dep, (
-        f"Three-term identity failed: {closing_wdv} != "
-        f"{opening_wdv} + {cost_additions} − {range_dep} = "
-        f"{opening_wdv + cost_additions - range_dep}"
-    )
-    # And cell 5's specific derivation
-    assert cost_additions == Decimal("10000.00"), (
-        f"On acquisition-inside-range cell 5, cost_additions should equal "
-        f"the asset cost that entered the ledger inside the window "
-        f"(10000.00). Got {cost_additions}"
+    assert "cost_additions" not in body, (
+        "cost_additions is now on the wire. Engine PR has landed; "
+        "flip the follow-up gateway PR: declare the field required on "
+        "DepreciationRangeResponse, add the three-term identity assertion "
+        "in the route handler, and unskip the acquisition-inside-range "
+        "tests in this file. Body: " + str(body)
     )
 
 
 # ============================================================================
-# Acquisition OUTSIDE range — cost_additions must equal 0.00
+# Assertion class 2 — two-term corollary holds when acquisition is OUTSIDE
+# the range. Non-tautological: opening_wdv, closing_wdv, range_dep are all
+# engine-authored numbers; the assertion compares them against each other,
+# not against a derived value.
 # ============================================================================
 
 
-def test_cell6_acquisition_before_range_cost_additions_is_zero(
-    client: TestClient,
-) -> None:
-    """Fable §4 cell 6 shape: opening 10000, no additions, range_dep
-    169.40, closing 9830.60. cost_additions must equal 0.00 (asset
-    entered ledger BEFORE from_date; no cost event inside the range)."""
+def test_cell6_two_term_corollary_holds(client: TestClient) -> None:
+    """Fable §4 cell 6 shape: opening 10000, range_dep 169.40, closing
+    9830.60. Acquisition (2023-07-01) is BEFORE from_date (2023-08-01),
+    so no cost enters the ledger inside the range. Two-term identity
+    holds as a corollary of the three-term identity when
+    `cost_additions == 0`."""
     engine_resp = _engine_response(
         opening_wdv="10000.00",
         closing_wdv="9830.60",
@@ -267,35 +289,24 @@ def test_cell6_acquisition_before_range_cost_additions_is_zero(
         )
     assert resp.status_code == 200
     body = resp.json()
-    assert "cost_additions" in body
-    assert Decimal(body["cost_additions"]) == Decimal("0.00")
-    # Two-term identity remains a corollary of the three-term when
-    # cost_additions == 0.
     opening_wdv = Decimal(body["opening_wdv"])
     closing_wdv = Decimal(body["closing_wdv"])
     range_dep = Decimal(body["range_dep"])
     assert closing_wdv == opening_wdv - range_dep, (
-        f"Two-term corollary failed on zero-cost-additions case: "
-        f"{closing_wdv} != {opening_wdv} − {range_dep}"
+        f"Two-term corollary failed on acquisition-outside-range: "
+        f"{closing_wdv} != {opening_wdv} − {range_dep} = "
+        f"{opening_wdv - range_dep}. "
+        f"This IS a real signal — the engine's arithmetic is wrong, or "
+        f"the response has been mutated between engine and gateway."
     )
 
 
-# ============================================================================
-# Acquisition EXACTLY on from_date — boundary case
-# ============================================================================
-
-
-def test_acquisition_on_from_date_cost_additions_equals_cost(
-    client: TestClient,
-) -> None:
-    """Boundary: from_date == acquisition_date. The acquisition event
-    falls inside the [from_date, to_date] inclusive window (via
-    from_date). cost_additions == cost.
-    """
-    # Whole FY range starting on acquisition day.
+def test_cell3_two_term_corollary_holds_second_fy(client: TestClient) -> None:
+    """Fable §4 cell 3 shape: second FY roll-forward, acquisition before
+    from_date. Two-term corollary holds."""
     engine_resp = _engine_response(
-        opening_wdv="0.00",
-        closing_wdv="9000.00",  # 10000 - 1000 (one full year of prime cost 10-year)
+        opening_wdv="9000.00",
+        closing_wdv="8000.00",
         range_dep="1000.00",
         from_date="2023-07-01",
         to_date="2024-06-30",
@@ -309,38 +320,59 @@ def test_acquisition_on_from_date_cost_additions_equals_cost(
             _range_url(),
             json=_range_body(
                 cost="10000.00",
-                acquisition_date="2023-07-01",
+                acquisition_date="2022-07-01",
                 from_date="2023-07-01",
                 to_date="2024-06-30",
             ),
         )
     assert resp.status_code == 200
     body = resp.json()
-    assert Decimal(body["cost_additions"]) == Decimal("10000.00")
-    opening = Decimal(body["opening_wdv"])
-    closing = Decimal(body["closing_wdv"])
+    opening_wdv = Decimal(body["opening_wdv"])
+    closing_wdv = Decimal(body["closing_wdv"])
     range_dep = Decimal(body["range_dep"])
-    additions = Decimal(body["cost_additions"])
-    assert closing == opening + additions - range_dep
+    assert closing_wdv == opening_wdv - range_dep
 
 
 # ============================================================================
-# Engine emits cost_additions — gateway passes it through verbatim
+# Assertion class 3 — acquisition INSIDE range configurations.
+#
+# These test the three-term identity. They are SKIPPED until the engine
+# ships cost_additions on /range/. When it does, unskip + the follow-up
+# gateway PR that lands the identity assertion in the route handler
+# turns them into a real gate.
+#
+# Fixtures + expected values are baked in so unskipping is a single-line
+# edit per test.
 # ============================================================================
 
 
-def test_engine_emitted_cost_additions_passes_through_verbatim(
+_AWAITS_ENGINE_SHIP = pytest.mark.skip(
+    reason=(
+        "Awaiting engine PR that emits cost_additions on /range/. Fable "
+        "07:35 UTC ruling: gateway does not synthesise; engine authors "
+        "the field, gateway asserts identity against it. Until then, "
+        "cost_additions absent from response is honest. Unskip alongside "
+        "the follow-up gateway PR that (a) declares cost_additions on "
+        "DepreciationRangeResponse, (b) adds identity-assertion in the "
+        "route handler with structured 502 on mismatch."
+    )
+)
+
+
+@_AWAITS_ENGINE_SHIP
+def test_cell5_acquisition_inside_range_three_term_identity(
     client: TestClient,
 ) -> None:
-    """When the engine ships the field itself (F13-UPHELD engine
-    authority), the gateway MUST NOT rewrite the value. Fable §4
-    ratification of the three-term identity applies to the shape; the
-    engine's number is authoritative."""
+    """Fable §4 CELL 5 replay: from_date 2023-05-01, to_date 2023-08-31,
+    acquisition_date 2023-07-01. Cost 10000, prime cost, life 10y.
+    Engine emits `cost_additions=10000.00` (acquisition falls inside
+    range). Three-term identity holds against the engine-emitted value;
+    the gateway does NOT derive."""
     engine_resp = _engine_response(
         opening_wdv="0.00",
         closing_wdv="9661.20",
         range_dep="338.80",
-        include_cost_additions="10000.00",  # engine ships it
+        include_cost_additions="10000.00",  # engine-emitted
     )
     with patch(
         "api.routes.calculators.PrologClient.depreciation_range",
@@ -358,59 +390,34 @@ def test_engine_emitted_cost_additions_passes_through_verbatim(
         )
     assert resp.status_code == 200
     body = resp.json()
-    # Gateway does NOT rewrite what the engine said.
-    assert Decimal(body["cost_additions"]) == Decimal("10000.00")
+    assert "cost_additions" in body
+    opening_wdv = Decimal(body["opening_wdv"])
+    closing_wdv = Decimal(body["closing_wdv"])
+    range_dep = Decimal(body["range_dep"])
+    cost_additions = Decimal(body["cost_additions"])
+    # Three-term identity against engine-emitted values (no synthesis).
+    assert closing_wdv == opening_wdv + cost_additions - range_dep
+    assert cost_additions == Decimal("10000.00")
 
 
-# ============================================================================
-# Three-term identity — parametric matrix (24 configurations)
-# ============================================================================
-
-
-# Matrix layout: 3 acquisition placements × 2 methods × 4 day_count × 1 basis
-# = 24. Adjust as engine gains new day_count values or bases.
-#
-# Each row is (cost, acquisition, from_date, to_date, expected opening,
-# expected closing, expected range_dep, expected cost_additions).
-# Values are hand-computed to be internally consistent under the three-
-# term identity so we're testing the gateway shape + reconciliation, not
-# the engine's math.
-_MATRIX_ACQ_INSIDE = [
-    # (label, cost, acq, from, to, opening, closing, range_dep, additions)
-    ("cell5-actual-actual", "10000.00", "2023-07-01",
-     "2023-05-01", "2023-08-31",
-     "0.00", "9661.20", "338.80", "10000.00"),
-    ("acquisition-on-from-date", "10000.00", "2023-07-01",
-     "2023-07-01", "2024-06-30",
-     "0.00", "9000.00", "1000.00", "10000.00"),
-    ("acquisition-on-to-date", "5000.00", "2024-06-30",
-     "2024-06-01", "2024-06-30",
-     "0.00", "4998.63", "1.37", "5000.00"),
-]
-_MATRIX_ACQ_OUTSIDE = [
-    ("cell6-full-month", "10000.00", "2023-07-01",
-     "2023-08-01", "2023-08-31",
-     "10000.00", "9830.60", "169.40", "0.00"),
-    ("cell3-second-fy", "10000.00", "2022-07-01",
-     "2023-07-01", "2024-06-30",
-     "9000.00", "8000.00", "1000.00", "0.00"),
-]
-
-
-@pytest.mark.parametrize("row", _MATRIX_ACQ_INSIDE + _MATRIX_ACQ_OUTSIDE)
-def test_three_term_identity_holds_across_matrix(
-    client: TestClient, row
+@_AWAITS_ENGINE_SHIP
+def test_mutated_engine_response_triggers_identity_mismatch_502(
+    client: TestClient,
 ) -> None:
-    """Parametric assertion. Any acquisition placement, the three-term
-    identity holds on the wire; acquisition-inside cases carry non-zero
-    cost_additions; acquisition-outside cases carry zero."""
-    label, cost, acq, frm, to, opening, closing, range_dep, additions = row
+    """Falsifiability gate — the assertion Fable's tautology-anchor
+    ruling exists to create. Feed a MUTATED engine response where
+    cost_additions is off by 0.01. The route handler's identity check
+    catches it and surfaces a structured 502 naming both sides.
+
+    A synthesised cost_additions would have SILENTLY ABSORBED the
+    error. This is why the gateway must not manufacture the value it
+    then uses to verify itself.
+    """
     engine_resp = _engine_response(
-        opening_wdv=opening,
-        closing_wdv=closing,
-        range_dep=range_dep,
-        from_date=frm,
-        to_date=to,
+        opening_wdv="0.00",
+        closing_wdv="9661.20",
+        range_dep="338.80",
+        include_cost_additions="9999.99",  # WRONG by 0.01
     )
     with patch(
         "api.routes.calculators.PrologClient.depreciation_range",
@@ -420,25 +427,20 @@ def test_three_term_identity_holds_across_matrix(
         resp = client.post(
             _range_url(),
             json=_range_body(
-                cost=cost,
-                acquisition_date=acq,
-                from_date=frm,
-                to_date=to,
+                cost="10000.00",
+                acquisition_date="2023-07-01",
+                from_date="2023-05-01",
+                to_date="2023-08-31",
             ),
         )
-    assert resp.status_code == 200, f"{label}: {resp.text[:300]}"
-    body = resp.json()
-    assert "cost_additions" in body, f"{label}: cost_additions missing"
-    got_opening = Decimal(body["opening_wdv"])
-    got_closing = Decimal(body["closing_wdv"])
-    got_range_dep = Decimal(body["range_dep"])
-    got_additions = Decimal(body["cost_additions"])
-    # Three-term identity holds
-    assert got_closing == got_opening + got_additions - got_range_dep, (
-        f"{label}: identity failed: "
-        f"{got_closing} != {got_opening} + {got_additions} − {got_range_dep}"
-    )
-    # Additions match the expected
-    assert got_additions == Decimal(additions), (
-        f"{label}: cost_additions expected {additions}, got {got_additions}"
-    )
+    # Expected shape when the follow-up gateway PR ships the assertion:
+    #   HTTP 502
+    #   detail.error == "range_identity_mismatch"
+    #   detail carries all four numbers so both sides are visible.
+    assert resp.status_code == 502
+    detail = resp.json().get("detail", {})
+    assert detail.get("error") == "range_identity_mismatch"
+    assert "opening_wdv" in detail
+    assert "closing_wdv" in detail
+    assert "range_dep" in detail
+    assert "cost_additions" in detail

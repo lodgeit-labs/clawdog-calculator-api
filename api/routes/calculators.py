@@ -11,7 +11,6 @@ holds under a second calculator.
 """
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import unquote
@@ -1164,50 +1163,30 @@ async def invoke_depreciation_range(
                 },
             )
 
-    # Fable D7 mc00-2026-09-04: `cost_additions` synthesis.
+    # Fable D7 REVERTED mc00-2026-09-04 07:35 UTC: earlier gateway-side
+    # synthesis of cost_additions was a tautology. Rearranging the
+    # three-term identity to compute a fourth field from the other three
+    # made the identity algebraically-true for any four numbers whatever
+    # they are; the property tests then passed on arithmetic, not on
+    # correctness. Fable ruling verbatim: "a check that cannot fail is not
+    # a weaker check. It is the absence of a check, wearing the costume
+    # of one."
     #
-    # `/range/` gains `cost_additions`, always present, and the three-term
-    # identity `closing_wdv = opening_wdv + cost_additions − range_dep`
-    # replaces the two-term one everywhere it is asserted. The engine may
-    # not yet ship `cost_additions` in its response shape; when omitted,
-    # gateway derives from algebraic rearrangement so the caller sees the
-    # three-term shape regardless.
+    # Correct sequencing: the engine emits cost_additions on /range/,
+    # engine PR first, gateway then passes through + asserts identity.
+    # Sibling of :unscoped engine-first ordering. Until the engine ships
+    # the field, /range/ responses omit it — an absent field is honest;
+    # a synthesised one is a fabricated corroboration.
     #
-    # When engine DOES ship `cost_additions` (F13-UPHELD engine authority),
-    # the gateway passes it through verbatim without rewriting; the
-    # synthesis is a no-op.
-    if "cost_additions" not in engine_response:
-        try:
-            opening_wdv = Decimal(str(engine_response["opening_wdv"]))
-            closing_wdv = Decimal(str(engine_response["closing_wdv"]))
-            range_dep = Decimal(str(engine_response["range_dep"]))
-            # closing = opening + additions − range_dep
-            #    => additions = closing + range_dep − opening
-            synthesised = closing_wdv + range_dep - opening_wdv
-            # Quantise to 2 decimal places matching the engine's Decimal
-            # emission convention (all monetary fields land at 2dp).
-            engine_response = {
-                **engine_response,
-                "cost_additions": str(
-                    synthesised.quantize(Decimal("0.01"))
-                ),
-            }
-        except (KeyError, InvalidOperation, TypeError) as exc:
-            # If any of the three anchor fields is malformed, surface a
-            # structured 502 rather than emit a synthesised value that
-            # doesn't reconcile. Silent fallback to 0 here would hide the
-            # very shape the three-term identity exists to expose.
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail={
-                    "error": "cost_additions_synthesis_failed",
-                    "detail": (
-                        f"cannot derive cost_additions from engine "
-                        f"response: {exc.__class__.__name__}: {exc}"
-                    ),
-                    "engine_response": engine_response,
-                },
-            ) from exc
+    # Cross-repo tracking:
+    #   * ClawDog_Share@main handover for the next engine turn will
+    #     name this as the D7-follow-up engine PR.
+    #   * When engine ships cost_additions, this handler stays unchanged
+    #     (extra="allow" on DepreciationRangeResponse lets the field ride
+    #     through). A separate identity-assertion gate lands on the
+    #     gateway alongside the engine ship: three-term identity checked
+    #     against the engine-emitted value; mismatch -> structured 502
+    #     naming BOTH sides, no repair.
 
     # Manifest fidelity (same as /at/): depreciation compute at v1 consumes
     # no rate tables; manifest emits `rate_table_uris: []`. D6 conditional

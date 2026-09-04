@@ -633,49 +633,68 @@ class DepreciationRangeResponse(BaseModel):
     with `manifest` + `advisory` blocks per mc35 Div7A wrap pattern.
 
     Ledger vocabulary (Andrew mc10-2026-09-03 08:32 UTC + Fable mc10
-    ratification, extended by Fable D7 mc00-2026-09-04):
+    ratification):
 
-    - `opening_wdv`     = value carried INTO the range (close of `from_date - 1`)
-    - `cost_additions`  = TOTAL cost that entered the ledger INSIDE the
-                          range window. Zero when acquisition falls
-                          outside [from_date, to_date] (both endpoints
-                          inclusive per RATIFIED §2 Ask 3); equals
-                          asset.cost when acquisition falls inside.
-                          Future extension will accumulate
-                          `event_type=cost_addition` events on top.
-    - `closing_wdv`     = value carried OUT of the range (close of `to_date`)
-    - `range_dep`       = the charge between them.
+    - `opening_wdv` = value carried INTO the range (close of `from_date - 1`)
+    - `closing_wdv` = value carried OUT of the range (close of `to_date`)
+    - `range_dep` = the charge between them.
 
-    **Three-term identity (Fable D7 mc00-2026-09-04 replaces the earlier
-    two-term):**
+    **Reconciliation identity (Fable D7 mc00-2026-09-04, engine-first
+    ordering):**
+
+    The correct ledger identity is the three-term form:
 
         closing_wdv == opening_wdv + cost_additions − range_dep
 
-    Holds under `monthly` by construction (each month quantised then
-    summed); under `actual/actual` and `actual/365` derived from anchors
-    per Fable D2 mc15 fix. Two-term identity is a corollary when
-    `cost_additions == 0` (acquisition-outside-range case; cells 3, 4, 6,
-    11, 12b of Fable's post-matrix probe).
+    Where `cost_additions` is total cost entering the ledger inside the
+    range window (asset acquisition when acquisition_date falls inside
+    [from_date, to_date] + any cost_addition events dated inside).
 
-    Fable ruling verbatim (§4): *"`/range/` gains `cost_additions`,
-    always present, and the three-term identity replaces the two-term
-    one everywhere it is asserted. And extend the property test first.
-    The 48-configuration matrix asserts the two-term identity, which
-    means no configuration in it has a range spanning the acquisition
-    date — a fixture that cannot fail on the case this endpoint was
-    rewritten twice to handle. Add acquisition-inside-range
-    configurations, watch them fail, then fix."*
+    **Field-name divergence with /at/ (Fable ruling mc00-2026-09-04
+    07:56 UTC — D4-shape-on-a-field discipline; name the divergence
+    rather than let it be discovered):** when `cost_additions` lands on
+    the wire (via the engine PR queued as OT), `/range/`'s
+    `cost_additions` will INCLUDE the initial recognition of the asset
+    when acquisition falls inside [from_date, to_date]. This differs
+    from `/at/`'s `schedule_summary.total_cost_additions`, which counts
+    SUBSEQUENT `event_type=cost_addition` events ONLY and excludes the
+    acquisition. Two similarly-named fields on two endpoints of one
+    calculator, meaning different things. Andrew: additions-including-
+    acquisitions is standard fixed-asset-note presentation; renaming a
+    live /at/ field is a breaking change for no gain. Callers comparing
+    the two values MUST be aware of the difference. Manifest-fidelity
+    rule applied at field granularity.
 
-    Gateway-side synthesis: if the engine's response omits
-    `cost_additions`, the gateway derives it from algebraic rearrangement
-    of the three-term identity:
+    **Current wire shape does NOT carry `cost_additions`.** The engine
+    doesn't emit it yet (`/at/`'s ScheduleSummary carries a
+    `total_cost_additions` derived from `event_type=cost_addition`
+    events but not from the acquisition itself; `/range/` doesn't
+    surface anything). Until the engine ships the field, the two-term
+    identity `closing_wdv = opening_wdv − range_dep` holds only when
+    acquisition falls OUTSIDE the range window (cells 3, 4, 6, 11, 12b
+    of Fable's post-matrix probe). When acquisition falls INSIDE
+    (Fable's cell 5 shape) the response numbers are internally
+    consistent under the three-term identity but the caller cannot
+    reconcile from the wire.
 
-        cost_additions = closing_wdv + range_dep − opening_wdv
+    **This is a known gap awaiting the engine PR.** Fable ruling
+    07:35 UTC verbatim: *"an absent field is honest. A synthesised one
+    is a fabricated corroboration in a response a preparer relies on."*
+    Earlier gateway-side synthesis was reverted because the algebraic
+    rearrangement made the three-term identity unfalsifiable
+    (`cost_additions = closing + range_dep − opening` substituted back
+    into the identity produces `closing == closing`; a tautology).
 
-    See `api.routes.calculators.invoke_depreciation_range` for the
-    synthesis site. When the engine ships `cost_additions` in its own
-    response (F13-UPHELD engine authority), the gateway passes it
-    through verbatim without rewriting.
+    When the engine ships `cost_additions`:
+      1. Declare the field here (Decimal, required, no default).
+      2. Gateway passes through verbatim (extra="allow" already lets
+         it ride, but declaring makes it byte-diffable + typed).
+      3. Route handler ASSERTS the three-term identity against the
+         engine-emitted value. Mismatch → structured 502 naming both
+         sides + engine's four numbers, no repair.
+      4. Property tests in `tests/test_range_three_term_identity.py`
+         un-skip; they test the identity as a real gate against the
+         wire, not against derived values.
     """
 
     model_config = ConfigDict(extra="allow")  # engine may return extra fields
@@ -721,39 +740,16 @@ class DepreciationRangeResponse(BaseModel):
             description=(
                 "Total depreciation charge over [from_date, to_date] "
                 "inclusive. Zero-day range (from_date == to_date) returns "
-                "Decimal('0.00'). **Three-term ledger identity (Fable D7 "
-                "mc00-2026-09-04):** `range_dep = opening_wdv + "
-                "cost_additions − closing_wdv`. Rearrange this to "
-                "reconcile any three of the four fields against the "
-                "fourth. The two-term identity `range_dep = opening_wdv "
-                "- closing_wdv` remains valid whenever `cost_additions "
-                "== 0.00` (acquisition-outside-range case)."
+                "Decimal('0.00'). Reconciliation shape: the ledger "
+                "identity is `closing_wdv = opening_wdv + cost_additions "
+                "− range_dep`. The two-term corollary `closing_wdv = "
+                "opening_wdv − range_dep` holds ONLY when "
+                "`cost_additions == 0` (acquisition falls outside the "
+                "range window). See class docstring for the engine-first "
+                "sequencing that lands `cost_additions` on the wire."
             ),
         ),
     ]
-
-    cost_additions: Annotated[
-        Decimal,
-        Field(
-            default=Decimal("0.00"),
-            description=(
-                "Total cost that entered the ledger INSIDE the range "
-                "window (inclusive of both endpoints). Zero when "
-                "acquisition falls outside [from_date, to_date]; equals "
-                "asset.cost when acquisition falls inside (the range "
-                "spans the acquisition date). Future extension will "
-                "accumulate `event_type=cost_addition` lifecycle events "
-                "on top of the acquisition. Fable D7 mc00-2026-09-04 "
-                "ratification: `always present`, and the three-term "
-                "identity `closing_wdv = opening_wdv + cost_additions "
-                "− range_dep` replaces the two-term one everywhere. "
-                "Gateway synthesises this field from algebraic "
-                "rearrangement when the engine's response omits it "
-                "(engine may ship it directly in a later release; "
-                "F13-UPHELD passthrough when it does)."
-            ),
-        ),
-    ] = Decimal("0.00")
 
     opening_wdv: Annotated[
         Decimal,
