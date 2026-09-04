@@ -200,14 +200,48 @@ def map_engine_error_to_http(
 
         # --- 1a: engine 400 + refusal_class → 400 refusal envelope, flat.
         # Cell 8 exercises this. The refusal body IS the contract.
+        #
+        # Fable mc01-2026-09-04 08:28 UTC (cell 20 wire-verified defect +
+        # ruling): FastAPI wraps HTTPException(detail=X) unconditionally
+        # in {"detail": X}. The engine's refusal body carries its own
+        # `detail` key. Prior mapper handed FastAPI the engine's dict
+        # verbatim; wire result was:
+        #
+        #   {"detail": {"detail": "pool_asset_out_of_t6_scope",
+        #               "refusal_class": "pool_asset_out_of_t6_scope",
+        #               "refusal_payload": {...}}}
+        #
+        # The inner `detail` string is character-for-character equal to
+        # `refusal_class` on the pool-asset refusal path (engine emits
+        # both as the constant `REFUSAL_POOL_ASSET_OUT_OF_T6_SCOPE ==
+        # "pool_asset_out_of_t6_scope"` — wire-verified against
+        # depreciation-engine/depreciation_core/refusal.py:94). Not
+        # nesting; duplication. Fable ruled: drop the untyped one.
+        #
+        # Scoping (Fable's actual ruling was drop-when-duplicate, not
+        # unconditional-drop, because the engine's OTHER refusal path
+        # — unknown_basis at routes.py:548 — sets `detail` to a
+        # meaningful string that is NOT a duplicate of `refusal_class`.
+        # Unconditional pop would drop genuine content there):
+        #
+        # POP the inner `detail` key ONLY when it equals `refusal_class`.
+        # Any other value stays: it's real explanatory content.
         if (
             status_code == 400
             and isinstance(parsed_body, Mapping)
             and parsed_body.get("refusal_class")
         ):
+            sanitised = _sanitise_engine_body(parsed_body)
+            if (
+                isinstance(sanitised, Mapping)
+                and sanitised.get("detail") == sanitised.get("refusal_class")
+            ):
+                sanitised = {
+                    k: v for k, v in sanitised.items() if k != "detail"
+                }
             return HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=_sanitise_engine_body(parsed_body),
+                detail=sanitised,
             )
 
         # --- 1b: caller-fault 4xx (Fable Amendment 1: 400/409/413/422).

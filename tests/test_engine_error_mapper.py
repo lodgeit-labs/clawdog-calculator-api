@@ -346,13 +346,91 @@ def test_unmapped_4xx_defaults_to_gateway_502(caplog):
 
 
 # ============================================================================
-# §6 cosmetic — refusal envelope flatten
+# §6 cosmetic — refusal envelope flatten (Fable mc00-2026-09-04 §6 +
+# mc01-2026-09-04 08:28 UTC cell-20 correction)
+#
+# Fable ruled at mc01 08:28 UTC that the hermetic mapper tests were
+# structurally the wrong shape: they assert on what the mapper returns
+# (`http_exc.detail`), but the wire shows what FastAPI serialises into
+# the response body (`{"detail": http_exc.detail}` — FastAPI wraps
+# HTTPException(detail=X) unconditionally in {"detail": X}). Those two
+# diverged and hermetic tests missed the wire defect. Fix: response-
+# level assertions via TestClient live alongside the hermetic ones.
+#
+# The mapper's flatten rule (mc01 08:28 UTC):
+#   * Engine emits `detail` string that is character-for-character equal
+#     to `refusal_class` on the pool-asset path (both = the constant
+#     REFUSAL_POOL_ASSET_OUT_OF_T6_SCOPE). This is duplication, not
+#     nesting. Mapper pops the inner `detail` key.
+#   * Engine emits `detail` string that is meaningful content (e.g.
+#     unknown_basis path where detail carries the refusal_reason) and
+#     NOT a duplicate of `refusal_class`. Mapper preserves it.
 # ============================================================================
+
+
+def test_engine_400_refusal_class_pops_duplicate_inner_detail_hermetic():
+    """Hermetic: when engine's refusal body has
+    `detail == refusal_class` (the pool-asset shape wire-verified
+    against depreciation-engine refusal.py:94), the mapper's return
+    value drops the inner `detail` key."""
+    refusal_body = json.dumps(
+        {
+            "refusal_class": "pool_asset_out_of_t6_scope",
+            "detail": "pool_asset_out_of_t6_scope",  # DUPLICATE of refusal_class
+            "refusal_payload": {"pool_type": "small_business"},
+        }
+    )
+    exc = PrologEngineUnavailable(
+        error_code="engine_http_error",
+        detail={"status_code": 400, "body": refusal_body},
+        engine="depreciation",
+        url="http://dep-engine.test",
+    )
+    http_exc = map_engine_error_to_http(exc)
+    assert http_exc.status_code == 400
+    assert http_exc.detail["refusal_class"] == "pool_asset_out_of_t6_scope"
+    assert "detail" not in http_exc.detail, (
+        f"Duplicate `detail` key not popped; hermetic mapper return "
+        f"still carries it. Got: {http_exc.detail!r}"
+    )
+
+
+def test_engine_400_refusal_class_preserves_meaningful_inner_detail_hermetic():
+    """Hermetic counter-test: when engine's refusal body's `detail` field
+    carries meaningful content that is NOT a duplicate of `refusal_class`
+    (the unknown_basis shape at depreciation-engine routes.py:548),
+    the mapper preserves it. Fable ruling mc01 08:28 UTC was scoped
+    to duplication, not unconditional pop."""
+    refusal_body = json.dumps(
+        {
+            "refusal_class": "unknown_basis",
+            "detail": "Basis 'sf_16' is not recognised; expected one of...",
+            "refusal_payload": None,
+        }
+    )
+    exc = PrologEngineUnavailable(
+        error_code="engine_http_error",
+        detail={"status_code": 400, "body": refusal_body},
+        engine="depreciation",
+        url="http://dep-engine.test",
+    )
+    http_exc = map_engine_error_to_http(exc)
+    assert http_exc.detail["refusal_class"] == "unknown_basis"
+    assert http_exc.detail.get("detail", "").startswith(
+        "Basis 'sf_16' is not recognised"
+    ), (
+        f"Meaningful `detail` content dropped even though it is not a "
+        f"duplicate of refusal_class. Fable mc01 08:28 UTC scope was "
+        f"drop-when-duplicate. Got: {http_exc.detail!r}"
+    )
 
 
 def test_engine_400_with_refusal_class_flattens_nested_detail():
     """Cell 8's refusal body was `{"detail": {"detail": {...}}}` — nested
-    duplication at the public front door. Fable §6: flat."""
+    duplication at the public front door. Fable §6: flat. This test
+    keeps the pre-mc01 shape (fixture where detail is a distinct
+    sentence) so the drop-when-duplicate rule is asserted as
+    non-invasive to non-duplicating bodies."""
     refusal_body = json.dumps(
         {
             "refusal_class": "pool_asset_out_of_t6_scope",
@@ -373,6 +451,11 @@ def test_engine_400_with_refusal_class_flattens_nested_detail():
     assert not (
         isinstance(http_exc.detail.get("detail"), dict)
         and "refusal_class" in http_exc.detail["detail"]
+    )
+    # Non-duplicate `detail` string SHOULD be preserved (Fable mc01
+    # 08:28 UTC scope).
+    assert http_exc.detail.get("detail") == (
+        "Pool assets are individually out of scope"
     )
 
 
