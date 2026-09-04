@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # --- URI shape validators (atom-vs-bridge boundary) ---------------------------
 #
@@ -77,7 +77,21 @@ class FBTCarOperatingCostInput(BaseModel):
         0, ge=0, alias="employeeContribution",
         description="Post-tax employee contribution toward the benefit (AUD).",
     )
-    form_of_finance: str = Field(
+    # D17 gateway half (Fable ruling mc01-2026-09-04 09:11 UTC): narrow
+    # to Literal matching the description's own declared vocabulary.
+    # Pre-D17 the type was bare `str`; wire probe showed formOfFinance=
+    # "sf_16" reached the engine's Prolog fold and raised an uncaught
+    # exception, surfacing as HTTP 500 with a non-JSON body and bypassing
+    # the D8a mapper entirely.
+    #
+    # Engine typed refusal is the sibling half (queued for FBT engine PR):
+    # when a matching-branch predicate falls through, the engine ships a
+    # `refusal_class="unknown_form_of_finance"` envelope instead of
+    # raising. Same defence-in-depth shape as D14 (gateway rejects,
+    # engine refuses, neither relies on the other).
+    form_of_finance: Literal[
+        "owned", "hire_purchase", "leased", "unspecified"
+    ] = Field(
         ..., alias="formOfFinance",
         description="One of: owned | hire_purchase | leased | unspecified.",
     )
@@ -166,17 +180,22 @@ class FBTCarOperatingCostInput(BaseModel):
         ),
     )
 
-    @field_validator("form_of_finance")
-    @classmethod
-    def _validate_form_of_finance(cls, v: str) -> str:
-        allowed = {"owned", "hire_purchase", "leased", "unspecified", "other"}
-        v_lower = (v or "").strip().lower()
-        if v_lower not in allowed:
-            raise ValueError(
-                f"form_of_finance={v!r} is not one of {sorted(allowed)}. "
-                f"Bridge does not interpret unknown values."
-            )
-        return v_lower
+    # D17 mc01-2026-09-04 09:11 UTC (Fable ruling): the pre-D17
+    # `@field_validator("form_of_finance")` accepted
+    # {"owned", "hire_purchase", "leased", "unspecified", "other"} —
+    # 5 values including an orphaned "other" that neither the description
+    # nor the engine handles. When a caller sent an unknown string, the
+    # validator raised `ValueError` which FastAPI could not JSON-serialise
+    # inside its own validation-error handler, producing HTTP 500 with a
+    # non-JSON body that bypassed the D8a mapper (Fable's cell 25 wire
+    # observation). Wire-reproduced hermetically: pre-fix
+    # `formOfFinance:"sf_16"` returned `TypeError: Object of type
+    # ValueError is not JSON serializable`.
+    #
+    # The Literal narrowing above supersedes this validator; pydantic's
+    # native literal_error path returns a clean 422 with the accepted set
+    # named. The validator is removed to prevent the ValueError-raise-
+    # that-can't-serialise defect from firing on future values.
 
     @field_validator("acquisition_date")
     @classmethod
@@ -189,6 +208,111 @@ class FBTCarOperatingCostInput(BaseModel):
                 f"is bridge-side interpretation, the atom is naked."
             )
         return v
+
+    @model_validator(mode="after")
+    def _validate_deemed_amounts_input_triad(self) -> FBTCarOperatingCostInput:
+        """D18 gateway half (Fable ruling mc01-2026-09-04 09:11 UTC): fail-
+        open-on-unsatisfied-conjunction-guard defence in depth.
+
+        The engine's `fbt_oc_deemed_dispatch/8` at
+        `LodgeiT_FBT/FBT_Engine.pl:1899-1908` currently accepts owned /
+        hire-purchase COC payloads that lack the acquisition-triad and
+        silently defaults `deemed_total = 0` (labelled
+        `skipped_no_acquisition`), returning HTTP 200 with a
+        materially-understated `taxable_value`. Fable's cell 21 wire
+        probe showed a $55k car returning $925.00 instead of the
+        FBTAA-s10-mandated ~$5,550 (approximate; blocked pending Waqas
+        oracle concordance per Fable 09:11 UTC ruling).
+
+        Gateway defence-in-depth (this validator): when
+        `form_of_finance ∈ {owned, hire_purchase}`, require the caller
+        to supply ONE OF three legitimate paths the engine actually
+        computes:
+
+          (a) Single-year-primitive triad:
+              `opening_depreciated_value` + `days_held_in_fbt_year`
+              + `acquisition_date` — all three present.
+              Engine path: line 1899 `single_year_primitive`.
+
+          (b) Chained-DV walk triad:
+              `acquisition_cost` + `acquisition_date`
+              (+ optional `days_held_in_fbt_year`; engine defaults
+              to full-FY when absent for this path only).
+              Engine path: line 1877 `chained_dv_walk`.
+
+          (c) Explicit override:
+              `deemed_total` supplied (legacy override; engine path
+              line 1946 uses the supplied value directly).
+
+        If none of the three paths is satisfied, refuse the payload at
+        the gateway 422 tier BEFORE the engine round-trip. Message
+        enumerates the missing keys for each attempted path so the
+        caller can see which triad they were closest to.
+
+        Engine-side sibling half (typed refusal + truthful trace label
+        `skipped_incomplete_deemed_inputs` with missing-keys enumeration)
+        is queued for the FBT engine PR per Fable's diagnostic-label
+        discipline: *"A diagnostic label names the condition that was
+        actually unsatisfied, or it names none of them."*
+
+        D18 arithmetic itself remains BLOCKED pending Waqas oracle
+        concordance per Fable 09:11 UTC ruling. This validator does NOT
+        change any arithmetic; it changes what payloads reach the fold.
+        """
+        if self.form_of_finance not in ("owned", "hire_purchase"):
+            return self
+
+        # Path (c): explicit override present.
+        if self.deemed_total is not None:
+            return self
+
+        # Path (a): single-year-primitive triad.
+        path_a_present = (
+            self.opening_depreciated_value is not None
+            and self.days_held_in_fbt_year is not None
+            and self.acquisition_date is not None
+        )
+        if path_a_present:
+            return self
+
+        # Path (b): chained-DV walk triad.
+        path_b_present = (
+            self.acquisition_cost is not None
+            and self.acquisition_date is not None
+        )
+        if path_b_present:
+            return self
+
+        # None of the three paths satisfied. Enumerate what's missing
+        # for each attempted path so the caller sees which triad they
+        # were closest to.
+        missing_a = []
+        if self.opening_depreciated_value is None:
+            missing_a.append("openingDepreciatedValue")
+        if self.days_held_in_fbt_year is None:
+            missing_a.append("daysHeldInFBTYear")
+        if self.acquisition_date is None:
+            missing_a.append("acquisitionDate")
+
+        missing_b = []
+        if self.acquisition_cost is None:
+            missing_b.append("acquisitionCost")
+        if self.acquisition_date is None:
+            missing_b.append("acquisitionDate")
+
+        raise ValueError(
+            f"form_of_finance={self.form_of_finance!r} requires "
+            f"deemed-amounts input via ONE of:\n"
+            f"  (a) single-year-primitive triad — "
+            f"openingDepreciatedValue + daysHeldInFBTYear + acquisitionDate. "
+            f"Missing: {missing_a}.\n"
+            f"  (b) chained-DV walk triad — "
+            f"acquisitionCost + acquisitionDate. Missing: {missing_b}.\n"
+            f"  (c) explicit override — deemedTotal.\n"
+            f"Without one of these paths the engine silently defaults "
+            f"deemed_total to 0 and returns a materially-understated "
+            f"taxable_value under FBTAA s10 operating cost method."
+        )
 
 
 # =============================================================================

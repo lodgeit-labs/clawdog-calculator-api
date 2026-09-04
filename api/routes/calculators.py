@@ -644,9 +644,21 @@ async def invoke_calculator(
     try:
         validated_body = input_model(**raw_body)
     except ValidationError as exc:
+        # mc01-2026-09-04 09:11 UTC: pydantic's default `errors()` output
+        # includes non-JSON-serialisable objects in the ctx dict when a
+        # model_validator raises ValueError (the raw ValueError object is
+        # attached under `ctx.error`). FastAPI's JSONResponse fails to
+        # serialise it and returns HTTP 500 with a text/plain body —
+        # exactly the wire defect Fable observed at cell 25 pre-D17.
+        # Wire-reproduced hermetically. Use `include_context=False` so
+        # the response body is always JSON.
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=exc.errors(),
+            detail=exc.errors(
+                include_url=False,
+                include_context=False,
+                include_input=False,
+            ),
         ) from exc
 
     # Fable D5 mc02 + Andrew mc06-2026-09-03 07:40 UTC internal-dispatch
