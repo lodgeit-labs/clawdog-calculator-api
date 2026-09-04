@@ -224,10 +224,22 @@ def test_manifest_shape(depreciation_test_client: TestClient) -> None:
 
 
 def test_advisory_au_jurisdiction(depreciation_test_client: TestClient) -> None:
+    """Advisory carries AU jurisdiction. Post-Fable D10 mc00-2026-09-04:
+    `registered_agent_required` is FALSE on the accounting-basis branch
+    because TASA 2009 governs registered-agent services for a fee and an
+    accounting carrying amount is not one. SAMPLE_INPUT uses
+    `basis="accounting"` so this test exercises the accounting branch.
+    See test_advisory_boundary_d10.py for the tax-basis branch that
+    RETAINS `registered_agent_required = True`."""
     body = _invoke(depreciation_test_client)
     advisory = body["advisory"]
     assert advisory["jurisdiction"] == "AU"
-    assert advisory["registered_agent_required"] is True
+    # D10: accounting basis => registered_agent_required is False
+    assert advisory["registered_agent_required"] is False, (
+        "Fable D10 mc00-2026-09-04: accounting-basis advisory MUST NOT "
+        "claim registered_agent_required. See tests/test_advisory_"
+        "boundary_d10.py for the full contract."
+    )
 
 
 # --- Assertion class #5: Fable rider 1 — UK basis refused at gateway --------
