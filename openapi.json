@@ -597,6 +597,12 @@
           },
           "formOfFinance": {
             "description": "One of: owned | hire_purchase | leased | unspecified.",
+            "enum": [
+              "owned",
+              "hire_purchase",
+              "leased",
+              "unspecified"
+            ],
             "title": "Formoffinance",
             "type": "string"
           },

@@ -184,19 +184,193 @@ This is the D13 promotion: the OMISSION is the defect, and it lives at the engin
 
 ---
 
-## 4. D17 — unhandled 500 on invalid `formOfFinance`
+## 4. D17 — unhandled 500 on invalid `formOfFinance` (SHIPPED gateway half + ROOT CAUSE CORRECTED)
 
 Fable's cell 25 wire result: `formOfFinance: "sf_16"` returned an unhandled 500 with a non-JSON body, bypassing the mapper.
 
-**Cause (hypothesised from FBT_Engine.pl reading; wire-verification pending):** the Prolog fold at `FBT_Engine.pl:1873` calls `member(FormOfFinance, [owned, hire_purchase])` in a decision chain. When `FormOfFinance = "sf_16"`, none of the arms match, and the fold falls through into a branch that either raises a Prolog exception or produces a non-dict response body. Because the exception isn't caught by the FastAPI wrapper's `reply_json_dict/1` layer, it surfaces as an HTTP 500 with a text/plain body — bypassing the mapper.
+**Root cause (WIRE-VERIFIED HERMETICALLY 2026-09-04 09:15 UTC; my earlier speculation was wrong):**
 
-**Gateway-side fix:** narrow `form_of_finance` from `str` to `Literal["owned", "hire_purchase", "leased", "unspecified"]` at the pydantic layer. Same discipline as D8c narrowing on `GatewayBasisLiteral`. Would refuse `"sf_16"` at 422 before the engine is called.
+The defect was NOT engine-side. Reproduced against `TestClient(app)`:
 
-**Engine-side fix:** the fold should refuse an unknown `form_of_finance` value with a typed refusal (`refusal_class: "unknown_form_of_finance"`) so the mapper's 400 branch fires and the caller sees a structured JSON response. Same defence-in-depth shape as D14.
+1. Payload with `formOfFinance: "sf_16"` reached the pydantic layer.
+2. The pre-D17 `@field_validator("form_of_finance")` at `api/schemas/invocation.py` raised `ValueError` on unknown values.
+3. FastAPI caught the `ValidationError` (which wraps the ValueError) in the generic route at `api/routes/calculators.py:645`.
+4. `exc.errors()` returned the error list — which INCLUDED the raw `ValueError` object under `ctx.error` per pydantic v2's default output.
+5. FastAPI's `JSONResponse` failed to serialise the `ValueError` object, raising `TypeError: Object of type ValueError is not JSON serializable`.
+6. That TypeError bubbled to FastAPI's exception handler which produced an HTTP 500 with a text/plain body — bypassing the D8a mapper.
 
-Both fixes are appropriate; either alone closes the mapper-bypass. Both together close the "unknown-value passes gateway + reaches engine + engine dies weirdly" class of defect. Ship both.
+My earlier hypothesis — that the engine's `member(FormOfFinance, [owned, hire_purchase])` raised uncaught — was wrong. Bare `member/2` fails silently in Prolog; it does not raise. The engine fold has a fall-through branch at `FBT_Engine.pl:1944` that would have returned 200 with `skipped_no_acquisition` for a `"sf_16"` value if the payload had ever reached it. Wire evidence: the engine's typed refusal (`throw(error(invalid_form_of_finance(...), ...))`) fires INSIDE the deemed-amounts compute path only, not from the top-level decision chain.
 
-**OT queued:** D17 — narrow `form_of_finance` Literal at gateway + refuse unknown form_of_finance at engine.
+**Fix shipped (gateway half; wire-verified):**
+
+1. `api/schemas/invocation.py`: narrow `form_of_finance` from `str` to `Literal["owned", "hire_purchase", "leased", "unspecified"]` at the pydantic layer. Removes the `@field_validator` (redundant + was the exception-raising site). The pre-D17 field_validator also silently accepted an orphaned `"other"` value not declared in the description — also removed.
+
+2. `api/routes/calculators.py`: the generic route now calls `exc.errors(include_context=False, include_input=False, include_url=False)` instead of `exc.errors()`. This strips the non-JSON-serialisable `ValueError` object from the response body before it hits `JSONResponse`. This fix is separately load-bearing for ANY model_validator that raises ValueError — including D18's conjunction-guard shipped in the same commit.
+
+**Wire-verified hermetically post-fix:**
+
+```
+POST .../urn:...:car-operating-cost/urn:...:fy2026
+Content-Type: application/json
+{ "formOfFinance": "sf_16", ... }
+
+HTTP 422
+Content-Type: application/json
+{"detail":[{"type":"literal_error", "loc":["formOfFinance"],
+            "msg":"Input should be 'owned', 'hire_purchase', 'leased' or 'unspecified'"}]}
+```
+
+**Engine-side fix (queued as OT):** the fold should refuse an unknown `form_of_finance` value with a typed refusal (`refusal_class: "unknown_form_of_finance"`). This closes the defence-in-truth requirement for callers who bypass the gateway (e.g. direct engine tests). Not shipped this arc; requires fresh-substrate FBT engine PR.
+
+**Anchor banked:** the ValidationError-serialisation defect is a class of its own. Any pydantic `model_validator(mode="after")` or `field_validator` that raises `ValueError` produces a non-JSON-serialisable error object under pydantic v2's default `errors()` output. Every FastAPI route that catches `ValidationError` and passes `exc.errors()` to `HTTPException(detail=...)` MUST use `include_context=False` (or an equivalent scrubber) or it will surface as a 500 text/plain body on the wire. Discipline banked in the route's comment; applies to any future FastAPI-catching-ValidationError site.
+
+## 4a. D18 gateway half — conjunction-guard on FBT COC (SHIPPED)
+
+Sibling to D17 gateway half. Same class of defect (fail-open-on-unsatisfied-conjunction-guard). Shipped in the same commit because both use the same pydantic-validation-error surface.
+
+**What ships:**
+
+`api/schemas/invocation.py::FBTCarOperatingCostInput._validate_deemed_amounts_input_triad` — a `@model_validator(mode="after")` that fires when `form_of_finance ∈ {owned, hire_purchase}` and requires ONE of three paths (mirroring the engine's `fbt_oc_deemed_dispatch/8` dispatch at `FBT_Engine.pl:1873-1946`):
+
+- **(a) single-year-primitive triad**: `openingDepreciatedValue + daysHeldInFBTYear + acquisitionDate`
+- **(b) chained-DV walk triad**: `acquisitionCost + acquisitionDate` (+ optional `daysHeldInFBTYear`)
+- **(c) explicit override**: `deemedTotal`
+
+If none satisfied → `ValueError` → pydantic ValidationError → gateway 422 with the missing keys enumerated per path. Fable's diagnostic-label discipline mc01 09:11 UTC: *"A diagnostic label names the condition that was actually unsatisfied, or it names none of them."* The refusal message lists what's missing for EACH attempted path so the caller sees the full set of legitimate payloads.
+
+**IMPORTANT SCOPE**: this changes WHICH PAYLOADS reach the fold, NOT what the fold computes. The D18 arithmetic itself remains BLOCKED pending Waqas oracle concordance per Fable 09:11 UTC ruling. Whether the engine's operating cost `C` should include deemed depreciation + deemed interest is NOT decided by this validator; the validator only ensures a payload without the required inputs cannot reach the fold's silent-default branch.
+
+**Engine-side sibling half** (queued as OT for fresh-substrate FBT engine PR):
+- Typed refusal instead of falling through: `refusal_class: "skipped_incomplete_deemed_inputs"` with `missing_keys: ["days_held_in_fbt_year"]` enumeration.
+- Truthful trace label per Fable's diagnostic-label discipline; supersedes the current misleading `skipped_no_acquisition`.
+- SAME COMMIT: label fix + typed refusal.
+
+**8 wire-response-level tests** at `tests/test_d18_gateway_half_conjunction_guard.py` covering cell 21 replay + all three legitimate paths + leased/unspecified no-op + mapper-envelope-absent assertion (mc00 08:28 UTC design covenant).
+
+---
+
+## 4b. Corrections + Fable rulings 09:11 UTC
+
+**Fable rulings mc01-2026-09-04 09:11 UTC (verbatim):**
+
+On D18 arithmetic: *"You used 8.77% for deemed interest and labelled it 'FY2026 benchmark'. 0.0877 is the rate the Div7A engine returns for FY2025, from urn:sbrm:rate:div7a:fy2025:benchmark-interest. The FBT statutory interest rate is a separate published rate for the FBT year. They may coincide; you may have used a Div7A rate in an FBT computation."*
+
+**Verified: I did.** Wire-verified against
+`LodgeiT_FBT/SBRM_RATE_TABLE/fbt/lodgeit_au_sbrm/fy2026/benchmark-interest.md`:
+the FBT FY2026 benchmark interest rate is **0.0862** (8.62%), NOT 0.0877.
+The rate-table's own statutory-source clause reads *"FBTAA s.18; ATO
+Taxation Determination TD 2025/X (FBT benchmark rate for FBT year
+ending 31 March 2026)"* and the ATO-toolkit-locator says *"Loan fringe
+benefits — calculating taxable value; sheet header column literally
+reads 'FBT Benchmark interest (refer to 2026 FBT year @ 8.62%)'"*.
+
+Two separable errors in my earlier arithmetic:
+
+1. **Wrong-year, wrong-calculator rate.** Used 0.0877 (Div7A FY2025)
+   in an FBT FY2026 computation.
+2. **Rate-scope unverified.** Even 0.0862 is scoped by the rate-table
+   name to *"Loan Fringe Benefits"* (FBTAA s.18). Whether the SAME
+   rate applies to car-OC deemed-interest (FBTAA s.10 + s.11) is not
+   confirmed by primary source; my earlier arithmetic report treated
+   them as identical without checking.
+
+Applying the FBT-declared 0.0862 (still assuming the rate-scope is
+correct, which is now flagged as unverified):
+
+- Deemed interest = $55,000 × 8.62% × 365/365 = $4,741
+- Deemed depreciation unchanged at $13,750
+- Operating cost C = 3,000 + 1,500 + 13,750 + 4,741 = $23,001
+- Taxable value = $23,001 × 25% − $200 = **$5,550.13**
+
+Direction of the correction stands (~$4,625 understated). Numeric
+detail is corrected. The direction Fable named — mediated substrate —
+is exactly why this arithmetic still cannot close D18.
+
+**Fable's manifest wire-observation** (verbatim ratified):
+> *"Corroborating evidence that you have: the COC response's manifest
+> cites gross-up-type-2 and fbt-rate — and no interest rate table at
+> all. If deemed interest were computed, a third rate table would be
+> consumed and cited. Its absence from the manifest is independent
+> confirmation that deemed amounts are not being calculated, and it
+> tells you the rate table may not exist yet."*
+
+The FBT engine's manifest emission for COC responses does NOT cite
+`urn:sbrm:rate:fbt:fy2026:benchmark-interest` (the rate table exists
+as a file but is not consumed by the OC deemed-amounts fold). This is
+the wire-verifiable proof that deemed amounts are not fired: the
+table is not consumed, the URI is not cited, and the caller can see
+this at the manifest layer independently of the arithmetic itself.
+
+**Standing rule ratified from tri-surface work (Fable 09:11 UTC):**
+
+> *"You have two secondary sources and no primary, on a headline
+> calculator, for a $4,643 correction. That is the mediated-substrate
+> shape — and we have an oracle built for exactly this case. Send the
+> cell-21 control payload to Waqas. His C# replica and the NTAA sheet
+> are two independent implementations; if they return 5,568.38 the
+> read is confirmed by concordance rather than by citation, which is
+> stronger than a primary reading by one party. If they disagree, we
+> learn something more interesting than the statute."*
+
+**D18 IS BLOCKED pending Waqas oracle concordance.** Do NOT touch the
+arithmetic on the engine before the C# replica and NTAA sheet return
+their independent figures for the cell-21 control payload. Standing
+rule from the tri-surface ruling: where they disagree, the burden
+sits with our engine; where they agree, our engine changes to match.
+
+**Diagnostic-label discipline (Fable-minted 09:11 UTC, standing rule):**
+
+> *"A diagnostic label names the condition that was actually
+> unsatisfied, or it names none of them. `skipped_incomplete_deemed_
+> inputs`, with the missing keys enumerated, would have taken ten
+> seconds instead of an hour."*
+
+Applies to trace labels generally; `skipped_no_acquisition` is the
+first instance we've caught. Engine PR authoring the fix ships the
+truthful label + missing-key enumeration in the same commit as the
+conjunction-guard remedy.
+
+**Schema-drift attribution withdrawn (Fable 09:11 UTC):**
+
+> *"I called it 'the fourth instance of schema drift' and swept 56
+> aliases on that premise. Zero drift. The class is real but the
+> mechanism is different: fail-open on an unsatisfied conjunction
+> guard. Same wire signature, different cause, different remedy.
+> Pattern-matching a symptom to a known class is how you get a clean
+> sweep that proves nothing — I did that, and the sweep is worth
+> keeping precisely because it now rules the class out."*
+
+Banked in this doc's audit trail; the class Fable was tracking is
+now named **fail-open-on-unsatisfied-conjunction-guard**, distinct
+from schema-drift.
+
+**D13 rate-table-fed ruling (Fable 09:11 UTC verbatim):**
+
+> *"On D13's fix — read the gross-up factor from the rate table, do
+> not hardcode 1.8868. urn:sbrm:rate:fbt:fy2026:gross-up-type-2
+> already exists and COC already consumes it. A hardcoded 1.8868 in
+> LAFHA is a rate literal in source, which your own mechanical gate
+> forbids, and it would drift the day the factor changes."*
+
+When LAFHA engine PR is authored: `calculate_fbt_lafha/2` calls
+`rate_lookup(Period, 'gross-up-type-2', GrossUpFactor)` — same
+pattern COC already uses. NO hardcoded 1.8868.
+
+**Sequencing ruled** (Fable 09:11 UTC verbatim):
+
+1. Div7A engine refusal on `amalgamated_base ≤ 0` — smallest, and it
+   is the only thing between Div7A and shareable.
+2. D17 gateway half now — `form_of_finance` narrowed to the Literal
+   its own description already declares. Engine typed refusal follows
+   in the FBT engine PR.
+3. The conjunction-guard remedy — gateway conditional requirement plus
+   engine typed refusal, with the trace label fixed in the same commit.
+4. D13 LAFHA gross-up, rate-table-fed.
+5. D18 — blocked pending Waqas. Do not touch the arithmetic.
+
+**PR #34 batching decision:** items 2 and 3-gateway-half batched onto
+PR #34 before ready-flip. Everything else lands on separate PRs (engine
+repos + fresh sessions per Option-C discipline).
 
 ---
 
