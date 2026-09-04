@@ -23,12 +23,48 @@ from typing import Any
 # Canonical advisory text — paraphrase + statutory citation by section. The
 # wording is canonical to one byte; future iterations require a fresh helm-roll
 # on CLAWDOG/109 §6 / CLAWDOG/110 §3.2 and a coordinated deployment.
+#
+# **Fable D6 mc21 2026-09-04 amendment:** the advisory is now conditioned on
+# `manifest.rate_table_uris` (basis-independent condition; matches the reality
+# of the emitted manifest, not calculator identity). Two branches:
+#
+#   * NON-EMPTY (rate tables consumed): `ADVISORY_TEXT_AU` (unchanged) states
+#     "period-scoped statutory rate-tables cited in the manifest block" —
+#     which is true when the manifest cites tables.
+#
+#   * EMPTY (no rate tables consumed — e.g. depreciation /at/ and /range/
+#     at v1): `ADVISORY_TEXT_AU_EMPTY_MANIFEST` states what the output
+#     actually rests on: "every figure is derived arithmetically from the
+#     inputs supplied in the request, under the day-count convention stated
+#     in this response" + the missing not-assessed caveat Fable ruled
+#     load-bearing for the tester share: "Whether those inputs — including
+#     the useful life, the method and the day-count convention — are
+#     appropriate under the applicable accounting or tax framework is not
+#     assessed by this calculator."
+#
+# TAA s284-15 + TASA framing is preserved in both branches (Fable ruled it
+# correct + unrelated).
 ADVISORY_TEXT_AU: str = (
     "This is calculator output, not advice. Consult a registered tax agent "
     "before relying on these numbers for any return, position, or advice "
     "provided to a third party. Calculator outputs reflect the period-scoped "
     "statutory rate-tables cited in the manifest block; statute may have "
     "changed since the rate-table was last anchored. "
+    "Statutory framing: TAA 1953 s284-15 (false or misleading statements; "
+    "penalty bands escalate with culpability) and the Tax Agent Services "
+    "Act 2009 (registered-agent requirement)."
+)
+
+ADVISORY_TEXT_AU_EMPTY_MANIFEST: str = (
+    "This is calculator output, not advice. Consult a registered tax agent "
+    "before relying on these numbers for any return, position, or advice "
+    "provided to a third party. This calculation consumes no statutory "
+    "rate tables; every figure is derived arithmetically from the inputs "
+    "supplied in the request, under the day-count convention stated in "
+    "this response. Whether those inputs — including the useful life, the "
+    "method and the day-count convention — are appropriate under the "
+    "applicable accounting or tax framework is not assessed by this "
+    "calculator. "
     "Statutory framing: TAA 1953 s284-15 (false or misleading statements; "
     "penalty bands escalate with culpability) and the Tax Agent Services "
     "Act 2009 (registered-agent requirement)."
@@ -54,42 +90,101 @@ STATUTORY_BASIS_UK = [
 ]
 
 
-def advisory_block(jurisdiction: str = "AU") -> dict[str, Any]:
+def advisory_block(
+    jurisdiction: str = "AU",
+    manifest_rate_table_uris: list | None = None,
+) -> dict[str, Any]:
     """Build the advisory block for a single calculator-invocation response.
 
-    The returned shape is identical across calculators within a jurisdiction.
+    **Fable D6 mc21 2026-09-04:** advisory is conditioned on the emitted
+    manifest. When `manifest_rate_table_uris` is empty (or None), the
+    disclaimer says what depreciation output actually rests on
+    (caller-declared inputs; no rate tables consumed). When it is
+    non-empty, the disclaimer cites the manifest as before.
+
+    Conditioning on the emitted manifest rather than on calculator
+    identity is load-bearing (Fable verbatim): *"if depreciation ever
+    consumes a rate table, the text follows without anyone remembering."*
+
+    The returned shape (fields, jurisdiction, statutory_basis) is
+    identical across the two branches; only the `disclaimer` string
+    differs.
     """
     j = (jurisdiction or "AU").upper()
+    # Fable Q3 mc22 2026-09-04 ruling: distinguish empty-manifest
+    # (asserts a negative: no rate tables consumed) from missing-manifest
+    # (asserts nothing about consumption).
+    #
+    # * `manifest_rate_table_uris is None` (absent / not supplied):
+    #   default to the incumbent text — it does NOT claim absence, so
+    #   it cannot be a fabrication. Companion `test_manifest_fidelity`
+    #   asserts every registered calculator's response DOES carry a
+    #   manifest block, so a missing manifest is a test failure rather
+    #   than a runtime guess.
+    # * `manifest_rate_table_uris == []` (explicitly empty): use the
+    #   empty-manifest text — the manifest is present + declares no
+    #   rate tables, and the advisory follows that declaration.
+    # * `manifest_rate_table_uris = [...]` (non-empty): use the
+    #   incumbent citing-rate-tables text.
+    empty_manifest_declared = manifest_rate_table_uris == []
     if j == "UK":
+        # UK forward-looking placeholder; no empty-manifest variant
+        # authored yet because no UK-basis calculator ships. When UK
+        # basis populates AND emits an empty manifest, mirror the AU
+        # empty-manifest text here.
         return {
             "disclaimer": ADVISORY_TEXT_UK,
             "registered_agent_required": True,
             "statutory_basis": STATUTORY_BASIS_UK,
             "jurisdiction": "UK",
         }
-    # Default = AU. The Phase 3a constellation is AU-only; UK is forward-looking.
+    # Default = AU.
+    disclaimer = (
+        ADVISORY_TEXT_AU_EMPTY_MANIFEST if empty_manifest_declared
+        else ADVISORY_TEXT_AU
+    )
     return {
-        "disclaimer": ADVISORY_TEXT_AU,
+        "disclaimer": disclaimer,
         "registered_agent_required": True,
         "statutory_basis": STATUTORY_BASIS_AU,
         "jurisdiction": "AU",
     }
 
 
-def wrap_response(payload: Mapping[str, Any], jurisdiction: str = "AU") -> dict[str, Any]:
+def wrap_response(
+    payload: Mapping[str, Any], jurisdiction: str = "AU",
+) -> dict[str, Any]:
     """Attach an ``advisory`` block to a calculator response payload.
 
-    Idempotent: if an advisory block is already present, it is replaced. The
-    canonical language always wins; bridges MUST NOT paraphrase or weaken
-    (CLAWDOG/110 §5).
+    Idempotent: if an advisory block is already present, it is replaced.
+    The canonical language always wins; bridges MUST NOT paraphrase or
+    weaken (CLAWDOG/110 §5).
+
+    **Fable D6 mc21 2026-09-04:** the advisory text now conditions on
+    `payload["manifest"]["rate_table_uris"]`. Empty (or missing)
+    manifest yields the empty-manifest disclaimer; non-empty yields the
+    original citing-rate-tables text.
     """
     out = dict(payload)
-    out["advisory"] = advisory_block(jurisdiction)
+    manifest_rate_uris = (
+        (payload.get("manifest") or {}).get("rate_table_uris")
+        if isinstance(payload.get("manifest"), Mapping)
+        else None
+    )
+    out["advisory"] = advisory_block(
+        jurisdiction,
+        manifest_rate_table_uris=(
+            manifest_rate_uris
+            if isinstance(manifest_rate_uris, list)
+            else None
+        ),
+    )
     return out
 
 
 __all__ = [
     "ADVISORY_TEXT_AU",
+    "ADVISORY_TEXT_AU_EMPTY_MANIFEST",
     "ADVISORY_TEXT_UK",
     "STATUTORY_BASIS_AU",
     "STATUTORY_BASIS_UK",

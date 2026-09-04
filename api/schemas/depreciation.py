@@ -50,6 +50,20 @@ GatewayBasisLiteral = Literal[
 ]
 
 
+# Fable D4 mc17 2026-09-03 12:20 UTC + D5 mc02 2026-09-04 01:19 UTC:
+# day_count vocabulary matches the engine's DayCountLiteral post-D4.
+# `actual/actual` promoted to the recommended default for basis:
+# accounting (anniversary-scoped denominator; AASB 116-faithful;
+# each period charges exactly cost/life; asset lands on zero at
+# life-end). `actual/365` retained honest at the label; a leap-
+# spanning year yields 366/365 = 1.00274 * (cost/life) which is
+# the 5.48 over-charge Fable's D4 probes surfaced. `monthly` uses
+# per-month round-and-sum for ledger reconciliation (each month
+# quantised BEFORE summation; range_dep is the sum of monthly
+# journal figures a caller would post).
+DayCountLiteral = Literal["actual/actual", "actual/365", "monthly"]
+
+
 AccountingMethodLiteral = Literal["prime_cost", "diminishing_value"]
 
 
@@ -307,6 +321,27 @@ class DepreciationAtInput(BaseModel):
         ),
     ]
 
+    day_count: Annotated[
+        DayCountLiteral | None,
+        Field(
+            default=None,
+            description=(
+                "Optional day-count convention. **Fable D4 mc17 2026-09-03 "
+                "12:20 UTC:** /at/ accepts an optional `day_count`, "
+                "defaulting to `actual/actual` (the fold's basis-implicit "
+                "convention for `basis: \"accounting\"`; AASB 116-faithful "
+                "anniversary-scoped denominator). Not required because "
+                "/at/ is live in the gateway registry (F19 wire-freeze on "
+                "/at/); a required field breaks integrated callers and the "
+                "smoke set for no gain. The applied convention is ECHOED "
+                "in the response's `day_count` field so callers can "
+                "byte-verify their expectation regardless of whether they "
+                "supplied it. Values: `actual/actual` | `actual/365` | "
+                "`monthly`."
+            ),
+        ),
+    ] = None
+
 
 class DepreciationAtResponse(BaseModel):
     """Response envelope for the gateway's depreciation `at` route.
@@ -352,3 +387,237 @@ class DepreciationAtResponse(BaseModel):
             ),
         ),
     ]
+
+    day_count: Annotated[
+        DayCountLiteral,
+        Field(
+            description=(
+                "Echoed day_count convention (Fable D4 mc17 2026-09-03 "
+                "12:20 UTC + D5 mc02 D4-drift note). Callers can "
+                "byte-verify their expectation; if request omitted "
+                "`day_count`, this echoes the default (`actual/actual`, "
+                "the fold's basis-implicit AASB 116-faithful convention). "
+                "F19 additive wire-freeze honoured: this is a NEW field "
+                "added to an existing response envelope; existing "
+                "consumers ignoring unknown fields are unaffected. "
+                "**D4 drift fix (Fable mc21 2026-09-04):** the engine "
+                "gained this field on PR #21 deploy; the gateway's "
+                "published openapi.json did not describe it until this "
+                "PR. Named for future readers as the first drift-gate "
+                "candidate."
+            ),
+        ),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Range endpoint (Fable D5 mc02 2026-09-04 sibling URN;
+# RATIFIED mc11-2026-08-31 §2 Asks 1/3/4/6 wire shape).
+# ---------------------------------------------------------------------------
+
+
+class DepreciationRangeInput(BaseModel):
+    """Request body for the gateway's depreciation `range` route.
+
+    Wire-shape mirrors the upstream depreciation-engine
+    `/v1/calculators/depreciation/range/{period_uri}` endpoint (Fable D5
+    mc02 2026-09-04 sibling of `/at/`, NOT overload per RATIFIED §2
+    Ask 1).
+
+    Gateway-side amendments (same as /at/ per Fable riders 1-2):
+
+      * Rider 1: `basis` narrowed to AU literals; UK refused.
+      * Rider 2: `numeric_mode` NOT caller-visible; gateway pins
+        `serving` server-side.
+
+    **day_count is REQUIRED (no default)** per RATIFIED §2 Ask 4;
+    unaffected by Fable D5. Values: `actual/actual` (recommended
+    default for basis:accounting; AASB 116-faithful anniversary-
+    scoped denominator; each period charges exactly cost/life) |
+    `actual/365` (constant 365 denominator regardless of FY length;
+    kept HONEST at the label per Andrew ratification and Fable mc17
+    D4 ruling) | `monthly` (per-month round-and-sum for ledger
+    reconciliation).
+
+    Endpoint semantics per RATIFIED §2 Ask 3:
+    - INCLUSIVE of both endpoints (1 to 31 August is 31 days)
+    - Zero-day range (`from_date == to_date`) returns `range_dep = 0.00`
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    basis: Annotated[
+        GatewayBasisLiteral,
+        Field(description="Basis discriminator (same vocabulary as /at/)."),
+    ]
+
+    asset: Annotated[
+        AssetCreatedInput,
+        Field(description="Asset creation input (nested; same as /at/)."),
+    ]
+
+    from_date: Annotated[
+        date,
+        Field(
+            description=(
+                "Range start date, INCLUSIVE. Per RATIFIED §2 Ask 3: a "
+                "request with `from_date=2023-08-01` and `to_date=2023-08-31` "
+                "computes for 31 days (the whole of August). If "
+                "`from_date > to_date` the request is rejected at "
+                "schema-layer 422."
+            ),
+        ),
+    ]
+
+    to_date: Annotated[
+        date,
+        Field(
+            description=(
+                "Range end date, INCLUSIVE. Zero-day range "
+                "(`from_date == to_date`) returns `range_dep = 0.00` not "
+                "an error."
+            ),
+        ),
+    ]
+
+    day_count: Annotated[
+        DayCountLiteral,
+        Field(
+            description=(
+                "REQUIRED (no default per RATIFIED §2 Ask 4). Values: "
+                "`actual/actual` (recommended default for basis:accounting; "
+                "AASB 116-faithful; each period charges exactly cost/life; "
+                "asset lands on zero at life-end); `actual/365` (constant "
+                "365 denominator regardless of FY length; leap-anniversary "
+                "over-charge = the D4 defect anchor); `monthly` (per-month "
+                "round-and-sum for ledger reconciliation)."
+            ),
+        ),
+    ]
+
+    events: Annotated[
+        list[EventInput],
+        Field(
+            default_factory=list,
+            description=(
+                "Per-asset lifecycle events (same as /at/; engine caps "
+                "at 10 000 items)."
+            ),
+        ),
+    ]
+
+
+class DepreciationRangeResponse(BaseModel):
+    """Response envelope for the gateway's depreciation `range` route.
+
+    Field passthrough of engine's `DepreciationRangeResponse` extended
+    with `manifest` + `advisory` blocks per mc35 Div7A wrap pattern.
+
+    Ledger vocabulary (Andrew mc10-2026-09-03 08:32 UTC + Fable mc10
+    ratification):
+
+    - `opening_wdv` = value carried INTO the range (close of `from_date - 1`)
+    - `closing_wdv` = value carried OUT of the range (close of `to_date`)
+    - `range_dep` = the charge between them; `opening_wdv - range_dep
+      == closing_wdv` under `monthly` by construction; under
+      `actual/actual` and `actual/365` derived from anchors per Fable
+      D2 mc15 fix so the identity holds by construction.
+    """
+
+    model_config = ConfigDict(extra="allow")  # engine may return extra fields
+
+    basis: Annotated[
+        GatewayBasisLiteral,
+        Field(description="Echoed basis from request."),
+    ]
+
+    from_date: Annotated[
+        date, Field(description="Echoed from_date from request.")
+    ]
+
+    to_date: Annotated[
+        date, Field(description="Echoed to_date from request.")
+    ]
+
+    day_count: Annotated[
+        DayCountLiteral,
+        Field(
+            description=(
+                "Echoed day_count convention. Callers should verify the "
+                "echoed value matches what they sent (defensive against "
+                "silent-convention-substitution class defects)."
+            ),
+        ),
+    ]
+
+    days_in_range: Annotated[
+        int,
+        Field(
+            description=(
+                "(to_date - from_date).days + 1 (inclusive-both-endpoints). "
+                "Explicit field per RATIFIED §2 Ask 3 so callers can "
+                "byte-verify their inclusive-endpoints expectation."
+            ),
+        ),
+    ]
+
+    range_dep: Annotated[
+        Decimal,
+        Field(
+            description=(
+                "Total depreciation charge over [from_date, to_date] "
+                "inclusive. Zero-day range (from_date == to_date) returns "
+                "Decimal('0.00'). **Derived from anchors (Fable D2 mc15 + "
+                "mc16 mint):** `range_dep = opening_wdv - closing_wdv` "
+                "under actual/actual and actual/365; ledger identity "
+                "holds by construction. Under `monthly`, per-month "
+                "round-and-sum; identity also holds."
+            ),
+        ),
+    ]
+
+    opening_wdv: Annotated[
+        Decimal,
+        Field(
+            description=(
+                "Opening balance carried INTO the range — the value at "
+                "close of `from_date - 1`. Ledger vocabulary (AASB 116 "
+                "carrying amount). Renamed from `wdv_at_from_date` at "
+                "Andrew ruling 2026-09-03 08:32 UTC. **Pre-acquisition "
+                "case:** if `from_date < asset.acquisition_date`, "
+                "`opening_wdv = 0.00` and `truncated` is `True`."
+            ),
+        ),
+    ]
+
+    closing_wdv: Annotated[
+        Decimal,
+        Field(
+            description=(
+                "Closing balance carried OUT of the range — the value at "
+                "close of `to_date`. Ledger vocabulary. Renamed from "
+                "`wdv_at_to_date` at Andrew ruling 2026-09-03 08:32 UTC. "
+                "Invariant: `opening_wdv - range_dep == closing_wdv`."
+            ),
+        ),
+    ]
+
+    truncated: Annotated[
+        bool,
+        Field(
+            default=False,
+            description=(
+                "True when the requested range window was wider than the "
+                "depreciation the engine could actually post. Fires under "
+                "any of: (a) `from_date < acquisition_date`; (b) "
+                "`opening_wdv > 0` and `closing_wdv == 0` (range extends "
+                "past useful-life-end); (c) `opening_wdv == 0` and NOT "
+                "pre-acquisition (asset was fully depreciated BEFORE the "
+                "range started). Agents MUST check this field: "
+                "`range_dep = 0.00` with `truncated = true` means the "
+                "answer is zero because the asset had no value during the "
+                "range, NOT because depreciation happens to be zero in "
+                "that window."
+            ),
+        ),
+    ] = False

@@ -38,7 +38,12 @@ from fastapi.testclient import TestClient
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 DEPRECIATION_FIXTURE_ROOT = FIXTURES_DIR / "sbrm_rate_table_depreciation_fy2026"
 
-PERIOD_URI = "urn:sbrm:period:depreciation:fy2026"
+# Fable D5 mc02 2026-09-04 ratified: `:fy2026` retired, `:unscoped`
+# is the ratified URN (F1 URN-retirement precedent). The engine
+# ignores the segment (Fable D5: engine is a primitive; gateway owns
+# URN vocabulary per F1); the gateway registry rejects retired URNs
+# with 404 naming `:unscoped` as supported.
+PERIOD_URI = "urn:sbrm:period:depreciation:unscoped"
 
 # Canonical single-asset happy-path input mirroring the engine's
 # DepreciationAtRequest schema (basis + asset + at_date + events[]).
@@ -297,3 +302,28 @@ def test_unsupported_period_rejected(depreciation_test_client: TestClient) -> No
     url = f"/v1/calculators/depreciation/at/{quote(bad_period, safe='')}"
     resp = depreciation_test_client.post(url, json=SAMPLE_INPUT)
     assert resp.status_code == 404, resp.text
+
+
+def test_retired_fy2026_urn_returns_404_naming_unscoped(
+    depreciation_test_client: TestClient,
+) -> None:
+    """Fable D5 mc02 2026-09-04 retirement enforcement.
+
+    Verbatim: *"retirement enforced, not silently accepted."*
+
+    A caller supplying the retired `:fy2026` URN gets 404 with the
+    Supported list naming `:unscoped` as the ratified vocabulary. This
+    is cell 2 of Fable's 12-cell verification matrix.
+    """
+    retired = "urn:sbrm:period:depreciation:fy2026"
+    url = f"/v1/calculators/depreciation/at/{quote(retired, safe='')}"
+    resp = depreciation_test_client.post(url, json=SAMPLE_INPUT)
+    assert resp.status_code == 404, resp.text
+    # Body should name :unscoped in the Supported list so the tester
+    # knows the correct URN vocabulary.
+    body = resp.json()
+    detail = body.get("detail", "") if isinstance(body, dict) else str(body)
+    assert "unscoped" in detail, (
+        f"404 message should name `:unscoped` as supported so callers "
+        f"know the ratified URN. Got: {detail!r}"
+    )

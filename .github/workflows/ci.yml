@@ -94,3 +94,27 @@ jobs:
           LC_ALL: en_AU.UTF-8
         run: |
           pytest tests/ -v
+
+      # Fable mc19 2026-09-04 ruling: CI collected-count gate.
+      #
+      # "a green check is evidence that something passed, not evidence
+      # of what ran. Add a step asserting collected >= N, floor bumped
+      # with the suite, to both engine and gateway CI — same discipline
+      # as smoke floor 22, no token scope, and it cannot be forgotten
+      # because it fails the run rather than a separate check nobody
+      # fires."
+      #
+      # Two-hour post-deploy stale-truncated-checkout defect (n=3 this
+      # arc): the 32-second run on 89c6eba would have failed this. Bump
+      # the floor when the suite grows meaningfully; this line is the
+      # enforcement, not a comment.
+      - name: Collected-test-count floor (Fable mc19 2026-09-04 gate)
+        run: |
+          COLLECTED=$(pytest --collect-only 2>&1 | grep -oE '^[0-9]+ tests? collected' | grep -oE '^[0-9]+' | head -1)
+          COLLECTED=${COLLECTED:-0}
+          FLOOR=190
+          echo "collected=$COLLECTED floor=$FLOOR"
+          if [ "$COLLECTED" -lt "$FLOOR" ]; then
+            echo "::error::pytest collected only $COLLECTED tests; floor is $FLOOR. Either the suite shrank or CI ran against a stale checkout. Fable mc19 gate."
+            exit 1
+          fi

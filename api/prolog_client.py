@@ -365,6 +365,30 @@ class PrologClient:
             path_override=f"/v1/calculators/depreciation/at/{period_uri.rsplit(':', 1)[-1]}",
         )
 
+    async def depreciation_range(
+        self, period_uri: str, payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """POST to depreciation-engine
+        ``/v1/calculators/depreciation/range/{period_uri}``.
+
+        Fable D5 mc02 2026-09-04 sibling of `depreciation_at`. Same
+        path-templating pattern; extracts the tail segment via
+        `rsplit(':', 1)[-1]` which yields `"unscoped"` for the
+        Fable-D5-ratified URN. The engine accepts any segment and
+        ignores it (Fable D5: *"the engine is a primitive; the
+        gateway composes"*); the tail extraction preserves the
+        path-shape uniformity with /at/.
+
+        Rider 2 (numeric_mode server-side pin) applied identically
+        to /at/.
+        """
+        pinned_payload = {**dict(payload), "numeric_mode": "serving"}
+        return await self.dispatch(
+            DEPRECIATION_ENGINE,
+            pinned_payload,
+            path_override=f"/v1/calculators/depreciation/range/{period_uri.rsplit(':', 1)[-1]}",
+        )
+
     async def div7a_at(
         self, period_uri: str, payload: Mapping[str, Any]
     ) -> dict[str, Any]:
