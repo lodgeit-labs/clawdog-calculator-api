@@ -259,7 +259,8 @@
         "description": "Div 7A single-income-year MYR request payload.\n\nCanonical URN: ``urn:sbrm:calculator:div7a:at`` per constellation naming\nconvention (matches ``urn:sbrm:calculator:depreciation:at`` + ``urn:sbrm:calculator:fbt:*``).\n\nField discipline:\n  - ``amalgamated_base``: \u00a7109E amalgamated loan base amount at start of year (AUD)\n  - ``loan_term_years``: \u00a7109N complying-loan term (7 unsecured / 25 secured)\n  - ``loan_origination_date``: date the loan was made (ISO or dd/mm/yyyy)\n  - ``income_year_start_date``: 1 July of the FY to compute (ISO or dd/mm/yyyy)\n  - ``is_first_real_myr_year``: optional; derived from origination/year if omitted\n  - ``repayments``: list; may be empty (canon 620 \u00a71.1 single-annual or multi)",
         "properties": {
           "amalgamated_base": {
-            "description": "\u00a7109E amalgamated loan base amount (AUD)",
+            "description": "\u00a7109E amalgamated loan base amount (AUD). Must be positive: a non-positive loan balance is not a loan and cannot receive a compliance verdict.",
+            "exclusiveMinimum": 0.0,
             "title": "Amalgamated Base",
             "type": "number"
           },
@@ -286,7 +287,8 @@
             "type": "string"
           },
           "loan_term_years": {
-            "description": "\u00a7109N loan term in years (7 unsecured / 25 secured)",
+            "description": "\u00a7109N loan term in years (7 unsecured / 25 secured). Must be positive; canon 610 \u00a71.2 remaining-term arithmetic is undefined at zero.",
+            "exclusiveMinimum": 0.0,
             "title": "Loan Term Years",
             "type": "integer"
           },
@@ -325,7 +327,8 @@
             "title": "Allocation Hint"
           },
           "amount": {
-            "description": "Repayment amount (AUD)",
+            "description": "Repayment amount (AUD). Must be positive.",
+            "exclusiveMinimum": 0.0,
             "title": "Amount",
             "type": "number"
           },

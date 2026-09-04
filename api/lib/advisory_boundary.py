@@ -119,17 +119,31 @@ from typing import Any
 #     which is true when the manifest cites tables.
 #
 #   * EMPTY (no rate tables consumed — e.g. depreciation /at/ and /range/
-#     at v1): `ADVISORY_TEXT_AU_EMPTY_MANIFEST` states what the output
-#     actually rests on: "every figure is derived arithmetically from the
-#     inputs supplied in the request, under the day-count convention stated
-#     in this response" + the missing not-assessed caveat Fable ruled
-#     load-bearing for the tester share: "Whether those inputs — including
-#     the useful life, the method and the day-count convention — are
-#     appropriate under the applicable accounting or tax framework is not
-#     assessed by this calculator."
+#     at v1, but ALSO FBT calculators like LAFHA whose fold doesn't touch
+#     a rate-table node): `ADVISORY_TEXT_AU_EMPTY_MANIFEST` states what
+#     the output actually rests on WITHOUT enumerating inputs specific
+#     to any one calculator family.
 #
 # TAA s284-15 + TASA framing is preserved in both branches (Fable ruled it
 # correct + unrelated).
+#
+# **D11 mc01-2026-09-04 08:45 UTC (Fable ruling):** the empty-manifest
+# branch text previously enumerated "the useful life, the method and
+# the day-count convention" — depreciation vocabulary. FBT LAFHA fires
+# the same empty-manifest branch (its own manifest has
+# rate_table_uris: []) and the response then claims to depend on inputs
+# LAFHA does not accept: no useful life, no depreciation method, no
+# day_count anywhere in the LAFHA response.
+#
+# Fable ruled verbatim: 'I corrected you for exactly this in D10 —
+# "enumerating accounting inputs in a basis-independent branch" — and
+# then wrote the same defect into the text I ratified. The correction
+# was right and I failed to apply it to my own sentence. Ruled: the
+# empty-manifest branch text is input-agnostic.'
+#
+# The new text (Fable-authored verbatim) drops the input enumeration
+# and just says "whether those inputs are appropriate is not assessed
+# by this calculator" — which is true regardless of what the inputs are.
 ADVISORY_TEXT_AU: str = (
     "This is calculator output, not advice. Consult a registered tax agent "
     "before relying on these numbers for any return, position, or advice "
@@ -141,16 +155,22 @@ ADVISORY_TEXT_AU: str = (
     "Act 2009 (registered-agent requirement)."
 )
 
+# D11 mc01-2026-09-04 08:45 UTC replacement (Fable-authored verbatim). The
+# prior text enumerated "the useful life, the method and the day-count
+# convention" as the inputs whose appropriateness was not assessed. Those
+# are depreciation vocabulary; FBT LAFHA has none of them. The new text
+# says "whether those inputs are appropriate is not assessed by this
+# calculator" — true regardless of which calculator family fires the
+# empty-manifest branch. `day-count convention stated in this response`
+# dropped in its entirety because FBT responses do not carry a
+# `day_count` field.
 ADVISORY_TEXT_AU_EMPTY_MANIFEST: str = (
     "This is calculator output, not advice. Consult a registered tax agent "
     "before relying on these numbers for any return, position, or advice "
     "provided to a third party. This calculation consumes no statutory "
     "rate tables; every figure is derived arithmetically from the inputs "
-    "supplied in the request, under the day-count convention stated in "
-    "this response. Whether those inputs — including the useful life, the "
-    "method and the day-count convention — are appropriate under the "
-    "applicable accounting or tax framework is not assessed by this "
-    "calculator. "
+    "supplied in this request. Whether those inputs are appropriate is "
+    "not assessed by this calculator. "
     "Statutory framing: TAA 1953 s284-15 (false or misleading statements; "
     "penalty bands escalate with culpability) and the Tax Agent Services "
     "Act 2009 (registered-agent requirement)."

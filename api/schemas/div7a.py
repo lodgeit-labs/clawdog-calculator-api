@@ -18,7 +18,17 @@ class Div7aRepaymentIn(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    amount: float = Field(..., description="Repayment amount (AUD)")
+    # D14 mc01-2026-09-04 08:45 UTC adjacent hardening: repayment amounts
+    # must be positive. A zero repayment is a no-op that has no place on
+    # the ledger; a negative repayment inverts the interest-vs-principal
+    # allocation semantics of canon 620 daily-balance accrual. Not
+    # explicitly Fable-ruled but the same class of arithmetic-through-
+    # nonsense-value defect. Revertable if Fable rules scope-only.
+    amount: float = Field(
+        ...,
+        gt=0,
+        description="Repayment amount (AUD). Must be positive.",
+    )
     date: str = Field(
         ...,
         description="Repayment date (ISO YYYY-MM-DD or AU dd/mm/yyyy)",
@@ -49,13 +59,44 @@ class Div7aAtInput(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
+    # D14 mc01-2026-09-04 08:45 UTC (Fable ruling verbatim):
+    #   'Div7A accepts a negative loan balance and calls it complying.
+    #    Still live, unchanged.
+    #      amalgamated_base: -1000 -> 200
+    #      statutory_myr "-221.39" shortfall "0.00" is_complying true
+    #      deemed_dividend "0.00" interest_accrued "-87.46"
+    #    A negative minimum yearly repayment, a negative interest
+    #    accrual, and a compliance verdict of true on a loan that
+    #    cannot exist. amalgamated_base needs a gt=0 constraint at the
+    #    gateway, and the engine should refuse it independently rather
+    #    than compute through it. Same defence-in-depth shape as the
+    #    basis-conditional work: gateway rejects, engine refuses,
+    #    neither relies on the other.'
+    #
+    # Engine-side refusal is OT for a separate PR on lodgeit-labs/
+    # Div7A_Engine authored in a wire-fresh re-read session (Option C
+    # discipline sibling of the D7 engine PR). This gateway constraint
+    # is defence-in-depth; the engine constraint is defence-in-truth.
     amalgamated_base: float = Field(
         ...,
-        description="§109E amalgamated loan base amount (AUD)",
+        gt=0,
+        description=(
+            "§109E amalgamated loan base amount (AUD). Must be positive: "
+            "a non-positive loan balance is not a loan and cannot receive "
+            "a compliance verdict."
+        ),
     )
+    # D14 adjacent hardening: zero-or-negative loan term produces a
+    # division-by-zero downstream in the canon 610 remaining-term
+    # arithmetic. Refuse at the gateway.
     loan_term_years: int = Field(
         ...,
-        description="§109N loan term in years (7 unsecured / 25 secured)",
+        gt=0,
+        description=(
+            "§109N loan term in years (7 unsecured / 25 secured). Must "
+            "be positive; canon 610 §1.2 remaining-term arithmetic is "
+            "undefined at zero."
+        ),
     )
     loan_origination_date: str = Field(
         ...,
