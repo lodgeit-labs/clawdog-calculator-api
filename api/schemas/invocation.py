@@ -266,20 +266,77 @@ class FBTCarOperatingCostInput(BaseModel):
         if self.deemed_total is not None:
             return self
 
-        # Path (a): single-year-primitive triad.
-        path_a_present = (
+        # L#105 mc02-2026-09-04 (Fable ruling 12:08 UTC Option A):
+        # REFUSE the ambiguity of two paths satisfied. The engine's own
+        # validate_chained_dv_inputs/2 at FBT_Engine.pl:1691 already throws
+        # conflicting_inputs(acquisition_cost, opening_depreciated_value)
+        # when both are supplied; that surfaces as HTTP 500 text/plain via
+        # the mapper's 5xx branch as gateway 502 engine_unavailable with
+        # the diagnostic buried in detail.detail.body. Under Fable Option A
+        # the gateway refuses at pydantic tier before the engine round-trip
+        # so the caller sees a typed 422 naming both fields and the arithmetic
+        # divergence they imply.
+        #
+        # Rationale banked here for the next reader (Fable ruling verbatim):
+        # 1. The engine already refuses it — gateway laxer than the engine
+        #    it fronts is the same defect direction as the basis-conditional
+        #    work; align the front door with the contract already behind it.
+        # 2. The failure mode of accepting is a silent wrong number (path-(a)
+        #    arithmetic returned when the caller may have meant path-(b));
+        #    class the sharing gate exists to block, worse than refusing.
+        # 3. Refusing asks a question only the caller can answer — which
+        #    basis did they intend, opening WDV they hold or a walk from
+        #    original cost? Picking for them is a guess wearing an answer's
+        #    clothes.
+        # 4. Option B (documented precedence + trace-label) is already half-
+        #    shipped: deemed_dispatch returns "computed" and "computed_chained";
+        #    the trace names which path fired. That was B's real value and
+        #    it exists. B cannot help a caller who never reads the trace.
+        #
+        # REVISIT TRIGGER (Fable 12:08 UTC verbatim, banked so the next
+        # reader does not re-derive): "if a consumer ever legitimately needs
+        # to supply both, that is the trigger to revisit — and at that
+        # point the answer is probably an explicit `deemed_basis`
+        # discriminator, not a precedence rule."
+        conflict_a = (
             self.opening_depreciated_value is not None
             and self.days_held_in_fbt_year is not None
             and self.acquisition_date is not None
         )
+        conflict_b = (
+            self.acquisition_cost is not None
+            and self.acquisition_date is not None
+        )
+        if conflict_a and conflict_b:
+            raise ValueError(
+                f"form_of_finance={self.form_of_finance!r} was supplied with "
+                f"BOTH deemed-amounts input paths simultaneously:\n"
+                f"  (a) single-year-primitive triad — "
+                f"openingDepreciatedValue={self.opening_depreciated_value} + "
+                f"daysHeldInFBTYear={self.days_held_in_fbt_year} + "
+                f"acquisitionDate={self.acquisition_date!r}.\n"
+                f"  (b) chained-DV walk triad — "
+                f"acquisitionCost={self.acquisition_cost} + "
+                f"acquisitionDate={self.acquisition_date!r}.\n"
+                f"These imply different arithmetic — path (a) computes "
+                f"deemed depreciation from the opening WDV the caller "
+                f"holds; path (b) walks depreciation forward from the "
+                f"original acquisition cost. The engine's D2 fold refuses "
+                f"the ambiguity via a typed conflicting_inputs throw. Supply "
+                f"exactly ONE of paths (a), (b), or (c) explicit deemedTotal "
+                f"override. If your integration legitimately needs both a "
+                f"held-WDV and a walk-from-cost path, this is the trigger "
+                f"to add an explicit deemed_basis discriminator field — open "
+                f"a change request rather than sending both."
+            )
+
+        # Path (a): single-year-primitive triad.
+        path_a_present = conflict_a
         if path_a_present:
             return self
 
         # Path (b): chained-DV walk triad.
-        path_b_present = (
-            self.acquisition_cost is not None
-            and self.acquisition_date is not None
-        )
+        path_b_present = conflict_b
         if path_b_present:
             return self
 
