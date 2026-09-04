@@ -340,15 +340,25 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
         # segment is non-computational for depreciation; retaining
         # period-scoped in the label would sustain the fiction D5
         # retires).
+        # Fable D8c mc00-2026-09-04 label correction: prior text
+        # advertised both tax and accounting basis; Andrew ruled
+        # accounting-only at v1 and GatewayBasisLiteral now narrows to
+        # Literal["accounting"]. Label now describes the reachable
+        # surface honestly. Tax basis becomes its own registry entry
+        # + calc URN when someone wants it.
         "label": (
             "Single-asset depreciation. Prime cost or diminishing value, "
-            "on Australian tax (ITAA97 Div 40) or accounting (AASB 116) "
-            "basis, valued at a nominated date. The date semantics live "
-            "entirely in `at_date`; the period URN segment names a "
-            "property of the calculator (not period-scoped) and does "
-            "not affect the calculation. Individually-depreciated "
-            "assets only — pooled assets (small business, low-value, "
-            "software) are out of scope and are refused."
+            "on Australian accounting (AASB 116) basis, valued at a "
+            "nominated date. Andrew's product thesis at v1 is prime cost "
+            "and DV using accounting methods rather than tax methods; "
+            "tax basis (ITAA97 Div 40) is architecturally reachable at "
+            "the engine but is not exposed on this URN. The date "
+            "semantics live entirely in `at_date`; the period URN "
+            "segment names a property of the calculator (not "
+            "period-scoped) and does not affect the calculation. "
+            "Individually-depreciated assets only — pooled assets "
+            "(small business, low-value, software) are out of scope "
+            "and are refused."
         ),
         # Fable D5 mc02 2026-09-04 ratified: sole supported period is
         # `:unscoped` under F1 URN-retirement precedent. Retired
@@ -363,12 +373,22 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
         "engine_method": "range",
         "engine_benefit_category": "depreciation_range",
         "jurisdiction": "AU",
+        # Fable D8c mc00-2026-09-04 label correction: prior text said
+        # "tax basis architecturally reachable at the engine but
+        # gateway-narrowed to accounting; see basis field" while the
+        # gateway demonstrably accepted basis:"tax" and forwarded it
+        # (Fable §5 probe). Now GatewayBasisLiteral narrows to
+        # Literal["accounting"] and the label matches the reachable
+        # surface. Manifest-fidelity violation Fable named at §5 is
+        # closed.
         "label": (
             "Single-asset depreciation over a date range. Prime cost or "
-            "diminishing value, on Australian accounting (AASB 116) basis "
-            "at v1 (tax basis architecturally reachable at the engine but "
-            "gateway-narrowed to accounting; see basis field). Returns "
-            "total depreciation charge over [from_date, to_date] inclusive "
+            "diminishing value, on Australian accounting (AASB 116) "
+            "basis. Andrew's product thesis at v1 is prime cost and DV "
+            "using accounting methods rather than tax methods; tax "
+            "basis (ITAA97 Div 40) is architecturally reachable at the "
+            "engine but is not exposed on this URN. Returns total "
+            "depreciation charge over [from_date, to_date] inclusive "
             "plus opening_wdv (opening balance carried into the range) "
             "and closing_wdv (closing balance carried out). The date "
             "semantics live entirely in `from_date` and `to_date`; the "

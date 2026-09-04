@@ -7,16 +7,20 @@ is 100-300 ms the caller waits before seeing an actionable message; on
 Cloud Run cold-start it is worse. The defence-in-depth layer catches KNOWN
 engine basis-conditional rules at the pydantic layer, before dispatch.
 
-Rule set (as of engine mc-2026-09-03 wire probe, mirrored in
+Rule set (as of engine mc-2026-09-03 wire probe + D8c mc00-2026-09-04
+narrowing, mirrored in
 `api/schemas/depreciation.py::_validate_basis_conditional_asset_fields`):
 
   basis="accounting" REQUIRES asset.accounting_useful_life_years
                      REQUIRES asset.accounting_method
                      REFUSES  asset.tax_asset_class
 
-  basis="tax"        REQUIRES asset.tax_asset_class
-                     REFUSES  asset.accounting_useful_life_years
-                     REFUSES  asset.accounting_method
+  basis="tax"        REMOVED at pydantic type layer under D8c mc00-
+                     2026-09-04. GatewayBasisLiteral =
+                     Literal["accounting"] refuses `"tax"` at the
+                     literal_error tier before this validator runs.
+                     Tax basis re-widens via a separate URN + registry
+                     entry when someone wants it.
 
 Interaction with the mapper's Amendment-3 drift-detector:
 
@@ -195,30 +199,28 @@ def test_at_accounting_with_tax_asset_class_is_refused(client: TestClient) -> No
 
 
 # ============================================================================
-# tax basis — missing required field + cross-field refusal
+# tax basis — D8c mc00-2026-09-04 narrowed OUT: pydantic literal_error at
+# the type layer BEFORE the defence-in-depth helper runs.
+#
+# Historic tests (pre-D8c) asserted tax-basis-missing-tax_asset_class
+# behaviour that is now unreachable. Rewritten below to assert the NEW
+# contract: any basis other than "accounting" fails at the gateway 422
+# with pydantic's literal_error naming the accepted set.
+#
+# If GatewayBasisLiteral is ever re-widened without going through the
+# "separate URN + separate registry entry + separate input schema" path
+# Fable ruled at §5, these tests fire.
 # ============================================================================
 
 
-def test_at_tax_missing_asset_class_returns_gateway_422(client: TestClient) -> None:
-    """basis=tax without tax_asset_class."""
-    resp = client.post(
-        _at_url(),
-        json={
-            "basis": "tax",
-            "asset": {
-                "cost": "5000.00",
-                "acquisition_date": "2022-07-01",
-                # tax_asset_class OMITTED (defect)
-            },
-            "at_date": "2025-06-30",
-        },
-    )
-    assert resp.status_code == 422, resp.text
-    assert "tax_asset_class" in str(resp.json().get("detail", ""))
-
-
-def test_at_tax_with_accounting_fields_is_refused(client: TestClient) -> None:
-    """basis=tax with accounting_useful_life_years is a mixed-basis payload."""
+def test_at_tax_basis_is_narrowed_out_at_pydantic_layer(
+    client: TestClient,
+) -> None:
+    """D8c: basis='tax' is refused at pydantic literal layer with a
+    message naming 'accounting' as the only accepted value. Historic
+    tax-basis-missing-tax_asset_class behaviour is unreachable through
+    this URN; tax basis becomes a separate URN + registry entry when
+    someone wants it."""
     resp = client.post(
         _at_url(),
         json={
@@ -227,14 +229,48 @@ def test_at_tax_with_accounting_fields_is_refused(client: TestClient) -> None:
                 "cost": "5000.00",
                 "acquisition_date": "2022-07-01",
                 "tax_asset_class": "urn:sbrm:asset-class:office-equipment",
-                "accounting_useful_life_years": 10,  # <-- refused with tax basis
             },
             "at_date": "2025-06-30",
         },
     )
     assert resp.status_code == 422, resp.text
     detail_text = str(resp.json().get("detail", ""))
-    assert "accounting_useful_life_years" in detail_text
+    # pydantic emits literal_error with the accepted set explicit
+    assert "accounting" in detail_text, (
+        f"Refusal message must name 'accounting' as the accepted "
+        f"basis. Got: {detail_text!r}"
+    )
+    assert "basis" in detail_text, (
+        f"Refusal detail must locate the failure at 'basis'. Got: "
+        f"{detail_text!r}"
+    )
+
+
+def test_range_tax_basis_is_narrowed_out_at_pydantic_layer(
+    client: TestClient,
+) -> None:
+    """D8c parallel on /range/. Both routes share the same narrowed
+    GatewayBasisLiteral; both refuse basis='tax' with the same message
+    shape. Fable §5 concern (`/range/` accepting tax while claiming to
+    be narrowed) is closed at both endpoints."""
+    resp = client.post(
+        _range_url(),
+        json={
+            "basis": "tax",
+            "asset": {
+                "cost": "10000.00",
+                "acquisition_date": "2023-07-01",
+                "tax_asset_class": "urn:sbrm:asset-class:office-equipment",
+            },
+            "from_date": "2023-08-01",
+            "to_date": "2024-06-30",
+            "day_count": "actual/actual",
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    detail_text = str(resp.json().get("detail", ""))
+    assert "accounting" in detail_text
+    assert "basis" in detail_text
 
 
 # ============================================================================
@@ -271,24 +307,12 @@ def test_at_accounting_wellformed_reaches_engine(client: TestClient) -> None:
     )
 
 
-def test_at_tax_wellformed_reaches_engine(client: TestClient) -> None:
-    """Same for tax basis."""
-    resp = client.post(
-        _at_url(),
-        json={
-            "basis": "tax",
-            "asset": {
-                "cost": "5000.00",
-                "acquisition_date": "2022-07-01",
-                "tax_asset_class": "urn:sbrm:asset-class:office-equipment",
-            },
-            "at_date": "2025-06-30",
-        },
-    )
-    assert resp.status_code != 422, (
-        f"Well-formed tax payload rejected at gateway 422. "
-        f"Body: {resp.text[:300]}"
-    )
+# Historic test `test_at_tax_wellformed_reaches_engine` REMOVED under D8c.
+# The behaviour it asserted (well-formed tax payload reaches engine) is
+# no longer true because tax basis is narrowed out at pydantic. Leaving
+# the removal recorded in commentary rather than deleting silently so a
+# future reader searching for the historic test name finds the D8c
+# reference.
 
 
 def test_range_accounting_wellformed_reaches_engine(client: TestClient) -> None:

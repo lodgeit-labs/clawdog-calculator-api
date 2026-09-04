@@ -90,6 +90,19 @@ def _validate_basis_conditional_asset_fields(
     422 detail string (`"basis='X' requires 'asset.Y'"`) so a caller
     testing against the engine directly and against the gateway sees
     equivalent text.
+
+    **D8c mc00-2026-09-04:** GatewayBasisLiteral narrowed to
+    `Literal["accounting"]`. pydantic refuses `basis:"tax"` at the type
+    layer BEFORE this validator runs, so the historic `elif basis ==
+    "tax"` branch has been REMOVED. Leaving it as a design record would
+    violate the tautology-anchor Fable minted at 07:35 UTC: dead code
+    guarded by an unreachable predicate is a check that cannot fire,
+    wearing the costume of one.
+
+    When the tax basis is re-widened via a separate URN + separate input
+    schema class (D8c widening path documented on GatewayBasisLiteral),
+    re-add the tax rules to the NEW schema's own validator; do NOT
+    re-add them here.
     """
     if asset_dict is None:
         return  # nested pydantic will emit its own 422
@@ -113,39 +126,36 @@ def _validate_basis_conditional_asset_fields(
                 "(tax_asset_class is a tax-basis field; the engine's fold "
                 "will refuse mixing bases)"
             )
-    elif basis == "tax":
-        if asset_dict.get("tax_asset_class") is None:
-            raise ValueError(
-                "basis='tax' requires 'asset.tax_asset_class'"
-            )
-        # Cross-field refusal on the other direction.
-        extra_accounting = []
-        if asset_dict.get("accounting_useful_life_years") is not None:
-            extra_accounting.append("asset.accounting_useful_life_years")
-        if asset_dict.get("accounting_method") is not None:
-            extra_accounting.append("asset.accounting_method")
-        if extra_accounting:
-            raise ValueError(
-                f"basis='tax' refuses {' + '.join(extra_accounting)} "
-                f"(accounting-basis fields; the engine's fold will refuse "
-                f"mixing bases)"
-            )
-    # No conditional rules known for other basis values. When D8c narrows
-    # to accounting-only the `elif basis == "tax"` branch becomes dead
-    # code but stays here as a design record until the engine drops the
-    # tax basis or a UK basis lands with its own rules.
 
-# Gateway-scoped basis literals per Fable rider 1: engine's five-literal
-# vocabulary narrowed to AU-only. `uk_frs102_s17` refused at the pydantic
-# layer so the gateway wire self-describes as AU-jurisdiction consistently.
-# Narrowed 2026-08-30: the engine declares five basis literals but computes
-# only two. `au_itaa97`, `au_aasb116` and `uk_frs102_s17` pass the engine's own
-# validation and then raise MissingAssetCreatedFieldError in the fold, so the
-# gateway advertises only what returns a number. Widen again once the engine
-# wires the explicit framework literals through basis_registry.
+# Gateway-scoped basis literal per Fable D8c mc00-2026-09-04.
+#
+# Andrew ruling (Fable D8c §5 verbatim): "accounting only at v1." Andrew's
+# product thesis is explicit — *prime cost and DV using accounting methods,
+# rather than tax methods*. Narrowing to Literal["accounting"] here makes
+# the /range/ registry label true rather than requiring the label to be
+# rewritten around the fiction that tax basis was gateway-narrowed. Tax
+# basis stays REACHABLE at the engine and will return as its own registry
+# entry when someone wants it (separate calc URN + separate label + separate
+# manifest at that point).
+#
+# HISTORY (Fable D8c ratification-of-narrowing):
+#   * mc-original: engine declares 5 basis literals
+#     (`accounting`, `tax`, `au_itaa97`, `au_aasb116`, `uk_frs102_s17`).
+#   * mc-2026-08-30: narrowed to 2 (`accounting`, `tax`) because
+#     `au_itaa97`, `au_aasb116` and `uk_frs102_s17` passed engine
+#     validation then raised MissingAssetCreatedFieldError in the fold;
+#     gateway advertised only what returned a number.
+#   * mc-2026-09-04 D8c (this narrowing): 1 (`accounting`) because
+#     Andrew ruled accounting-only at v1. Two-day gap between the 2
+#     mc-2026-08-30 narrowing and the 1 mc-2026-09-04 D8c narrowing was
+#     the D8c defect Fable named at §5: `/range/` label said
+#     "gateway-narrowed to accounting" while the gateway demonstrably
+#     accepted `basis:"tax"`.
+#
+# Widening path (when needed): declare a separate URN + registry entry +
+# input schema class for the tax basis. Do NOT re-add `"tax"` here.
 GatewayBasisLiteral = Literal[
     "accounting",     # AASB 116 useful-life basis (engine-verified 2026-08-30)
-    "tax",            # ATO Div 40 basis (engine-verified 2026-08-30)
 ]
 
 
@@ -381,13 +391,16 @@ class DepreciationAtInput(BaseModel):
         GatewayBasisLiteral,
         Field(
             description=(
-                "Depreciation basis discriminator. Gateway rider 1 narrows "
-                "the engine's five-literal vocabulary to the four AU "
-                "literals: 'accounting' (AASB 116 alias), 'tax' (ITAA97 "
-                "alias), 'au_aasb116' (explicit AAS), 'au_itaa97' "
-                "(explicit ATO Div 40). UK framework 'uk_frs102_s17' is "
-                "refused at this gateway; UK becomes its own registry "
-                "entry when a UK consumer arrives."
+                "Depreciation basis discriminator. Fable D8c mc00-"
+                "2026-09-04: Andrew ruled accounting-only at v1. "
+                "Gateway narrows the engine's five-literal vocabulary "
+                "to `'accounting'` (AASB 116 useful-life basis). Tax "
+                "basis (ITAA97 Div 40) is architecturally reachable at "
+                "the engine but is not exposed on this URN; it will "
+                "land as a separate URN + registry entry + input "
+                "schema class when a consumer wants it. UK framework "
+                "'uk_frs102_s17' likewise refused; UK becomes its own "
+                "registry entry when a UK consumer arrives."
             ),
         ),
     ]
@@ -558,7 +571,14 @@ class DepreciationRangeInput(BaseModel):
 
     basis: Annotated[
         GatewayBasisLiteral,
-        Field(description="Basis discriminator (same vocabulary as /at/)."),
+        Field(
+            description=(
+                "Basis discriminator (same vocabulary as /at/). D8c "
+                "mc00-2026-09-04 narrowed to Literal['accounting'] at "
+                "both endpoints; see /at/'s basis field for the "
+                "widening path."
+            ),
+        ),
     ]
 
     asset: Annotated[
