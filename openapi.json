@@ -161,11 +161,8 @@
             "type": "string"
           },
           "basis": {
-            "description": "Depreciation basis discriminator. Gateway rider 1 narrows the engine's five-literal vocabulary to the four AU literals: 'accounting' (AASB 116 alias), 'tax' (ITAA97 alias), 'au_aasb116' (explicit AAS), 'au_itaa97' (explicit ATO Div 40). UK framework 'uk_frs102_s17' is refused at this gateway; UK becomes its own registry entry when a UK consumer arrives.",
-            "enum": [
-              "accounting",
-              "tax"
-            ],
+            "const": "accounting",
+            "description": "Depreciation basis discriminator. Fable D8c mc00-2026-09-04: Andrew ruled accounting-only at v1. Gateway narrows the engine's five-literal vocabulary to `'accounting'` (AASB 116 useful-life basis). Tax basis (ITAA97 Div 40) is architecturally reachable at the engine but is not exposed on this URN; it will land as a separate URN + registry entry + input schema class when a consumer wants it. UK framework 'uk_frs102_s17' likewise refused; UK becomes its own registry entry when a UK consumer arrives.",
             "title": "Basis",
             "type": "string"
           },
@@ -212,11 +209,8 @@
             "description": "Asset creation input (nested; same as /at/)."
           },
           "basis": {
-            "description": "Basis discriminator (same vocabulary as /at/).",
-            "enum": [
-              "accounting",
-              "tax"
-            ],
+            "const": "accounting",
+            "description": "Basis discriminator (same vocabulary as /at/). D8c mc00-2026-09-04 narrowed to Literal['accounting'] at both endpoints; see /at/'s basis field for the widening path.",
             "title": "Basis",
             "type": "string"
           },

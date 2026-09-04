@@ -109,10 +109,21 @@ jobs:
       # the floor when the suite grows meaningfully; this line is the
       # enforcement, not a comment.
       - name: Collected-test-count floor (Fable mc19 2026-09-04 gate)
+        # Floor bump history:
+        #   mc19 2026-09-04: FLOOR=190 (against suite of 214)
+        #   mc00 2026-09-04: FLOOR=230 (against suite of 245 after D8a+D8b
+        #                    mapper + boundary-guard tests). Fable mc00
+        #                    05:21 UTC: "A floor 53 tests behind the suite
+        #                    can't see a fifth of it going missing."
+        #                    ~6% margin: catches a 5% loss (~12 tests) as
+        #                    a failure while allowing a small cluster of
+        #                    skips or a fixture-heavy file WIP-disabled.
+        # Bump this floor whenever the suite grows by >=15 tests; the
+        # comment history above is the audit trail.
         run: |
           COLLECTED=$(pytest --collect-only 2>&1 | grep -oE '^[0-9]+ tests? collected' | grep -oE '^[0-9]+' | head -1)
           COLLECTED=${COLLECTED:-0}
-          FLOOR=190
+          FLOOR=230
           echo "collected=$COLLECTED floor=$FLOOR"
           if [ "$COLLECTED" -lt "$FLOOR" ]; then
             echo "::error::pytest collected only $COLLECTED tests; floor is $FLOOR. Either the suite shrank or CI ran against a stale checkout. Fable mc19 gate."

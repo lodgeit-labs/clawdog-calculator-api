@@ -11,7 +11,6 @@ holds under a second calculator.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import unquote
@@ -21,6 +20,10 @@ from fastapi import Path as PathParam
 from pydantic import ValidationError
 
 from api.lib.advisory_boundary import wrap_response
+from api.lib.engine_error_mapper import (
+    map_calculation_error_to_http,
+    map_engine_error_to_http,
+)
 from api.lib.rate_table_resolver import (
     DEFAULT_TAXONOMY,
     RATIFIED_TAXONOMIES,
@@ -337,15 +340,25 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
         # segment is non-computational for depreciation; retaining
         # period-scoped in the label would sustain the fiction D5
         # retires).
+        # Fable D8c mc00-2026-09-04 label correction: prior text
+        # advertised both tax and accounting basis; Andrew ruled
+        # accounting-only at v1 and GatewayBasisLiteral now narrows to
+        # Literal["accounting"]. Label now describes the reachable
+        # surface honestly. Tax basis becomes its own registry entry
+        # + calc URN when someone wants it.
         "label": (
             "Single-asset depreciation. Prime cost or diminishing value, "
-            "on Australian tax (ITAA97 Div 40) or accounting (AASB 116) "
-            "basis, valued at a nominated date. The date semantics live "
-            "entirely in `at_date`; the period URN segment names a "
-            "property of the calculator (not period-scoped) and does "
-            "not affect the calculation. Individually-depreciated "
-            "assets only — pooled assets (small business, low-value, "
-            "software) are out of scope and are refused."
+            "on Australian accounting (AASB 116) basis, valued at a "
+            "nominated date. Andrew's product thesis at v1 is prime cost "
+            "and DV using accounting methods rather than tax methods; "
+            "tax basis (ITAA97 Div 40) is architecturally reachable at "
+            "the engine but is not exposed on this URN. The date "
+            "semantics live entirely in `at_date`; the period URN "
+            "segment names a property of the calculator (not "
+            "period-scoped) and does not affect the calculation. "
+            "Individually-depreciated assets only — pooled assets "
+            "(small business, low-value, software) are out of scope "
+            "and are refused."
         ),
         # Fable D5 mc02 2026-09-04 ratified: sole supported period is
         # `:unscoped` under F1 URN-retirement precedent. Retired
@@ -360,12 +373,22 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
         "engine_method": "range",
         "engine_benefit_category": "depreciation_range",
         "jurisdiction": "AU",
+        # Fable D8c mc00-2026-09-04 label correction: prior text said
+        # "tax basis architecturally reachable at the engine but
+        # gateway-narrowed to accounting; see basis field" while the
+        # gateway demonstrably accepted basis:"tax" and forwarded it
+        # (Fable §5 probe). Now GatewayBasisLiteral narrows to
+        # Literal["accounting"] and the label matches the reachable
+        # surface. Manifest-fidelity violation Fable named at §5 is
+        # closed.
         "label": (
             "Single-asset depreciation over a date range. Prime cost or "
-            "diminishing value, on Australian accounting (AASB 116) basis "
-            "at v1 (tax basis architecturally reachable at the engine but "
-            "gateway-narrowed to accounting; see basis field). Returns "
-            "total depreciation charge over [from_date, to_date] inclusive "
+            "diminishing value, on Australian accounting (AASB 116) "
+            "basis. Andrew's product thesis at v1 is prime cost and DV "
+            "using accounting methods rather than tax methods; tax "
+            "basis (ITAA97 Div 40) is architecturally reachable at the "
+            "engine but is not exposed on this URN. Returns total "
+            "depreciation charge over [from_date, to_date] inclusive "
             "plus opening_wdv (opening balance carried into the range) "
             "and closing_wdv (closing balance carried out). The date "
             "semantics live entirely in `from_date` and `to_date`; the "
@@ -668,30 +691,14 @@ async def invoke_calculator(
     try:
         engine_response = await prolog.calculate_fbt(payload)
     except PrologEngineUnavailable as exc:
-        # mc06-2026-05-28 Option-C PR α: catch transport-layer failures and
-        # surface structured 502/503 rather than letting httpx.* propagate to
-        # FastAPI's default bare-HTML 500 handler. Closes Standing Rule #12
-        # clause (e) symmetrically across both calc routes (the depreciation
-        # route has the live bare-500 today; this defends FBT in depth).
-        status_code = (
-            status.HTTP_503_SERVICE_UNAVAILABLE
-            if exc.error_code == "engine_timeout"
-            else status.HTTP_502_BAD_GATEWAY
-        )
-        raise HTTPException(
-            status_code=status_code,
-            detail={
-                "error": "engine_unavailable",
-                "error_code": exc.error_code,
-                "engine": exc.engine,
-                "detail": exc.detail,
-            },
-        ) from exc
+        # mc00-2026-09-04 (Fable D8a + D8b): centralised mapper. Engine 4xx
+        # → gateway same 4xx with sanitised detail; engine 5xx / transport
+        # failures → structured 502/503 as before. Historic per-route inline
+        # 400+refusal_class handling folded into the mapper (Fable §6
+        # cosmetic flatten also applies).
+        raise map_engine_error_to_http(exc) from exc
     except PrologCalculationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={"error": exc.error, "detail": exc.detail},
-        ) from exc
+        raise map_calculation_error_to_http(exc) from exc
 
     taxable_value = engine_response.get("taxable_value")
     if taxable_value is None:
@@ -889,21 +896,12 @@ async def invoke_div7a_at(
     try:
         engine_response = await prolog.div7a_at(period_uri_decoded, payload)
     except PrologEngineUnavailable as exc:
-        # Map engine-transport failures to gateway HTTP status codes per
-        # Standing Rule #12 clause (e) — never bare 500.
-        status_code = (
-            status.HTTP_504_GATEWAY_TIMEOUT
-            if exc.error_code == "timeout"
-            else status.HTTP_502_BAD_GATEWAY
-        )
-        raise HTTPException(
-            status_code=status_code,
-            detail={
-                "error": "div7a_engine_unavailable",
-                "error_code": exc.error_code,
-                "detail": exc.detail,
-                "engine": exc.engine,
-            },
+        # mc00-2026-09-04 (Fable D8a + D8b): centralised mapper. Div7A
+        # retains its historic `div7a_engine_unavailable` error slug for
+        # 5xx/transport paths; 4xx are re-emitted with the mapper's shape
+        # (D8a: never surface engine 4xx as gateway 5xx).
+        raise map_engine_error_to_http(
+            exc, engine_label="div7a_engine_unavailable"
         ) from exc
     except PrologCalculationError as exc:
         raise HTTPException(
@@ -1033,49 +1031,14 @@ async def invoke_depreciation_at(
     try:
         engine_response = await prolog.depreciation_at(period_uri_decoded, payload)
     except PrologEngineUnavailable as exc:
-        # Fable rider 3 (§A2.4) says surface typed refusals cleanly. When
-        # the engine returns HTTP 400 with `refusal_class`, PrologClient
-        # maps that to `PrologEngineUnavailable(error_code=
-        # "engine_http_error", detail={"status_code": 400, "body": …})`.
-        # Detect that shape here and re-emit as HTTP 400 preserving the
-        # engine's typed refusal envelope, rather than flattening to a
-        # generic 502.
-        if (
-            exc.error_code == "engine_http_error"
-            and isinstance(exc.detail, dict)
-            and exc.detail.get("status_code") == 400
-        ):
-            try:
-                import json as _json
-                refusal_body = _json.loads(exc.detail.get("body", "{}"))
-            except (ValueError, TypeError):
-                refusal_body = None
-            if isinstance(refusal_body, dict) and refusal_body.get("refusal_class"):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=refusal_body,
-                ) from exc
-
-        # Otherwise, transport-layer failure per SR #12 clause (e).
-        status_code = (
-            status.HTTP_503_SERVICE_UNAVAILABLE
-            if exc.error_code == "engine_timeout"
-            else status.HTTP_502_BAD_GATEWAY
-        )
-        raise HTTPException(
-            status_code=status_code,
-            detail={
-                "error": "engine_unavailable",
-                "error_code": exc.error_code,
-                "engine": exc.engine,
-                "detail": exc.detail,
-            },
-        ) from exc
+        # mc00-2026-09-04 (Fable D8a + D8b): centralised mapper. Fable
+        # rider 3 refusal_class handling is now in the mapper (Fable §6
+        # cosmetic: flat `detail`, no double-nesting). Engine 4xx (e.g.
+        # 422 for missing accounting_useful_life_years) surfaces as
+        # gateway 4xx with actionable detail.
+        raise map_engine_error_to_http(exc) from exc
     except PrologCalculationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={"error": exc.error, "detail": exc.detail},
-        ) from exc
+        raise map_calculation_error_to_http(exc) from exc
 
     # Engine response shape (mc39): {basis, at_date, wdv_at, period_dep_at}.
     # Any missing primary field is a structural-defence-tier failure (L#34).
@@ -1203,41 +1166,10 @@ async def invoke_depreciation_range(
     try:
         engine_response = await prolog.depreciation_range(period_uri_decoded, payload)
     except PrologEngineUnavailable as exc:
-        # Same error taxonomy as /at/ (mc35-2026-08-28 pattern).
-        if (
-            exc.error_code == "engine_http_error"
-            and isinstance(exc.detail, Mapping)
-            and exc.detail.get("status_code") == 400
-        ):
-            try:
-                import json as _json
-                refusal_body = _json.loads(exc.detail.get("body", "{}"))
-            except (ValueError, TypeError):
-                refusal_body = None
-            if isinstance(refusal_body, dict) and refusal_body.get("refusal_class"):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=refusal_body,
-                ) from exc
-        status_code = (
-            status.HTTP_503_SERVICE_UNAVAILABLE
-            if exc.error_code == "engine_timeout"
-            else status.HTTP_502_BAD_GATEWAY
-        )
-        raise HTTPException(
-            status_code=status_code,
-            detail={
-                "error": "engine_unavailable",
-                "error_code": exc.error_code,
-                "engine": exc.engine,
-                "detail": exc.detail,
-            },
-        ) from exc
+        # mc00-2026-09-04 (Fable D8a + D8b): centralised mapper (see /at/).
+        raise map_engine_error_to_http(exc) from exc
     except PrologCalculationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={"error": exc.error, "detail": exc.detail},
-        ) from exc
+        raise map_calculation_error_to_http(exc) from exc
 
     # Structural-defence-tier (L#34): required response fields.
     for required in _DEPRECIATION_RANGE_RESPONSE_FIELDS:
@@ -1250,6 +1182,31 @@ async def invoke_depreciation_range(
                     "detail": engine_response,
                 },
             )
+
+    # Fable D7 REVERTED mc00-2026-09-04 07:35 UTC: earlier gateway-side
+    # synthesis of cost_additions was a tautology. Rearranging the
+    # three-term identity to compute a fourth field from the other three
+    # made the identity algebraically-true for any four numbers whatever
+    # they are; the property tests then passed on arithmetic, not on
+    # correctness. Fable ruling verbatim: "a check that cannot fail is not
+    # a weaker check. It is the absence of a check, wearing the costume
+    # of one."
+    #
+    # Correct sequencing: the engine emits cost_additions on /range/,
+    # engine PR first, gateway then passes through + asserts identity.
+    # Sibling of :unscoped engine-first ordering. Until the engine ships
+    # the field, /range/ responses omit it — an absent field is honest;
+    # a synthesised one is a fabricated corroboration.
+    #
+    # Cross-repo tracking:
+    #   * ClawDog_Share@main handover for the next engine turn will
+    #     name this as the D7-follow-up engine PR.
+    #   * When engine ships cost_additions, this handler stays unchanged
+    #     (extra="allow" on DepreciationRangeResponse lets the field ride
+    #     through). A separate identity-assertion gate lands on the
+    #     gateway alongside the engine ship: three-term identity checked
+    #     against the engine-emitted value; mismatch -> structured 502
+    #     naming BOTH sides, no repair.
 
     # Manifest fidelity (same as /at/): depreciation compute at v1 consumes
     # no rate tables; manifest emits `rate_table_uris: []`. D6 conditional

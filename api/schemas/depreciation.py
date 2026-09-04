@@ -34,19 +34,128 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-# Gateway-scoped basis literals per Fable rider 1: engine's five-literal
-# vocabulary narrowed to AU-only. `uk_frs102_s17` refused at the pydantic
-# layer so the gateway wire self-describes as AU-jurisdiction consistently.
-# Narrowed 2026-08-30: the engine declares five basis literals but computes
-# only two. `au_itaa97`, `au_aasb116` and `uk_frs102_s17` pass the engine's own
-# validation and then raise MissingAssetCreatedFieldError in the fold, so the
-# gateway advertises only what returns a number. Widen again once the engine
-# wires the explicit framework literals through basis_registry.
+# ---------------------------------------------------------------------------
+# D8a defence-in-depth: basis-conditional field validation at the gateway.
+#
+# Fable post-matrix directive mc00-2026-09-04 D8a defence-in-depth ruling:
+#
+#   "Add gateway-side conditional validation as defence in depth so the
+#    engine is not reached for a caller error — but the mapper is the
+#    safety net and it ships first, because the next conditional rule the
+#    engine grows would otherwise reintroduce this."
+#
+# This helper mirrors the CURRENTLY-KNOWN set of engine basis-conditional
+# rules (F13 UPHELD: engine remains authoritative on the full set). If a
+# caller omits a basis-conditional field, they get a 422 at the pydantic
+# layer with the missing field named, rather than a round-trip to the engine
+# followed by the mapper's engine_validation_error surface. Two boundaries,
+# one for latency + charity to the caller, one for correctness:
+#
+#   Gateway pydantic (this helper) — catches KNOWN engine rules.
+#     Miss surfaces as: gateway 422 (fast, actionable).
+#
+#   Central engine-error mapper §1b — catches UNKNOWN engine rules that
+#     the gateway did not yet learn about (schema drift).
+#     Miss surfaces as: gateway 422 + `gateway_engine_schema_drift`
+#     warning log line (Fable Amendment 3 drift-detector).
+#
+# Rule set (as of engine mc-2026-09-03 wire probe):
+#
+#   basis="accounting" REQUIRES asset.accounting_useful_life_years
+#                      REQUIRES asset.accounting_method
+#                      REFUSES  asset.tax_asset_class
+#
+#   basis="tax"        REQUIRES asset.tax_asset_class
+#                      REFUSES  asset.accounting_useful_life_years
+#                      REFUSES  asset.accounting_method
+#
+# When the engine grows a NEW rule (e.g. `basis="au_aasb116"` gains a
+# unique required field), the engine's own 422 will fire, land on the
+# mapper's 422 branch, emit `gateway_engine_schema_drift`, and Andrew sees
+# the drift as a distinct log line rather than a silent gateway-passed
+# malformed request. The path to fix is to add the rule here.
+
+
+def _validate_basis_conditional_asset_fields(
+    basis: str,
+    asset_dict: dict,
+) -> None:
+    """Raise ValueError with a caller-actionable message when the asset
+    payload does not satisfy the KNOWN basis-conditional rules.
+
+    Called from model_validators on both `DepreciationAtInput` and
+    `DepreciationRangeInput`. The message shape mirrors the engine's own
+    422 detail string (`"basis='X' requires 'asset.Y'"`) so a caller
+    testing against the engine directly and against the gateway sees
+    equivalent text.
+
+    **D8c mc00-2026-09-04:** GatewayBasisLiteral narrowed to
+    `Literal["accounting"]`. pydantic refuses `basis:"tax"` at the type
+    layer BEFORE this validator runs, so the historic `elif basis ==
+    "tax"` branch has been REMOVED. Leaving it as a design record would
+    violate the tautology-anchor Fable minted at 07:35 UTC: dead code
+    guarded by an unreachable predicate is a check that cannot fire,
+    wearing the costume of one.
+
+    When the tax basis is re-widened via a separate URN + separate input
+    schema class (D8c widening path documented on GatewayBasisLiteral),
+    re-add the tax rules to the NEW schema's own validator; do NOT
+    re-add them here.
+    """
+    if asset_dict is None:
+        return  # nested pydantic will emit its own 422
+
+    if basis == "accounting":
+        missing = []
+        if asset_dict.get("accounting_useful_life_years") is None:
+            missing.append("asset.accounting_useful_life_years")
+        if asset_dict.get("accounting_method") is None:
+            missing.append("asset.accounting_method")
+        if missing:
+            raise ValueError(
+                f"basis='accounting' requires {' + '.join(missing)}"
+            )
+        # Cross-field refusal: tax_asset_class must NOT be present on
+        # accounting basis. Silent acceptance would produce a payload
+        # the engine currently refuses; we surface it at the gateway.
+        if asset_dict.get("tax_asset_class") is not None:
+            raise ValueError(
+                "basis='accounting' refuses 'asset.tax_asset_class' "
+                "(tax_asset_class is a tax-basis field; the engine's fold "
+                "will refuse mixing bases)"
+            )
+
+# Gateway-scoped basis literal per Fable D8c mc00-2026-09-04.
+#
+# Andrew ruling (Fable D8c §5 verbatim): "accounting only at v1." Andrew's
+# product thesis is explicit — *prime cost and DV using accounting methods,
+# rather than tax methods*. Narrowing to Literal["accounting"] here makes
+# the /range/ registry label true rather than requiring the label to be
+# rewritten around the fiction that tax basis was gateway-narrowed. Tax
+# basis stays REACHABLE at the engine and will return as its own registry
+# entry when someone wants it (separate calc URN + separate label + separate
+# manifest at that point).
+#
+# HISTORY (Fable D8c ratification-of-narrowing):
+#   * mc-original: engine declares 5 basis literals
+#     (`accounting`, `tax`, `au_itaa97`, `au_aasb116`, `uk_frs102_s17`).
+#   * mc-2026-08-30: narrowed to 2 (`accounting`, `tax`) because
+#     `au_itaa97`, `au_aasb116` and `uk_frs102_s17` passed engine
+#     validation then raised MissingAssetCreatedFieldError in the fold;
+#     gateway advertised only what returned a number.
+#   * mc-2026-09-04 D8c (this narrowing): 1 (`accounting`) because
+#     Andrew ruled accounting-only at v1. Two-day gap between the 2
+#     mc-2026-08-30 narrowing and the 1 mc-2026-09-04 D8c narrowing was
+#     the D8c defect Fable named at §5: `/range/` label said
+#     "gateway-narrowed to accounting" while the gateway demonstrably
+#     accepted `basis:"tax"`.
+#
+# Widening path (when needed): declare a separate URN + registry entry +
+# input schema class for the tax basis. Do NOT re-add `"tax"` here.
 GatewayBasisLiteral = Literal[
     "accounting",     # AASB 116 useful-life basis (engine-verified 2026-08-30)
-    "tax",            # ATO Div 40 basis (engine-verified 2026-08-30)
 ]
 
 
@@ -282,13 +391,16 @@ class DepreciationAtInput(BaseModel):
         GatewayBasisLiteral,
         Field(
             description=(
-                "Depreciation basis discriminator. Gateway rider 1 narrows "
-                "the engine's five-literal vocabulary to the four AU "
-                "literals: 'accounting' (AASB 116 alias), 'tax' (ITAA97 "
-                "alias), 'au_aasb116' (explicit AAS), 'au_itaa97' "
-                "(explicit ATO Div 40). UK framework 'uk_frs102_s17' is "
-                "refused at this gateway; UK becomes its own registry "
-                "entry when a UK consumer arrives."
+                "Depreciation basis discriminator. Fable D8c mc00-"
+                "2026-09-04: Andrew ruled accounting-only at v1. "
+                "Gateway narrows the engine's five-literal vocabulary "
+                "to `'accounting'` (AASB 116 useful-life basis). Tax "
+                "basis (ITAA97 Div 40) is architecturally reachable at "
+                "the engine but is not exposed on this URN; it will "
+                "land as a separate URN + registry entry + input "
+                "schema class when a consumer wants it. UK framework "
+                "'uk_frs102_s17' likewise refused; UK becomes its own "
+                "registry entry when a UK consumer arrives."
             ),
         ),
     ]
@@ -341,6 +453,17 @@ class DepreciationAtInput(BaseModel):
             ),
         ),
     ] = None
+
+    @model_validator(mode="after")
+    def _validate_basis_conditional_fields(self) -> DepreciationAtInput:
+        """D8a defence-in-depth (Fable mc00-2026-09-04): catch known engine
+        basis-conditional rules at the gateway pydantic layer, before the
+        engine round-trip. See `_validate_basis_conditional_asset_fields`
+        module-level docstring for the rule set + drift-detector
+        interaction."""
+        asset_dict = self.asset.model_dump() if self.asset else None
+        _validate_basis_conditional_asset_fields(self.basis, asset_dict)
+        return self
 
 
 class DepreciationAtResponse(BaseModel):
@@ -448,7 +571,14 @@ class DepreciationRangeInput(BaseModel):
 
     basis: Annotated[
         GatewayBasisLiteral,
-        Field(description="Basis discriminator (same vocabulary as /at/)."),
+        Field(
+            description=(
+                "Basis discriminator (same vocabulary as /at/). D8c "
+                "mc00-2026-09-04 narrowed to Literal['accounting'] at "
+                "both endpoints; see /at/'s basis field for the "
+                "widening path."
+            ),
+        ),
     ]
 
     asset: Annotated[
@@ -506,6 +636,15 @@ class DepreciationRangeInput(BaseModel):
         ),
     ]
 
+    @model_validator(mode="after")
+    def _validate_basis_conditional_fields(self) -> DepreciationRangeInput:
+        """D8a defence-in-depth (Fable mc00-2026-09-04): shared helper with
+        DepreciationAtInput. See `_validate_basis_conditional_asset_fields`
+        module-level docstring."""
+        asset_dict = self.asset.model_dump() if self.asset else None
+        _validate_basis_conditional_asset_fields(self.basis, asset_dict)
+        return self
+
 
 class DepreciationRangeResponse(BaseModel):
     """Response envelope for the gateway's depreciation `range` route.
@@ -518,10 +657,64 @@ class DepreciationRangeResponse(BaseModel):
 
     - `opening_wdv` = value carried INTO the range (close of `from_date - 1`)
     - `closing_wdv` = value carried OUT of the range (close of `to_date`)
-    - `range_dep` = the charge between them; `opening_wdv - range_dep
-      == closing_wdv` under `monthly` by construction; under
-      `actual/actual` and `actual/365` derived from anchors per Fable
-      D2 mc15 fix so the identity holds by construction.
+    - `range_dep` = the charge between them.
+
+    **Reconciliation identity (Fable D7 mc00-2026-09-04, engine-first
+    ordering):**
+
+    The correct ledger identity is the three-term form:
+
+        closing_wdv == opening_wdv + cost_additions − range_dep
+
+    Where `cost_additions` is total cost entering the ledger inside the
+    range window (asset acquisition when acquisition_date falls inside
+    [from_date, to_date] + any cost_addition events dated inside).
+
+    **Field-name divergence with /at/ (Fable ruling mc00-2026-09-04
+    07:56 UTC — D4-shape-on-a-field discipline; name the divergence
+    rather than let it be discovered):** when `cost_additions` lands on
+    the wire (via the engine PR queued as OT), `/range/`'s
+    `cost_additions` will INCLUDE the initial recognition of the asset
+    when acquisition falls inside [from_date, to_date]. This differs
+    from `/at/`'s `schedule_summary.total_cost_additions`, which counts
+    SUBSEQUENT `event_type=cost_addition` events ONLY and excludes the
+    acquisition. Two similarly-named fields on two endpoints of one
+    calculator, meaning different things. Andrew: additions-including-
+    acquisitions is standard fixed-asset-note presentation; renaming a
+    live /at/ field is a breaking change for no gain. Callers comparing
+    the two values MUST be aware of the difference. Manifest-fidelity
+    rule applied at field granularity.
+
+    **Current wire shape does NOT carry `cost_additions`.** The engine
+    doesn't emit it yet (`/at/`'s ScheduleSummary carries a
+    `total_cost_additions` derived from `event_type=cost_addition`
+    events but not from the acquisition itself; `/range/` doesn't
+    surface anything). Until the engine ships the field, the two-term
+    identity `closing_wdv = opening_wdv − range_dep` holds only when
+    acquisition falls OUTSIDE the range window (cells 3, 4, 6, 11, 12b
+    of Fable's post-matrix probe). When acquisition falls INSIDE
+    (Fable's cell 5 shape) the response numbers are internally
+    consistent under the three-term identity but the caller cannot
+    reconcile from the wire.
+
+    **This is a known gap awaiting the engine PR.** Fable ruling
+    07:35 UTC verbatim: *"an absent field is honest. A synthesised one
+    is a fabricated corroboration in a response a preparer relies on."*
+    Earlier gateway-side synthesis was reverted because the algebraic
+    rearrangement made the three-term identity unfalsifiable
+    (`cost_additions = closing + range_dep − opening` substituted back
+    into the identity produces `closing == closing`; a tautology).
+
+    When the engine ships `cost_additions`:
+      1. Declare the field here (Decimal, required, no default).
+      2. Gateway passes through verbatim (extra="allow" already lets
+         it ride, but declaring makes it byte-diffable + typed).
+      3. Route handler ASSERTS the three-term identity against the
+         engine-emitted value. Mismatch → structured 502 naming both
+         sides + engine's four numbers, no repair.
+      4. Property tests in `tests/test_range_three_term_identity.py`
+         un-skip; they test the identity as a real gate against the
+         wire, not against derived values.
     """
 
     model_config = ConfigDict(extra="allow")  # engine may return extra fields
@@ -567,11 +760,13 @@ class DepreciationRangeResponse(BaseModel):
             description=(
                 "Total depreciation charge over [from_date, to_date] "
                 "inclusive. Zero-day range (from_date == to_date) returns "
-                "Decimal('0.00'). **Derived from anchors (Fable D2 mc15 + "
-                "mc16 mint):** `range_dep = opening_wdv - closing_wdv` "
-                "under actual/actual and actual/365; ledger identity "
-                "holds by construction. Under `monthly`, per-month "
-                "round-and-sum; identity also holds."
+                "Decimal('0.00'). Reconciliation shape: the ledger "
+                "identity is `closing_wdv = opening_wdv + cost_additions "
+                "− range_dep`. The two-term corollary `closing_wdv = "
+                "opening_wdv − range_dep` holds ONLY when "
+                "`cost_additions == 0` (acquisition falls outside the "
+                "range window). See class docstring for the engine-first "
+                "sequencing that lands `cost_additions` on the wire."
             ),
         ),
     ]

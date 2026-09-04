@@ -428,12 +428,26 @@ required = {
     'urn:sbrm:calculator:depreciation:range',
 }
 # OT #131 fold (RATIFIED mc11-2026-08-31): bidirectional declared-vs-live
-# check. `missing = required - uris` catches under-registration (a URN
-# canon lists but the wire does not serve); `unexpected = uris - required`
+# check. missing = required - uris catches under-registration (a URN
+# canon lists but the wire does not serve); unexpected = uris - required
 # catches over-registration (a URN the wire serves but canon does not
 # list). Same discipline as OT #130 contract-parity corpus and mc40 env-var
-# check. Required-floor rises 20 → 21 to include div7a:at (native FastAPI
+# check. Required-floor rises 20 to 21 to include div7a:at (native FastAPI
 # route registered since mc35 but never in the smoke required-set).
+#
+# Fable D8 cosmetics mc00-2026-09-04 quoting fix: prior comments wrapped
+# the two set-difference expressions in shell-backtick prose formatting.
+# Those backticks lived INSIDE the outer python3 -c double-quoted
+# heredoc, and bash interprets backticks inside double-quotes as
+# command substitution. Result: bash executed the interior expressions
+# as shell commands BEFORE the python interpreter even ran, emitting
+# missing: command not found / unexpected: command not found on every
+# check-6 fire. Silently muted by the PASS branch of the check itself,
+# but visible in every smoke log. mc24-close anchor. Fix: all backticks
+# removed from comment prose within this heredoc; python code below
+# unchanged; the whole heredoc is now free of backticks except as
+# legitimate Python tokens (there are none in this block). Any future
+# comment added inside this heredoc must avoid backticks entirely.
 missing = required - uris
 unexpected = uris - required
 if missing and unexpected:

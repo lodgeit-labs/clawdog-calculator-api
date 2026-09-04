@@ -399,6 +399,126 @@ Paste in this exact format:
 | ID | Symptom | Status | Notes |
 |---|---|---|---|
 | 1 | A8: `/healthz` returns 404 externally despite route being defined in container (B4 PASS) | OPEN, non-blocking | Cloud Run internal probes hit it successfully. Most likely cause: Google Frontend special-cases `/healthz`. External `/healthz` is informational only. |
+| 2 | D7 depreciation `/range/` acquisition-inside-window shape does not reconcile from the response alone | OPEN, non-blocking; engine PR queued as OT | See [D7 known limitation](#d7-known-limitation-range-acquisition-inside-window-reconciliation) below. Named for testers per Fable ruling mc00-2026-09-04 07:56 UTC: shippable-as-known-defect because the discrepancy is visible in the response (three published figures visibly do not add up), not silent. |
+
+### D7 known limitation: `/range/` acquisition-inside-window reconciliation
+
+**Banked mc00-2026-09-04 per Fable ruling 07:56 UTC (verbatim):** *"D7's
+gap stays live: an acquisition-inside-range query — 'FY2024 depreciation
+for an asset bought in October 2023', which is a common shape, not an
+edge case — returns three numbers that visibly do not add up. ... A
+defect that fails loudly, with the discrepancy visible in the response,
+is a reviewer encountering a known limitation — which is what a testing
+programme is for. ... A caller who subtracts three published figures
+and gets a mismatch has found the thing we wrote down; a caller handed
+a reconciled tautology has been told a falsehood confidently."*
+
+#### The shape (as a tester will encounter it)
+
+POST a `/range/` request where the asset's `acquisition_date` falls
+inside `[from_date, to_date]`:
+
+```json
+{
+  "basis": "accounting",
+  "asset": {
+    "cost": "10000.00",
+    "acquisition_date": "2023-07-01",
+    "accounting_useful_life_years": 10,
+    "accounting_method": "prime_cost"
+  },
+  "from_date": "2023-05-01",
+  "to_date": "2023-08-31",
+  "day_count": "actual/actual"
+}
+```
+
+Current wire response (deployed as of mc00-2026-09-04):
+
+```json
+{
+  "opening_wdv": "0.00",
+  "range_dep": "338.80",
+  "closing_wdv": "9661.20",
+  ...
+}
+```
+
+Attempting to reconcile with the two-term identity
+`closing_wdv = opening_wdv − range_dep`:
+
+```
+0.00 − 338.80 = −338.80  ≠  9661.20
+```
+
+**The response IS internally consistent** — under the correct
+three-term identity
+`closing_wdv = opening_wdv + cost_additions − range_dep`,
+with `cost_additions = 10000.00` (the asset's cost entering the ledger
+inside the range window), the numbers reconcile:
+
+```
+9661.20 = 0.00 + 10000.00 − 338.80  ✓
+```
+
+But `cost_additions` is **not yet on the wire**. The response omits it,
+and a caller has no way to reconcile from what they receive.
+
+#### Why the field is omitted rather than synthesised
+
+The gateway briefly shipped synthesis (`cost_additions = closing_wdv +
+range_dep − opening_wdv`) as part of PR #33's original D7 tranche. That
+was reverted at commit `280df79` under Fable ruling mc00 07:35 UTC: the
+synthesis is the identity rearranged, which makes the identity
+tautologically true for any four numbers, whatever they are. Feed the
+gateway a wrong `opening_wdv` and the synthesised `cost_additions`
+silently absorbs the error. *"A check that cannot fail is not a
+weaker check. It is the absence of a check, wearing the costume of
+one."*
+
+The honest state is: **field absent, caller sees the shape gap.**
+
+#### Fix in flight
+
+Engine-first sequencing ratified by Fable at mc00 07:56 UTC as Option C:
+
+1. **Engine PR** (queued on `lodgeit-labs/depreciation-engine`,
+   authored in a separate session for wire-fresh re-read): the engine
+   emits `cost_additions` on `/range/` from the fold's own knowledge of
+   which records entered the ledger inside `[from_date, to_date]`.
+2. **Gateway follow-up PR** (opens after engine deploy): declares
+   `cost_additions` required on `DepreciationRangeResponse`; adds
+   identity assertion in route handler with structured 502 on mismatch
+   naming both sides + all four numbers.
+
+Acquisition-outside-range shapes reconcile correctly today (two-term
+identity holds as corollary when `cost_additions == 0`).
+
+#### Reviewer instruction
+
+- When you see the mismatch on an acquisition-inside-range query,
+  **that is the known limitation** — not a bug in your test setup.
+- Please note the shape you sent + the response body in your report,
+  so the engine-PR wire-truth stays anchored to real reviewer
+  scenarios.
+- Reviewers MUST NOT rely on the two-term identity to catch
+  engine-side arithmetic bugs on acquisition-inside-range shapes.
+  Wait for the engine PR + gateway follow-up before designing tests
+  around `cost_additions`.
+
+#### Cross-references
+
+- `api/schemas/depreciation.py::DepreciationRangeResponse` docstring
+  — the field-name divergence with `/at/`'s
+  `schedule_summary.total_cost_additions` (which counts subsequent
+  `event_type=cost_addition` events ONLY, excluding the acquisition
+  itself).
+- `tests/test_range_three_term_identity.py` —
+  `_AWAITS_ENGINE_SHIP`-marked assertions that unskip when the engine
+  PR lands.
+- `depreciation-engine/depreciation_core/api/routes.py:1024-1030`
+  — the engine's own comment identifying this shape as one where the
+  two-term identity does not hold.
 
 ## Provenance Caveat
 
