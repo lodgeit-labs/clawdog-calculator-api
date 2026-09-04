@@ -31,6 +31,13 @@ Fetched with `lodgeit-labs-pat` (metadata=read + contents=read + actions=read).
     - `4 mechanical lint gates (D1 active; L#65 operation-probe on gate 4)`
     - `pytest + hypothesis (D1 populates substrate)`
 
+**Live fact worth naming** (Fable ruling mc00-2026-09-04 07:07 UTC): the workflow `.github/workflows/ci.yml` on this repo defines four jobs. Two are required for merge (the pair above). Two run on every push but do **NOT** block merge:
+
+- `Scaffold verification (mc02 — pre-operational)` — advisory-only
+- `ruff + mypy (D1 populates substrate)` — advisory-only
+
+Someone reading "CI is required on `main`" will otherwise believe *all* CI runs are gating. They are not. Anyone adding a `ruff` or `mypy` finding on this repo has to notice the red check on their own; the ruleset will not stop them. Fable framing: *"someone will otherwise read 'CI is required' and believe all of it is."*
+
 ### Legacy branch-protection API surface
 
 `GET /repos/{repo}/branches/main/protection` → HTTP 404 `"Branch not protected"` on both. This is expected. Rulesets and legacy branch protection are two DIFFERENT enforcement surfaces on GitHub; a ruleset does not populate the legacy branch-protection response. Do not treat the 404 as evidence of "no protection" — check the rulesets endpoint alongside it.
@@ -56,43 +63,47 @@ Fable ruling 2026-09-04 06:55 UTC (verbatim):
 
 Andrew shipped this on 2026-09-04 by upgrading `lodgeit-labs` → Team **before** configuring the two rulesets, so both are wire-verified enforcing today. Anyone applying this pattern to a sibling repo in a different org MUST re-check the plan first.
 
-## Known non-strict gap (surfaced by wire-verification; not yet closed)
+## Fable ruling mc00-2026-09-04 07:07 UTC: FLIP strict mode ON, both repos
 
-Both current rulesets have `strict_required_status_checks_policy: false`. This means:
+**Ruled.** Both rulesets carry `strict_required_status_checks_policy: false` today. Fable's earlier framing (skip strict; single committer; forces rebases) held only for a one-PR-at-a-time workflow, which is exactly when the setting costs nothing. The moment it costs something is the moment two branches are open, and that is the moment it starts earning.
 
-- ✅ A PR whose head SHA has a red required check CANNOT merge.
-- ❌ A PR whose head SHA has a green check can merge even if `main` has moved since — the CI green was against an older base, and the merged result has NEVER been tested.
+Fable ruling verbatim (mc00 07:07 UTC):
 
-This is the exact defect class the "smoke-prod stale-truncated-checkout" arc surfaced (n=3 on this repo through mc-arc). If a merge-order dependency exists across two PRs, PR-B can merge green against a PR-A base state that PR-A itself just superseded, and the merged `main` state has never run CI.
+> *"The defect it prevents is this arc's signature: green measured against a substrate that has since moved. We have now caught that shape at the engine/gateway boundary, at the merge/deploy boundary, at the local/CI boundary and at the branch/main boundary. Arm the gate before the incident, not after it. Flip it, and note in the brief that a rebase prompt on merge is the gate working rather than friction."*
 
-**To close: turn strict mode ON on both rulesets.**
+**What flipping strict changes** at the merge button:
 
-Web UI path:
-1. Settings → Rules → Rulesets → click the `Protect_Main` ruleset.
-2. Under "Require status checks to pass" → tick "Require branches to be up to date before merging".
-3. Save.
+- ❌ *Before* (current state): a PR green on an old base can merge into a moved `main`; the merged result has never run CI.
+- ✅ *After* (ruled state): if `main` moves after a PR's last green run, GitHub prompts a rebase / update from base before allowing merge. CI re-runs against the merged shape. That prompt is the gate working, not friction.
 
-REST path (needs admin scope which `lodgeit-labs-pat` currently lacks — Andrew action):
+### Web UI path (2 minutes per repo; Andrew action)
+
+1. Open `https://github.com/lodgeit-labs/clawdog-calculator-api/settings/rules` (or the equivalent for `depreciation-engine`).
+2. Click the `Protect_Main` ruleset.
+3. Under **Rules → Require status checks to pass**, tick **Require branches to be up to date before merging**.
+4. Save.
+5. Repeat on the sibling repo.
+
+Verify via wire:
 
 ```bash
-# Fetch the current ruleset payload, flip strict to true, PUT it back.
-PAT=<admin_scoped_pat>
+PAT=$(awk -F'[:@]' '/lodgeit-labs-pat/ {print $3}' ~/.git-credentials | head -1)
 for repo in clawdog-calculator-api depreciation-engine; do
-  # Get the ruleset id from the branches/main enumeration:
-  RULESET_ID=$(curl -sS -H "Authorization: token $PAT" \
-    "https://api.github.com/repos/lodgeit-labs/$repo/rules/branches/main" \
-    | python3 -c "import json,sys; d=json.load(sys.stdin); \
-      print(next(r['ruleset_id'] for r in d if r['type']=='required_status_checks'))")
-  # Fetch the ruleset:
+  echo "=== $repo ==="
   curl -sS -H "Authorization: token $PAT" \
-    "https://api.github.com/repos/lodgeit-labs/$repo/rulesets/$RULESET_ID" \
-    > /tmp/ruleset.json
-  # Edit strict to true in the required_status_checks rule; PUT back.
-  # (Manual edit required; the payload is nested. Web UI is faster.)
+    "https://api.github.com/repos/lodgeit-labs/$repo/rules/branches/main" \
+    | python3 -c "import json,sys; \
+      d=json.load(sys.stdin); \
+      r=next(x for x in d if x['type']=='required_status_checks'); \
+      print('strict:', r['parameters']['strict_required_status_checks_policy'])"
 done
 ```
 
-The cost of leaving strict off is a class-of-defect (stale-base merge) that ClawDog has already hit n=3 times this arc. The cost of turning it on is one extra CI run per merge when `main` has moved, which is 20-60s on either repo. Recommendation: turn it on.
+Expected after flip: `strict: True` on both.
+
+### REST path (needs admin scope; deferred)
+
+Would require a PAT with `repository_administration:write` or classic admin scope. `lodgeit-labs-pat` today has `metadata=read + contents=read + actions=read` — wire-confirmed at mc00 07:12 UTC by attempting a PATCH on the ruleset and receiving `HTTP 404 "Not Found"` (GitHub's 404 signal for unauthorised scope). Web UI is the faster path either way.
 
 ## Check-name parity discipline (going forward)
 

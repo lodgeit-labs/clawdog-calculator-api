@@ -45,20 +45,42 @@ Contract shipped:
               the no-rate-tables observation and the correct statutory
               frame.
 
-Paragraph-number sourcing (Fable ruling: do NOT cite AASB paragraph
-numbers from memory): AASB 116.51 (useful life + residual value review)
-and AASB 116.61 (depreciation method review) sourced 2026-09-04 06:59
-UTC via:
-  1. https://standards.aasb.gov.au/aasb-116-dec-2022 (AASB compilation
-     preamble confirming AASB 116 mirrors IAS 16 verbatim except Aus-
-     prefixed paragraphs).
-  2. https://cpcongroup.com/insights/article/ias-16-51-annual-useful-
-     life-review/ (secondary source reproducing IAS 16.51 wording +
-     naming both paragraph 51 and paragraph 61).
+Paragraph-number policy (Fable ruling mc00-2026-09-04 07:07 UTC —
+tightened after the initial D10 ship):
 
-The advisory PARAPHRASES the requirement and CITES by paragraph. AASB
-Standards material is copyright IFRS Foundation + Commonwealth of
-Australia; verbatim quotation would need reproduction rights.
+  The caller-facing block does NOT carry AASB paragraph numbers until
+  someone has read the current compiled standard directly. The
+  sentence "AASB 116 requires those judgements to be reviewed at each
+  reporting date" is true, load-bearing, and carries no citation
+  risk. A paragraph reference that is wrong in a block doing legal
+  work is worse than no reference at all.
+
+  Fable ruling verbatim: "statutory_basis cites AASB 116 and AASB 108
+  without paragraph numbers. Keep your sourcing notes and the
+  paragraph numbers in the docstring, flagged as awaiting primary
+  confirmation. Restore them to the response when someone has read
+  the current compiled standard directly."
+
+  Awaited paragraph numbers (banked in advisory_boundary.py docstring):
+    * paragraph 51 — useful life + residual value review
+    * paragraph 61 — depreciation method review
+
+  Sourcing performed 2026-09-04 06:59 UTC via:
+    1. https://standards.aasb.gov.au/aasb-116-dec-2022 (compilation
+       preamble confirming AASB 116 mirrors IAS 16 verbatim except
+       Aus-prefixed paragraphs)
+    2. https://cpcongroup.com/insights/article/ias-16-51-annual-useful-
+       life-review/ (secondary source reproducing IAS 16.51 wording +
+       naming both paragraphs 51 and 61)
+  Both are "recall at one remove, not a reading" (Fable). Restore the
+  numbers to the response when a direct read has been performed.
+
+AASB 108 (change-in-accounting-estimate) is Fable-ratified 07:07 UTC as
+a substantive addition, not an implementation detail: it tells a
+preparer what to DO when a useful-life input changes (prospective
+treatment; no restatement) rather than only what AASB 116 requires
+(the annual review). Retained without paragraph number for the same
+reason as AASB 116 (awaiting primary reading).
 """
 from __future__ import annotations
 
@@ -118,6 +140,30 @@ def test_advisory_block_accounting_statutory_basis_replaces_taa_with_aasb():
     )
 
 
+def test_advisory_block_accounting_statutory_basis_omits_paragraph_numbers():
+    """Fable ruling mc00 07:07 UTC: statutory_basis cites AASB 116 and
+    AASB 108 WITHOUT paragraph numbers until a reader has opened the
+    current compiled standard directly.
+
+    A paragraph reference wrong in a block doing legal work is worse
+    than no reference at all. This test pins the negative until a
+    direct-reading commit restores the numbers.
+    """
+    block = advisory_block("AU", basis="accounting")
+    for entry in block["statutory_basis"]:
+        section = entry.get("section", "")
+        assert "paragraph 51" not in section, (
+            f"paragraph 51 present in statutory_basis section {section!r}. "
+            f"Fable ruling 07:07 UTC: awaiting primary confirmation."
+        )
+        assert "paragraph 61" not in section, (
+            f"paragraph 61 present in statutory_basis section {section!r}. "
+            f"Fable ruling 07:07 UTC: awaiting primary confirmation."
+        )
+        assert "116.51" not in section, section
+        assert "116.61" not in section, section
+
+
 def test_advisory_block_accounting_disclaimer_carries_load_bearing_negative():
     """Fable D10 verbatim: 'The sentence that earns its place is the
     negative one. The real misuse risk is a tester carrying an accounting
@@ -139,26 +185,43 @@ def test_advisory_block_accounting_disclaimer_carries_load_bearing_negative():
     )
 
 
-def test_advisory_block_accounting_disclaimer_cites_aasb_review_paragraphs():
-    """AASB 116.51 (useful life + residual value) and AASB 116.61
-    (depreciation method) sourced from public standards material 2026-09-04
-    06:59 UTC; the disclaimer must carry both paragraph references so a
-    caller can trace the review requirement to the standard."""
+def test_advisory_block_accounting_disclaimer_cites_aasb_frameworks():
+    """The disclaimer names AASB 116 (the standard the figure sits under)
+    and AASB 108 (what to do when a caller-supplied input changes). Fable
+    ruling mc00 07:07 UTC: no paragraph numbers in the caller-facing text
+    until someone has read the current compiled standard directly."""
     block = advisory_block("AU", basis="accounting")
     disc = block["disclaimer"]
     assert "AASB 116" in disc, f"Must cite AASB 116 explicitly. Got: {disc[:400]!r}"
-    assert "paragraph 51" in disc, (
-        f"Must cite paragraph 51 (useful life + residual value review). "
-        f"Got: {disc[:400]!r}"
-    )
-    assert "paragraph 61" in disc, (
-        f"Must cite paragraph 61 (depreciation method review). "
-        f"Got: {disc[:400]!r}"
-    )
     assert "AASB 108" in disc, (
-        f"Must cite AASB 108 (change-in-accounting-estimate framework). "
+        f"Must cite AASB 108 (change-in-accounting-estimate framework); "
+        f"Fable ratified this as substantive addition mc00 07:07 UTC. "
         f"Got: {disc[:400]!r}"
     )
+
+
+def test_advisory_block_accounting_disclaimer_omits_paragraph_numbers():
+    """Fable ruling mc00 07:07 UTC: the sentence "AASB 116 requires those
+    judgements to be reviewed at each reporting date" is true, load-
+    bearing, and carries no citation risk. .51 and .61 add nothing a
+    caller acts on until direct reading of the current compiled standard
+    confirms them.
+
+    This test pins the absence until a direct-reading commit restores.
+    Paragraph numbers stay banked in the module docstring in the meantime
+    (see advisory_boundary.py "AWAITING PRIMARY CONFIRMATION").
+    """
+    block = advisory_block("AU", basis="accounting")
+    disc = block["disclaimer"]
+    assert "paragraph 51" not in disc, (
+        f"paragraph 51 in caller-facing disclaimer. Fable ruling 07:07 UTC: "
+        f"awaiting primary confirmation. Got: {disc[:400]!r}"
+    )
+    assert "paragraph 61" not in disc, (
+        f"paragraph 61 in caller-facing disclaimer. Got: {disc[:400]!r}"
+    )
+    assert "116.51" not in disc
+    assert "116.61" not in disc
 
 
 def test_advisory_block_accounting_does_not_carry_taa_tasa_in_disclaimer():
@@ -309,16 +372,25 @@ def test_depreciation_at_accounting_payload_returns_d10_advisory(
     # Structural: registered_agent_required flipped.
     assert advisory["registered_agent_required"] is False
 
-    # Statutory_basis: AASB present, TAA/TASA absent.
+    # Statutory_basis: AASB present, TAA/TASA absent, no paragraph numbers.
     statutes = {(b["statute"], b["section"]) for b in advisory["statutory_basis"]}
     assert any(s[0] == "AASB 116" for s in statutes)
     assert any(s[0] == "AASB 108" for s in statutes)
     assert not any(s[0] == "TAA 1953" for s in statutes)
     assert not any(s[0].startswith("Tax Agent Services") for s in statutes)
+    for s in statutes:
+        assert "paragraph 51" not in s[1] and "paragraph 61" not in s[1], (
+            f"Wire response leaked paragraph number pending primary read. Got: {s!r}"
+        )
 
     # Disclaimer content.
     disc = advisory["disclaimer"]
     assert "AASB 116" in disc
+    assert "AASB 108" in disc
     assert "Do not carry this figure into a tax return" in disc
     assert "TAA 1953" not in disc
     assert "Tax Agent Services Act" not in disc
+    # Fable ruling 07:07 UTC: no paragraph numbers on the wire until
+    # someone has read the current compiled AASB standard directly.
+    assert "paragraph 51" not in disc
+    assert "paragraph 61" not in disc

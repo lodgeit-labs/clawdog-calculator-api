@@ -45,28 +45,61 @@ Accounting-basis branch:
     return, where ITAA 1997 Division 40 rates and rules differ and the
     figure will be wrong. This is the misuse risk the endpoint actually has.
 
-Paragraph-number sourcing (Fable ruling: do not cite AASB paragraph numbers
-from memory):
-  * AASB 116.51 — residual value + useful life reviewed at least at each
-    financial year-end; changes treated prospectively under AASB 108 as a
-    change in accounting estimate.
-  * AASB 116.61 — depreciation method reviewed at least at each financial
-    year-end; changes treated prospectively under AASB 108.
+Paragraph-number sourcing note (Fable ruling mc00-2026-09-04 07:07 UTC:
+caller-facing block MUST NOT carry the paragraph numbers until the current
+compiled AASB standard has been read directly). Sourcing performed
+2026-09-04 06:59 UTC via:
+  * https://standards.aasb.gov.au/aasb-116-dec-2022 — AASB compilation
+    preamble confirming AASB 116 mirrors IAS 16 verbatim except Aus‑
+    prefixed paragraphs.
+  * https://cpcongroup.com/insights/article/ias-16-51-annual-useful-life-
+    review/ — secondary source reproducing IAS 16.51 wording and naming
+    both paragraph 51 (useful life + residual value review) and paragraph
+    61 (depreciation method review), both treated prospectively under
+    AASB 108 as a change in accounting estimate.
+  * https://www.ifrs.org/content/dam/ifrs/publications/html-standards/
+    english/2025/issued/ias16.html — IFRS official IAS 16 HTML. Fetched
+    2026-09-04 06:59 UTC but paragraph 51 fell in the truncated portion
+    of the returned window (which covered paragraph 73+ disclosures).
 
-Sourced 2026-09-04 06:59 UTC via Web Fetch of the AASB compilation preamble
-(https://standards.aasb.gov.au/aasb-116-dec-2022 — confirms AASB 116 mirrors
-IAS 16 verbatim except Aus‑prefixed paragraphs) and IAS 16.51 secondary
-source https://cpcongroup.com/insights/article/ias-16-51-annual-useful-life-
-review/ which reproduces the wording. Corroborated against IFRS official
-copy at https://www.ifrs.org/content/dam/ifrs/publications/html-standards/
-english/2025/issued/ias16.html which was fetched but paragraph 51 fell in
-the truncated portion — the compilation preamble anchor is the load-bearing
-citation for AASB‑to‑IAS parity.
+Fable ruling (verbatim mc00 07:07 UTC):
 
-Why not verbatim quote AASB paragraphs? Because AASB Standards material is
-copyright IFRS Foundation + Commonwealth of Australia and reproduction rules
-limit quotation. The disclaimer PARAPHRASES the requirement and CITES by
-paragraph number; that keeps SR #11 clean.
+  "Your sourcing is honest and the documentation of it is exactly right.
+   But a compilation preamble plus a secondary source reproducing IAS
+   16.51 is recall at one remove, not a reading — the standard I set was
+   primary, and I applied it to myself two rulings ago.
+
+   The sentence does not need the number. 'AASB 116 requires those
+   judgements to be reviewed at each reporting date' is true, load-
+   bearing, and carries no citation risk. .51 and .61 add nothing a
+   caller acts on, and a paragraph reference that is wrong in a block
+   doing legal work is worse than no reference at all.
+
+   Ruled: statutory_basis cites AASB 116 and AASB 108 without paragraph
+   numbers. Keep your sourcing notes and the paragraph numbers in the
+   docstring, flagged as awaiting primary confirmation. Restore them to
+   the response when someone has read the current compiled standard
+   directly — that is a five-minute task for whoever next has the AASB
+   site open, not a blocker."
+
+AWAITING PRIMARY CONFIRMATION (paragraph numbers to restore once a
+reader has opened the compiled AASB 116 directly and confirmed):
+  * paragraph 51 — residual value + useful life reviewed at least at
+    each financial year-end; changes treated prospectively under AASB
+    108 as a change in accounting estimate.
+  * paragraph 61 — depreciation method reviewed at least at each
+    financial year-end; changes treated prospectively under AASB 108.
+
+When confirmed: restore the paragraph numbers to both
+``ADVISORY_TEXT_AU_ACCOUNTING`` (disclaimer prose) and
+``STATUTORY_BASIS_AU_ACCOUNTING`` (statutory_basis entries) in the same
+commit; add a line here recording the confirmation date + who read it.
+
+Why not verbatim quote AASB paragraphs (even when the paragraph numbers
+return)? Because AASB Standards material is copyright IFRS Foundation +
+Commonwealth of Australia and reproduction rules limit quotation. The
+disclaimer PARAPHRASES the requirement + cites by standard name; keeps
+SR #11 clean.
 """
 from __future__ import annotations
 
@@ -133,13 +166,14 @@ ADVISORY_TEXT_AU_EMPTY_MANIFEST: str = (
 #      differ + the figure will be wrong. Fable ruled this the one warning
 #      this endpoint actually needs.
 #
-# The paragraph references (AASB 116.51, AASB 116.61) are what govern the
-# annual review of the CALLER-SUPPLIED inputs (useful life, residual value,
-# depreciation method) — the judgements this calculator does NOT assess.
-# Fable ruled that the sentence naming what is NOT assessed is what earns
-# its place in an advisory: the incumbent advisory said this in general
-# terms; the accounting branch says it with the paragraph the caller can
-# read.
+# Paragraph numbers deliberately absent (Fable ruling mc00 07:07 UTC):
+# citing AASB 116.51 / AASB 116.61 without a direct reading of the current
+# compiled standard is recall at one remove. The sentence "AASB 116 requires
+# those judgements to be reviewed at each reporting date" is true,
+# load-bearing, and carries no citation risk. Paragraph numbers restore to
+# both this string and STATUTORY_BASIS_AU_ACCOUNTING when someone has read
+# the current compiled standard directly (module-level docstring carries
+# the awaited numbers + the sourcing trail).
 ADVISORY_TEXT_AU_ACCOUNTING: str = (
     "This is calculator output, not advice. It is an accounting figure: a "
     "carrying amount computed under AASB 116 (Property, Plant and Equipment) "
@@ -150,10 +184,9 @@ ADVISORY_TEXT_AU_ACCOUNTING: str = (
     "or position. Whether the useful life, residual value and depreciation "
     "method are appropriate is a judgement for the entity preparing the "
     "financial statements, and AASB 116 requires those judgements to be "
-    "reviewed at each financial year-end (paragraph 51 for useful life and "
-    "residual value, paragraph 61 for depreciation method, in each case "
-    "treated prospectively under AASB 108 as a change in accounting "
-    "estimate); this calculator does not assess them. "
+    "reviewed at each reporting date, with any change treated prospectively "
+    "under AASB 108 as a change in accounting estimate; this calculator "
+    "does not assess them. "
     "Do not carry this figure into a tax return: ITAA 1997 Division 40 "
     "rates and rules differ from the useful-life inputs supplied here, "
     "and the tax-basis figure will not equal this one."
@@ -176,13 +209,28 @@ STATUTORY_BASIS_AU = [
 
 # Fable D10 mc00-2026-09-04 accounting-basis statutory_basis. The tax-agent
 # statutes are replaced by the accounting standards that actually govern
-# the figure. Paragraph references stay in the section field for machine
-# parseability (matches the shape of the incumbent basis's `section: s284-15`).
+# the figure.
+#
+# Fable ruling mc00 07:07 UTC verbatim: "statutory_basis cites AASB 116
+# and AASB 108 without paragraph numbers." The paragraph-review-scoped
+# entries have been removed pending direct reading of the current
+# compiled standard. When restored: keep the shape identical to the
+# incumbent basis (statute + section string; machine-parseable), and add
+# separate entries for paragraph 51 and paragraph 61 as sub-cites of
+# AASB 116. Docstring carries the awaited numbers.
+#
+# AASB 108 (change-in-accounting-estimate) is Fable-ratified 07:07 UTC as
+# a substantive addition rather than an implementation detail: it tells a
+# preparer what to DO when a useful-life input changes (prospective
+# treatment; no restatement) rather than only what AASB 116 requires
+# (the annual review). Retained here without paragraph number for the
+# same reason as AASB 116.
 STATUTORY_BASIS_AU_ACCOUNTING = [
     {"statute": "AASB 116", "section": "Property, Plant and Equipment"},
-    {"statute": "AASB 116", "section": "paragraph 51 (useful life + residual value review)"},
-    {"statute": "AASB 116", "section": "paragraph 61 (depreciation method review)"},
-    {"statute": "AASB 108", "section": "Accounting Policies, Changes in Accounting Estimates and Errors"},
+    {
+        "statute": "AASB 108",
+        "section": "Accounting Policies, Changes in Accounting Estimates and Errors",
+    },
 ]
 
 STATUTORY_BASIS_UK = [
