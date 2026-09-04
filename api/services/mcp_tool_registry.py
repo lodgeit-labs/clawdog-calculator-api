@@ -42,7 +42,10 @@ from __future__ import annotations
 from typing import Any
 
 from api.routes.calculators import _CALCULATOR_REGISTRY
-from api.schemas.depreciation import DepreciationAtInput
+from api.schemas.depreciation import (
+    DepreciationAtInput,
+    DepreciationRangeInput,
+)
 from api.schemas.div7a import Div7aAtInput
 from api.schemas.invocation import (
     FBTBoardInput,
@@ -106,6 +109,9 @@ _CALC_INPUT_MODEL: dict[str, type[Any]] = {
     "urn:sbrm:calculator:depreciation:at": DepreciationAtInput,
     # Phase D (mut-2026-08-24-mc20): Div7A_Engine gateway routing.
     "urn:sbrm:calculator:div7a:at": Div7aAtInput,
+    # mc02-2026-09-04 (Fable D5 mc02 ratified): depreciation range
+    # endpoint sibling of /at/; RATIFIED mc11-2026-08-31 §2 Ask 1.
+    "urn:sbrm:calculator:depreciation:range": DepreciationRangeInput,
 }
 
 

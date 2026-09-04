@@ -1,43 +1,6 @@
 {
   "components": {
     "schemas": {
-      "AdvisoryBlock": {
-        "additionalProperties": true,
-        "description": "``advisory`` block \u2014 CLAWDOG/109 \u00a76 / CLAWDOG/110 \u00a73.2.",
-        "properties": {
-          "disclaimer": {
-            "minLength": 1,
-            "title": "Disclaimer",
-            "type": "string"
-          },
-          "jurisdiction": {
-            "title": "Jurisdiction",
-            "type": "string"
-          },
-          "registered_agent_required": {
-            "title": "Registered Agent Required",
-            "type": "boolean"
-          },
-          "statutory_basis": {
-            "items": {
-              "additionalProperties": {
-                "type": "string"
-              },
-              "type": "object"
-            },
-            "title": "Statutory Basis",
-            "type": "array"
-          }
-        },
-        "required": [
-          "disclaimer",
-          "registered_agent_required",
-          "statutory_basis",
-          "jurisdiction"
-        ],
-        "title": "AdvisoryBlock",
-        "type": "object"
-      },
       "AssetCreatedInput": {
         "additionalProperties": false,
         "description": "Asset ingestion input (mirrors engine's `AssetCreatedInput`).\n\nF10 amendment: `acquisition_date` is required (non-optional). Basis-\nconditional fields (`accounting_useful_life_years` + `accounting_method`\nwhen basis is accounting; `tax_asset_class` when basis is tax) are\nvalidated at the engine's schema layer (F13 UPHELD) rather than\nduplicated here; the gateway forwards the payload verbatim and lets the\nengine return the typed refusal on inconsistency.",
@@ -140,111 +103,6 @@
         "title": "AssetCreatedInput",
         "type": "object"
       },
-      "CalculatorInvocationResponse": {
-        "additionalProperties": true,
-        "description": "Standard wire shape for any calculator invocation response.\n\nPhase 3a (mut-2026-06-19-mc07-ot-104) adds 6 optional fields to surface\nPhase 2l SF + Phase 2l OC end-to-end gross-up arithmetic introduced by\nengine PR \u03b1 (LodgeiT_FBT PR #44). Fields are optional because:\n\n* Phase 2l SF + OC emit them on every call.\n* Other calculators (Phase 2a Loan, 2b Debt Waiver, ...) do not currently\n  emit them; their responses simply omit the fields.\n* Legacy v1 `calculate_fbt_car_statutory` is not exposed at calc-api and\n  is therefore not relevant to this surface.\n\nThe pre-mc07 wire shape (`taxable_value` + `trace` + `manifest` +\n`advisory`) is byte-stable for all calculators that do not emit the new\nfields (backward-compat regression gate at SR #12 production-bundle).",
-        "properties": {
-          "advisory": {
-            "$ref": "#/components/schemas/AdvisoryBlock"
-          },
-          "fbt_payable": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "`grossed_up_taxable_value * 0.47`, rounded half-up to 2dp. FBT rate 0.47 is rate-table-fed via `urn:sbrm:rate:fbt:fy2026:fbt-rate` (FBTAA s.6). Equals 0 when s.8A exempts.",
-            "title": "Fbt Payable"
-          },
-          "fbt_type": {
-            "anyOf": [
-              {
-                "enum": [
-                  "Type 1",
-                  "Type 2"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "FBT gross-up tier the engine resolved against. 'Type 1' for creditable acquisitions (FBTAA s.5B(1B)); 'Type 2' for input-taxed (FBTAA s.5B(1C)). Omitted on calculators that do not engage the gross-up arithmetic surface.",
-            "title": "Fbt Type"
-          },
-          "gross_up_factor": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Gross-up factor consumed for fbt_payable arithmetic. 2.0802 for Type 1; 1.8868 for Type 2. Rate-table-fed via `urn:sbrm:rate:fbt:fy2026:gross-up-type-{1,2}` (the URI is present in `manifest.rate_table_uris` when this field is set).",
-            "title": "Gross Up Factor"
-          },
-          "grossed_up_taxable_value": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "`taxable_value * gross_up_factor`, rounded half-up to 2dp. Equals 0 when s.8A exempts (taxable_value=0 \u21d2 grossed_up=0).",
-            "title": "Grossed Up Taxable Value"
-          },
-          "manifest": {
-            "$ref": "#/components/schemas/Manifest"
-          },
-          "rfba_notional_grossed_up_t2": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Pre-s.8A taxable value grossed up at Type 2 (1.8868) for the employee's RFBA payment-summary surface. Engine emits this on Phase 2l SF + OC regardless of operator-supplied `fbt_type`; mc07 surfaces it at calc-api (previously dropped).",
-            "title": "Rfba Notional Grossed Up T2"
-          },
-          "rfba_notional_taxable_value": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Pre-s.8A taxable value for the RFBA reporting surface. Engine emits this on Phase 2l SF + OC; mc07 surfaces it at calc-api (previously dropped by the response shaper).",
-            "title": "Rfba Notional Taxable Value"
-          },
-          "taxable_value": {
-            "title": "Taxable Value",
-            "type": "number"
-          },
-          "trace": {
-            "additionalProperties": true,
-            "title": "Trace",
-            "type": "object"
-          }
-        },
-        "required": [
-          "taxable_value",
-          "trace",
-          "manifest",
-          "advisory"
-        ],
-        "title": "CalculatorInvocationResponse",
-        "type": "object"
-      },
       "CalculatorListing": {
         "additionalProperties": false,
         "description": "One entry in the calculator-discovery listing (GET /v1/calculators).",
@@ -311,6 +169,23 @@
             "title": "Basis",
             "type": "string"
           },
+          "day_count": {
+            "anyOf": [
+              {
+                "enum": [
+                  "actual/actual",
+                  "actual/365",
+                  "monthly"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional day-count convention. **Fable D4 mc17 2026-09-03 12:20 UTC:** /at/ accepts an optional `day_count`, defaulting to `actual/actual` (the fold's basis-implicit convention for `basis: \"accounting\"`; AASB 116-faithful anniversary-scoped denominator). Not required because /at/ is live in the gateway registry (F19 wire-freeze on /at/); a required field breaks integrated callers and the smoke set for no gain. The applied convention is ECHOED in the response's `day_count` field so callers can byte-verify their expectation regardless of whether they supplied it. Values: `actual/actual` | `actual/365` | `monthly`.",
+            "title": "Day Count"
+          },
           "events": {
             "description": "Per-asset lifecycle events (cost additions, useful-life reassessments, opening balance). Engine caps at 10 000 items per request.",
             "items": {
@@ -326,6 +201,64 @@
           "at_date"
         ],
         "title": "DepreciationAtInput",
+        "type": "object"
+      },
+      "DepreciationRangeInput": {
+        "additionalProperties": false,
+        "description": "Request body for the gateway's depreciation `range` route.\n\nWire-shape mirrors the upstream depreciation-engine\n`/v1/calculators/depreciation/range/{period_uri}` endpoint (Fable D5\nmc02 2026-09-04 sibling of `/at/`, NOT overload per RATIFIED \u00a72\nAsk 1).\n\nGateway-side amendments (same as /at/ per Fable riders 1-2):\n\n  * Rider 1: `basis` narrowed to AU literals; UK refused.\n  * Rider 2: `numeric_mode` NOT caller-visible; gateway pins\n    `serving` server-side.\n\n**day_count is REQUIRED (no default)** per RATIFIED \u00a72 Ask 4;\nunaffected by Fable D5. Values: `actual/actual` (recommended\ndefault for basis:accounting; AASB 116-faithful anniversary-\nscoped denominator; each period charges exactly cost/life) |\n`actual/365` (constant 365 denominator regardless of FY length;\nkept HONEST at the label per Andrew ratification and Fable mc17\nD4 ruling) | `monthly` (per-month round-and-sum for ledger\nreconciliation).\n\nEndpoint semantics per RATIFIED \u00a72 Ask 3:\n- INCLUSIVE of both endpoints (1 to 31 August is 31 days)\n- Zero-day range (`from_date == to_date`) returns `range_dep = 0.00`",
+        "properties": {
+          "asset": {
+            "$ref": "#/components/schemas/AssetCreatedInput",
+            "description": "Asset creation input (nested; same as /at/)."
+          },
+          "basis": {
+            "description": "Basis discriminator (same vocabulary as /at/).",
+            "enum": [
+              "accounting",
+              "tax"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "day_count": {
+            "description": "REQUIRED (no default per RATIFIED \u00a72 Ask 4). Values: `actual/actual` (recommended default for basis:accounting; AASB 116-faithful; each period charges exactly cost/life; asset lands on zero at life-end); `actual/365` (constant 365 denominator regardless of FY length; leap-anniversary over-charge = the D4 defect anchor); `monthly` (per-month round-and-sum for ledger reconciliation).",
+            "enum": [
+              "actual/actual",
+              "actual/365",
+              "monthly"
+            ],
+            "title": "Day Count",
+            "type": "string"
+          },
+          "events": {
+            "description": "Per-asset lifecycle events (same as /at/; engine caps at 10 000 items).",
+            "items": {
+              "$ref": "#/components/schemas/EventInput"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "from_date": {
+            "description": "Range start date, INCLUSIVE. Per RATIFIED \u00a72 Ask 3: a request with `from_date=2023-08-01` and `to_date=2023-08-31` computes for 31 days (the whole of August). If `from_date > to_date` the request is rejected at schema-layer 422.",
+            "format": "date",
+            "title": "From Date",
+            "type": "string"
+          },
+          "to_date": {
+            "description": "Range end date, INCLUSIVE. Zero-day range (`from_date == to_date`) returns `range_dep = 0.00` not an error.",
+            "format": "date",
+            "title": "To Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "basis",
+          "asset",
+          "from_date",
+          "to_date",
+          "day_count"
+        ],
+        "title": "DepreciationRangeInput",
         "type": "object"
       },
       "Div7aAtInput": {
@@ -1833,51 +1766,6 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
-      "Manifest": {
-        "additionalProperties": false,
-        "description": "``manifest`` block \u2014 CLAWDOG/109 \u00a77.1 Manifest-Fidelity Contract.",
-        "properties": {
-          "rate_table_uris": {
-            "items": {
-              "$ref": "#/components/schemas/ManifestRateTableEntry"
-            },
-            "title": "Rate Table Uris",
-            "type": "array"
-          }
-        },
-        "required": [
-          "rate_table_uris"
-        ],
-        "title": "Manifest",
-        "type": "object"
-      },
-      "ManifestRateTableEntry": {
-        "additionalProperties": false,
-        "description": "One entry in the manifest's ``rate_table_uris`` block (CLAWDOG/109 \u00a77.1).",
-        "properties": {
-          "content_hash": {
-            "maxLength": 64,
-            "minLength": 64,
-            "title": "Content Hash",
-            "type": "string"
-          },
-          "hash_algorithm": {
-            "default": "sha256",
-            "title": "Hash Algorithm",
-            "type": "string"
-          },
-          "uri": {
-            "title": "Uri",
-            "type": "string"
-          }
-        },
-        "required": [
-          "uri",
-          "content_hash"
-        ],
-        "title": "ManifestRateTableEntry",
-        "type": "object"
-      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -2124,6 +2012,75 @@
         ]
       }
     },
+    "/v1/calculators/depreciation/range/{period_uri}": {
+      "post": {
+        "description": "mc02-2026-09-04 (Fable D5 sibling of /at/). Onboards depreciation-engine's `/v1/calculators/depreciation/range/{period_uri}` endpoint through the REST surface. Computes total depreciation charge over [from_date, to_date] inclusive plus opening_wdv (opening balance carried into the range) and closing_wdv (closing balance carried out). RATIFIED mc11-2026-08-31 \u00a72 Ask 1: sibling of /at/, NOT overload. Individually-depreciated assets only \u2014 pooled assets refused with typed refusal_class `pool_asset_out_of_t6_scope` from the engine (passed through as HTTP 400 with the engine's refusal envelope). Gateway applies Fable riders 1-2: `basis` narrowed to AU literals; `numeric_mode` pinned to 'serving' server-side.",
+        "operationId": "invoke_depreciation_range_v1_calculators_depreciation_range__period_uri__post",
+        "parameters": [
+          {
+            "description": "URL-encoded period URN.",
+            "in": "path",
+            "name": "period_uri",
+            "required": true,
+            "schema": {
+              "description": "URL-encoded period URN.",
+              "title": "Period Uri",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm populated for depreciation.",
+            "in": "query",
+            "name": "taxonomy",
+            "required": false,
+            "schema": {
+              "default": "lodgeit_au_sbrm",
+              "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm populated for depreciation.",
+              "title": "Taxonomy",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepreciationRangeInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Invoke Depreciation Range V1 Calculators Depreciation Range  Period Uri  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Invoke depreciation single-asset date-range query for the given URN-encoded period.",
+        "tags": [
+          "calculators"
+        ]
+      }
+    },
     "/v1/calculators/div7a/at/{period_uri}": {
       "post": {
         "description": "Phase D \u2014 onboards Div7A_Engine's `/v1/calculators/div7a/at/{period_uri}` endpoint through the constellation gateway. Computes the \u00a7109E Minimum Yearly Repayment for a single income year with canon 610 \u00a71.2 first-year gotcha correctly applied (n_remaining = original_term \u2212 1 in first real MYR year). Aggregates periodic repayments per canon 620 daily-balance discipline. Returns statutory MYR, actual aggregated repayments, shortfall amount (deemed unfranked dividend under \u00a7109E(1) if non-zero), and interest accrued over the income year.",
@@ -2311,9 +2268,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CalculatorInvocationResponse"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"

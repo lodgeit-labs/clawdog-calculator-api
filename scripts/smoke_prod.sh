@@ -53,7 +53,11 @@ SIDECARS_DIR="$REPO_ROOT/tests/sidecars"
 # URL encoding for URN path params
 FBT_CALC_URI="urn%3Asbrm%3Acalculator%3Afbt%3Acar-operating-cost"
 FBT_PERIOD_URI="urn%3Asbrm%3Aperiod%3Afbt%3Afy2026"
-DEP_PERIOD_URI="urn%3Asbrm%3Aperiod%3Adepreciation%3Afy2026"
+# Fable D5 mc02 2026-09-04 ratified: retired `:fy2026`, replaced with
+# `:unscoped` (F1 URN-retirement precedent). The engine ignores the
+# segment (Fable D5: engine is a primitive; gateway owns URN
+# vocabulary per F1).
+DEP_PERIOD_URI="urn%3Asbrm%3Aperiod%3Adepreciation%3Aunscoped"
 
 # Tri-state result tracking
 PASS_COUNT=0
@@ -415,6 +419,13 @@ required = {
     'urn:sbrm:calculator:fbt:car-statutory-formula',
     'urn:sbrm:calculator:depreciation:at',
     'urn:sbrm:calculator:div7a:at',
+    # Fable mc16 option 3 (2026-09-03 07:40 UTC): floor raise for a new
+    # calc URN ships in the SAME commit as the route registration —
+    # structural, not procedural. This URN is added in the same PR
+    # (2b-gateway) that registers the /range/ native route +
+    # _CALCULATOR_REGISTRY entry + _CALC_INPUT_MODEL_REST entry + MCP
+    # tool registry entry + smoke floor.
+    'urn:sbrm:calculator:depreciation:range',
 }
 # OT #131 fold (RATIFIED mc11-2026-08-31): bidirectional declared-vs-live
 # check. `missing = required - uris` catches under-registration (a URN
@@ -435,7 +446,7 @@ else:
     print('OK')
 ")
     if [ "$CALCS_OK" = "OK" ]; then
-        echo "🟢 PASS: all 21 expected calculator URNs registered (2 existing + 8 Wave A + 4 Wave B + 6 Wave C + 1 Div7A) and no unexpected URNs"
+        echo "🟢 PASS: all 22 expected calculator URNs registered (2 existing + 8 Wave A + 4 Wave B + 6 Wave C + 1 Div7A + 1 depreciation:range) and no unexpected URNs"
         PASS_COUNT=$((PASS_COUNT + 1))
     else
         echo "🔴 FAIL: $CALCS_OK"

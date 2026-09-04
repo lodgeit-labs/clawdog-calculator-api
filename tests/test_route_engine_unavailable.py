@@ -45,7 +45,8 @@ DEPRECIATION_FIXTURE_ROOT = FIXTURES_DIR / "sbrm_rate_table_depreciation_fy2026"
 
 FBT_CALC_URI = "urn:sbrm:calculator:fbt:car-operating-cost"
 FBT_PERIOD_URI = "urn:sbrm:period:fbt:fy2026"
-DEP_PERIOD_URI = "urn:sbrm:period:depreciation:fy2026"
+# Fable D5 mc02 2026-09-04: :fy2026 retired, :unscoped ratified.
+DEP_PERIOD_URI = "urn:sbrm:period:depreciation:unscoped"
 
 FBT_VALID_PAYLOAD = {
     "businessUsePercentage": 75,

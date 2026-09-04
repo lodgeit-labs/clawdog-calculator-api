@@ -11,6 +11,7 @@ holds under a second calculator.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import unquote
@@ -31,7 +32,10 @@ from api.prolog_client import (
     PrologClient,
     PrologEngineUnavailable,
 )
-from api.schemas.depreciation import DepreciationAtInput
+from api.schemas.depreciation import (
+    DepreciationAtInput,
+    DepreciationRangeInput,
+)
 from api.schemas.div7a import Div7aAtInput
 from api.schemas.invocation import (
     CalculatorInvocationResponse,
@@ -79,7 +83,25 @@ _FBT_FY2026 = "urn:sbrm:period:fbt:fy2026"
 # (§A1.1 "nothing in production"); minted as deliberate URN retirement
 # with F1 citation rather than a silent edit.
 _DEPRECIATION_AT_URI = "urn:sbrm:calculator:depreciation:at"
-_DEPRECIATION_FY2026 = "urn:sbrm:period:depreciation:fy2026"
+# Fable D5 mc02 2026-09-04 RATIFICATION: replace the fiscal-year-
+# scoped `:fy2026` URN with a property-of-the-calculator URN
+# `:unscoped`. Depreciation's compute is entirely date-driven (via
+# `at_date` on /at/, `from_date`+`to_date` on /range/); the period
+# segment carries no computational meaning. F1 URN-retirement
+# precedent (`depreciation:audit → :at`) applies. Fable Amendment 1
+# verbatim: *":any reads as any year is acceptable, which invites a
+# caller to pass one and be silently ignored — the exact affordance we
+# are removing. :unscoped states a property of the calculator:
+# depreciation is not period-scoped. Name the fact, not the
+# permission."*
+_DEPRECIATION_UNSCOPED = "urn:sbrm:period:depreciation:unscoped"
+# Retired URN kept as a constant for retirement-comment cross-reference
+# only. Do NOT add to any `supported_periods` list. Callers that pass
+# it get a 404 with :unscoped named in the message.
+_DEPRECIATION_FY2026_RETIRED = "urn:sbrm:period:depreciation:fy2026"
+# Fable D5 mc02 2026-09-04 range endpoint sibling URN (RATIFIED
+# mc11-2026-08-31 §2 Ask 1: sibling, NOT overload of /at/).
+_DEPRECIATION_RANGE_URI = "urn:sbrm:calculator:depreciation:range"
 
 # --- Phase D URN constants (mut-2026-08-24-mc20) -----------------------------
 # Div7A_Engine gateway routing. Div7A is the third calculator in the
@@ -310,18 +332,53 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
         "engine_benefit_category": "depreciation_at",
         "jurisdiction": "AU",
         # Fable rider 3 (§A2.4) manifest text — Andrew-ratified verbatim
-        # (2026-08-29 14:48 UTC). Framing decision: narrow-primitive per
-        # §A2.5, described in consumer language (no internal tranche
-        # markers on the public discovery surface).
+        # 2026-08-29 14:48 UTC + Fable D5 mc02 2026-09-04 amendment:
+        # dropped "period-scoped" framing (Fable D5 settled the period
+        # segment is non-computational for depreciation; retaining
+        # period-scoped in the label would sustain the fiction D5
+        # retires).
         "label": (
             "Single-asset depreciation. Prime cost or diminishing value, "
             "on Australian tax (ITAA97 Div 40) or accounting (AASB 116) "
-            "basis, valued at a nominated date. Individually-depreciated "
+            "basis, valued at a nominated date. The date semantics live "
+            "entirely in `at_date`; the period URN segment names a "
+            "property of the calculator (not period-scoped) and does "
+            "not affect the calculation. Individually-depreciated "
             "assets only — pooled assets (small business, low-value, "
             "software) are out of scope and are refused."
         ),
-        "supported_periods": [_DEPRECIATION_FY2026],
+        # Fable D5 mc02 2026-09-04 ratified: sole supported period is
+        # `:unscoped` under F1 URN-retirement precedent. Retired
+        # `:fy2026` is no longer accepted; a caller passing it gets a
+        # 404 naming `:unscoped` as supported.
+        "supported_periods": [_DEPRECIATION_UNSCOPED],
         "input_schema_ref": "#/components/schemas/DepreciationAtInput",
+    },
+    # Fable D5 mc02 2026-09-04 sibling URN. RATIFIED mc11-2026-08-31
+    # §2 Ask 1: sibling of `/at/`, NOT overload.
+    _DEPRECIATION_RANGE_URI: {
+        "engine_method": "range",
+        "engine_benefit_category": "depreciation_range",
+        "jurisdiction": "AU",
+        "label": (
+            "Single-asset depreciation over a date range. Prime cost or "
+            "diminishing value, on Australian accounting (AASB 116) basis "
+            "at v1 (tax basis architecturally reachable at the engine but "
+            "gateway-narrowed to accounting; see basis field). Returns "
+            "total depreciation charge over [from_date, to_date] inclusive "
+            "plus opening_wdv (opening balance carried into the range) "
+            "and closing_wdv (closing balance carried out). The date "
+            "semantics live entirely in `from_date` and `to_date`; the "
+            "period URN segment names a property of the calculator (not "
+            "period-scoped) and does not affect the calculation. Zero-day "
+            "range (`from_date == to_date`) returns `range_dep = 0.00`. "
+            "Range window is INCLUSIVE of both endpoints (1 to 31 August "
+            "is 31 days). Individually-depreciated assets only — pooled "
+            "assets are refused with typed refusal_class "
+            "`pool_asset_out_of_t6_scope`."
+        ),
+        "supported_periods": [_DEPRECIATION_UNSCOPED],
+        "input_schema_ref": "#/components/schemas/DepreciationRangeInput",
     },
     # Phase D (mut-2026-08-24-mc20): Div7A_Engine gateway routing. Third
     # calculator in the constellation; Div7A_Engine speaks native FastAPI
@@ -376,6 +433,14 @@ _CALC_INPUT_MODEL_REST: dict[str, type] = {
     _FBT_MEAL_ENTERTAINMENT_50_50_URI: FBTMealEntertainment5050Input,
     _FBT_MEAL_ENTERTAINMENT_REGISTER_12WK_URI: FBTMealEntertainmentRegister12WkInput,
     _FBT_CAR_STATUTORY_FORMULA_URI: FBTCarStatutoryFormulaInput,
+    # mc02-2026-09-04 Fable D5 fix for the generic-route HTTP 500 defect
+    # (Andrew mc06-2026-09-03 07:40 UTC ruling: register in
+    # `_CALC_INPUT_MODEL_REST` so the generic route dispatches through the
+    # native handler rather than returning 500; internal dispatch, NOT 307
+    # per Andrew mc06 curl-without--L pushback):
+    _DEPRECIATION_AT_URI: DepreciationAtInput,
+    _DEPRECIATION_RANGE_URI: DepreciationRangeInput,
+    _DIV7A_AT_URI: Div7aAtInput,
 }
 
 
@@ -425,7 +490,14 @@ async def list_calculators() -> list[CalculatorListing]:
 
 @router.post(
     "/calculators/{calc_uri}/{period_uri}",
-    response_model=CalculatorInvocationResponse,
+    # Fable D5 mc02 + Andrew mc06 2026-09-03: this route now delegates to
+    # native handlers for `depreciation:at`, `depreciation:range`, and
+    # `div7a:at` (internal dispatch). Those handlers return their own
+    # response shapes (DepreciationAtResponse-like, DepreciationRange
+    # Response-like, dict-typed) which differ from the FBT-shaped
+    # `CalculatorInvocationResponse` (taxable_value + trace). Disabling
+    # the response_model coercion here lets each shape through untouched.
+    response_model=None,
     summary="Invoke a calculator for the given URN-encoded period.",
     description=(
         "Phase 3a Cut A — bare math + manifest + advisory. URL-encoded URN "
@@ -484,7 +556,7 @@ async def invoke_calculator(
             ),
         ),
     ] = DEFAULT_TAXONOMY,
-) -> CalculatorInvocationResponse:
+) -> CalculatorInvocationResponse | dict[str, Any]:
     calc_uri_decoded = unquote(calc_uri)
     period_uri_decoded = unquote(period_uri)
 
@@ -553,6 +625,39 @@ async def invoke_calculator(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=exc.errors(),
         ) from exc
+
+    # Fable D5 mc02 + Andrew mc06-2026-09-03 07:40 UTC internal-dispatch
+    # fix for the generic-route HTTP 500 defect.
+    #
+    # Prior state: this route unconditionally called `prolog.calculate_fbt`,
+    # which was correct for the FBT calc-URIs but wrong for
+    # `depreciation:at`, `div7a:at`, and now `depreciation:range`. Those
+    # URIs live in `_CALCULATOR_REGISTRY` (discovery advertises them) and
+    # historically returned HTTP 500 through this generic route with an
+    # internal-registry error message. Andrew mc06 verbatim: *"Register
+    # the generic route to call the same handler function the native
+    # route calls, with a five-line adapter that validates and strips
+    # calc_uri. One implementation, two decorators, no client-side
+    # redirect behaviour to depend on."*
+    #
+    # Internal dispatch (not 307 — Andrew mc06 pushed back on 307 because
+    # curl without -L returns an empty body): the generic route delegates
+    # to the native handler function for these URIs.
+    if calc_uri_decoded == _DEPRECIATION_AT_URI:
+        return await invoke_depreciation_at(
+            period_uri=period_uri, body=validated_body, prolog=prolog,
+            taxonomy=taxonomy,
+        )
+    if calc_uri_decoded == _DEPRECIATION_RANGE_URI:
+        return await invoke_depreciation_range(
+            period_uri=period_uri, body=validated_body, prolog=prolog,
+            taxonomy=taxonomy,
+        )
+    if calc_uri_decoded == _DIV7A_AT_URI:
+        return await invoke_div7a_at(
+            period_uri=period_uri, body=validated_body, prolog=prolog,
+            taxonomy=taxonomy,
+        )
 
     # The Prolog engine speaks snake_case OR camelCase on the wire; we normalise
     # to the engine's canonical snake_case shape via pydantic's `by_alias=False`.
@@ -688,6 +793,20 @@ _DEPRECIATION_AT_RESPONSE_FIELDS = (
     "at_date",
     "wdv_at",
     "period_dep_at",
+)
+
+# Fable D5 mc02 2026-09-04: range endpoint response envelope required
+# fields. Structural-defence-tier (L#34): if the engine drops any of
+# these, gateway surfaces 502 rather than passing a partial response.
+_DEPRECIATION_RANGE_RESPONSE_FIELDS = (
+    "basis",
+    "from_date",
+    "to_date",
+    "day_count",
+    "days_in_range",
+    "range_dep",
+    "opening_wdv",
+    "closing_wdv",
 )
 
 
@@ -983,6 +1102,159 @@ async def invoke_depreciation_at(
     # Fable rider 4 URN retirement is the load-bearing artefact here; the
     # manifest self-declaration surface stays honest by emitting `[]`
     # rather than pinning a fake anchor.
+    rate_uris: list[str] = engine_response.get("rate_uris_consumed") or []
+    rate_table_root = _rate_table_root_for(period_uri_decoded, taxonomy)
+    try:
+        manifest = build_manifest(rate_uris, rate_table_root)
+    except (FileNotFoundError, OSError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": "manifest_rate_table_unavailable",
+                "detail": (
+                    f"failed to build manifest for {len(rate_uris)} rate URI(s) "
+                    f"against root={rate_table_root!s}: {exc.__class__.__name__}: {exc}"
+                ),
+                "rate_uris": rate_uris,
+                "rate_table_root": str(rate_table_root),
+            },
+        ) from exc
+
+    response_payload = wrap_response(
+        {**engine_response, "manifest": manifest},
+        jurisdiction=meta["jurisdiction"],
+    )
+
+    return response_payload
+
+
+@router.post(
+    "/calculators/depreciation/range/{period_uri}",
+    summary=(
+        "Invoke depreciation single-asset date-range query for the given "
+        "URN-encoded period."
+    ),
+    description=(
+        "mc02-2026-09-04 (Fable D5 sibling of /at/). Onboards "
+        "depreciation-engine's `/v1/calculators/depreciation/range/"
+        "{period_uri}` endpoint through the REST surface. Computes total "
+        "depreciation charge over [from_date, to_date] inclusive plus "
+        "opening_wdv (opening balance carried into the range) and "
+        "closing_wdv (closing balance carried out). RATIFIED mc11-"
+        "2026-08-31 §2 Ask 1: sibling of /at/, NOT overload. "
+        "Individually-depreciated assets only — pooled assets refused "
+        "with typed refusal_class `pool_asset_out_of_t6_scope` from the "
+        "engine (passed through as HTTP 400 with the engine's refusal "
+        "envelope). Gateway applies Fable riders 1-2: `basis` narrowed to "
+        "AU literals; `numeric_mode` pinned to 'serving' server-side."
+    ),
+)
+async def invoke_depreciation_range(
+    period_uri: Annotated[str, PathParam(description="URL-encoded period URN.")],
+    body: DepreciationRangeInput,
+    prolog: Annotated[PrologClient, Depends(get_prolog_client)],
+    taxonomy: Annotated[
+        str,
+        Query(
+            description=(
+                "Bare-atom taxonomy axis value per CLAWDOG/111 §2. "
+                "Ratified set: lodgeit_au_sbrm | hoffman_base. "
+                "Only lodgeit_au_sbrm populated for depreciation."
+            ),
+        ),
+    ] = DEFAULT_TAXONOMY,
+) -> dict:
+    period_uri_decoded = unquote(period_uri)
+
+    try:
+        validate_period_uri(period_uri_decoded)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+
+    if taxonomy not in RATIFIED_TAXONOMIES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"taxonomy={taxonomy!r} is not in the ratified set "
+                f"{sorted(RATIFIED_TAXONOMIES)} per CLAWDOG/111 §2."
+            ),
+        )
+
+    meta = _CALCULATOR_REGISTRY.get(_DEPRECIATION_RANGE_URI)
+    if meta is None:  # pragma: no cover — registry invariant
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="depreciation_range calculator missing from registry",
+        )
+    if period_uri_decoded not in meta["supported_periods"]:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"period_uri={period_uri_decoded!r} is not supported by the "
+                f"depreciation-range calculator. Supported: "
+                f"{meta['supported_periods']}"
+            ),
+        )
+
+    payload: dict = body.model_dump(by_alias=False, exclude_none=True, mode="json")
+
+    try:
+        engine_response = await prolog.depreciation_range(period_uri_decoded, payload)
+    except PrologEngineUnavailable as exc:
+        # Same error taxonomy as /at/ (mc35-2026-08-28 pattern).
+        if (
+            exc.error_code == "engine_http_error"
+            and isinstance(exc.detail, Mapping)
+            and exc.detail.get("status_code") == 400
+        ):
+            try:
+                import json as _json
+                refusal_body = _json.loads(exc.detail.get("body", "{}"))
+            except (ValueError, TypeError):
+                refusal_body = None
+            if isinstance(refusal_body, dict) and refusal_body.get("refusal_class"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=refusal_body,
+                ) from exc
+        status_code = (
+            status.HTTP_503_SERVICE_UNAVAILABLE
+            if exc.error_code == "engine_timeout"
+            else status.HTTP_502_BAD_GATEWAY
+        )
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "error": "engine_unavailable",
+                "error_code": exc.error_code,
+                "engine": exc.engine,
+                "detail": exc.detail,
+            },
+        ) from exc
+    except PrologCalculationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"error": exc.error, "detail": exc.detail},
+        ) from exc
+
+    # Structural-defence-tier (L#34): required response fields.
+    for required in _DEPRECIATION_RANGE_RESPONSE_FIELDS:
+        if required not in engine_response:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "error": "engine_response_missing_field",
+                    "field": required,
+                    "detail": engine_response,
+                },
+            )
+
+    # Manifest fidelity (same as /at/): depreciation compute at v1 consumes
+    # no rate tables; manifest emits `rate_table_uris: []`. D6 conditional
+    # advisory picks the empty-manifest text automatically via
+    # `wrap_response`.
     rate_uris: list[str] = engine_response.get("rate_uris_consumed") or []
     rate_table_root = _rate_table_root_for(period_uri_decoded, taxonomy)
     try:

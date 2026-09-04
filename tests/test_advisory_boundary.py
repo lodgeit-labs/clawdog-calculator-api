@@ -13,6 +13,7 @@ from urllib.parse import quote
 
 from api.lib.advisory_boundary import (
     ADVISORY_TEXT_AU,
+    ADVISORY_TEXT_AU_EMPTY_MANIFEST,
     ADVISORY_TEXT_UK,
     advisory_block,
     wrap_response,
@@ -22,13 +23,41 @@ from api.lib.advisory_boundary import (
 
 
 def test_advisory_block_au_carries_taa_and_tasa_citations() -> None:
-    block = advisory_block("AU")
+    # Fable D6 mc21 2026-09-04: advisory is now conditioned on manifest;
+    # non-empty rate_table_uris yields the original text.
+    block = advisory_block(
+        "AU", manifest_rate_table_uris=[{"uri": "urn:fake"}],
+    )
     assert block["disclaimer"] == ADVISORY_TEXT_AU
     assert block["registered_agent_required"] is True
     assert block["jurisdiction"] == "AU"
     statutes = {(b["statute"], b["section"]) for b in block["statutory_basis"]}
     assert ("TAA 1953", "s284-15") in statutes
     assert ("Tax Agent Services Act 2009", "s50-5") in statutes
+
+
+def test_advisory_block_au_empty_manifest_carries_D6_conditional_text() -> None:
+    """Fable D6 mc21 2026-09-04 ruling: when the manifest has no
+    rate-table citations, the disclaimer says what the output actually
+    rests on (caller-declared inputs), NOT the fictional period-scoped-
+    rate-tables text.
+    """
+    block = advisory_block("AU", manifest_rate_table_uris=[])
+    assert block["disclaimer"] == ADVISORY_TEXT_AU_EMPTY_MANIFEST
+    assert "consumes no statutory rate tables" in block["disclaimer"]
+    assert "is not assessed by this calculator" in block["disclaimer"]
+    # TAA + TASA framing preserved (Fable ruled correct + unrelated).
+    statutes = {(b["statute"], b["section"]) for b in block["statutory_basis"]}
+    assert ("TAA 1953", "s284-15") in statutes
+    assert ("Tax Agent Services Act 2009", "s50-5") in statutes
+
+
+def test_advisory_block_au_no_manifest_arg_defaults_to_empty_text() -> None:
+    """When callers don't pass manifest_rate_table_uris, the safer
+    default is the empty-manifest text (i.e. we do NOT lie about
+    rate-table citation)."""
+    block = advisory_block("AU")
+    assert block["disclaimer"] == ADVISORY_TEXT_AU_EMPTY_MANIFEST
 
 
 def test_advisory_block_uk_carries_fa2008_sch41_citation() -> None:
@@ -47,13 +76,45 @@ def test_advisory_wrap_response_attaches_block() -> None:
 
 
 def test_advisory_wrap_response_replaces_existing_block() -> None:
-    """An incoming payload claiming a weaker advisory block is overridden."""
+    """An incoming payload claiming a weaker advisory block is overridden.
+
+    Fable D6 mc21 2026-09-04: `wrap_response` now conditions the
+    replacement text on `payload['manifest']['rate_table_uris']`. When
+    payload has no manifest (this test), the empty-manifest text
+    applies. TAA + TASA framing is preserved in both branches.
+    """
     out = wrap_response(
         {"taxable_value": 1.0, "advisory": {"disclaimer": "weak"}},
         jurisdiction="AU",
     )
-    assert out["advisory"]["disclaimer"] == ADVISORY_TEXT_AU
+    # No manifest in payload → empty-manifest branch.
+    assert out["advisory"]["disclaimer"] == ADVISORY_TEXT_AU_EMPTY_MANIFEST
     assert "TAA 1953" in out["advisory"]["disclaimer"]
+
+
+def test_advisory_wrap_response_selects_by_manifest_D6_conditional() -> None:
+    """Fable D6 mc21 2026-09-04 ruling: the advisory text is chosen by
+    `payload['manifest']['rate_table_uris']` — empty (or missing) yields
+    the empty-manifest text; non-empty yields the rate-tables-cited text.
+    """
+    empty = wrap_response(
+        {"taxable_value": 1.0, "manifest": {"rate_table_uris": []}},
+        jurisdiction="AU",
+    )
+    assert empty["advisory"]["disclaimer"] == ADVISORY_TEXT_AU_EMPTY_MANIFEST
+
+    non_empty = wrap_response(
+        {
+            "taxable_value": 1.0,
+            "manifest": {
+                "rate_table_uris": [
+                    {"uri": "urn:sbrm:rate:fbt:fy2026:fbt-rate"}
+                ]
+            },
+        },
+        jurisdiction="AU",
+    )
+    assert non_empty["advisory"]["disclaimer"] == ADVISORY_TEXT_AU
 
 
 # --- Endpoint-level surface (every endpoint that returns calculator output) ---
