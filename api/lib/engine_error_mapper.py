@@ -286,28 +286,34 @@ def map_engine_error_to_http(
             )
 
         # --- 1d: engine 429 → gateway 503 rate-limited (Fable Amendment 1).
-        # The caller SHOULD retry; the engine's retry-after (if any) is
-        # forwarded. `PrologClient.dispatch()` does not capture response
-        # headers today, so retry_after is best-effort.
+        # The caller SHOULD retry; the engine's Retry-After is forwarded
+        # verbatim when the engine sends one. Fable mc00 05:21 UTC sanity:
+        # *never synthesise* a retry interval when the engine did not send
+        # one — a fabricated interval is a claim about capacity we have no
+        # basis for. When absent, `retry_after` is omitted from the response
+        # entirely rather than emitted as null, and no Retry-After header
+        # is set.
         if status_code in _RATE_LIMITED_4XX:
             retry_after = _extract_retry_after(exc)
-            http_exc = HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail={
-                    "error": "engine_rate_limited",
-                    "engine": exc.engine,
-                    "status_code": 429,
-                    "retry_after": retry_after,
-                    "engine_detail": (
-                        _sanitise_engine_body(parsed_body)
-                        if parsed_body is not None
-                        else _sanitise_engine_body(body_text)
-                    ),
-                },
-            )
+            detail_body: dict[str, Any] = {
+                "error": "engine_rate_limited",
+                "engine": exc.engine,
+                "status_code": 429,
+                "engine_detail": (
+                    _sanitise_engine_body(parsed_body)
+                    if parsed_body is not None
+                    else _sanitise_engine_body(body_text)
+                ),
+            }
+            headers: dict[str, str] | None = None
             if retry_after is not None:
-                http_exc.headers = {"Retry-After": retry_after}
-            return http_exc
+                detail_body["retry_after"] = retry_after
+                headers = {"Retry-After": retry_after}
+            return HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=detail_body,
+                headers=headers,
+            )
 
         # --- 1e: any other engine 4xx (Fable Amendment 1 conservative
         # default) → 502. Unknown 4xx is more likely our fault than the

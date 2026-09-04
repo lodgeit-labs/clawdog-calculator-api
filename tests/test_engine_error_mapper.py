@@ -272,7 +272,14 @@ def test_engine_wrong_path_maps_to_gateway_502(engine_status, caplog):
 
 def test_engine_429_maps_to_gateway_503_rate_limited():
     """Engine rate-limiting the gateway is the caller's problem to retry,
-    but it is not "engine is broken" — 503 with Retry-After (Amendment 1)."""
+    but it is not "engine is broken" — 503 with Retry-After (Amendment 1).
+
+    When the engine did NOT send a Retry-After, the mapper omits
+    `retry_after` from the response entirely (Fable mc00 05:21 UTC:
+    *"never synthesise a value if it doesn't"* — a fabricated retry
+    interval is a claim about capacity we have no basis for). No
+    Retry-After response header is set either.
+    """
     exc = PrologEngineUnavailable(
         error_code="engine_http_error",
         detail={
@@ -285,11 +292,21 @@ def test_engine_429_maps_to_gateway_503_rate_limited():
     http_exc = map_engine_error_to_http(exc)
     assert http_exc.status_code == 503
     assert http_exc.detail["error"] == "engine_rate_limited"
+    # Fable no-synthesis: retry_after MUST be absent (not None) when the
+    # engine sent no Retry-After.
+    assert "retry_after" not in http_exc.detail, (
+        "Mapper synthesised a retry_after value when engine sent none. "
+        "Fable mc00 05:21 UTC: a fabricated retry interval is a claim "
+        "about capacity we have no basis for."
+    )
+    assert http_exc.headers is None or "Retry-After" not in http_exc.headers
 
 
 def test_engine_429_forwards_retry_after_header_when_present():
     """When PrologClient forwards a Retry-After hint through
-    `detail["headers"]`, the mapper surfaces it on the response headers."""
+    `detail["headers"]`, the mapper surfaces it verbatim on both the
+    detail block and the response headers. Pass-through only — no
+    normalisation, no synthesis."""
     exc = PrologEngineUnavailable(
         error_code="engine_http_error",
         detail={
@@ -303,6 +320,7 @@ def test_engine_429_forwards_retry_after_header_when_present():
     http_exc = map_engine_error_to_http(exc)
     assert http_exc.status_code == 503
     assert http_exc.detail["retry_after"] == "30"
+    assert http_exc.headers is not None
     assert http_exc.headers.get("Retry-After") == "30"
 
 
