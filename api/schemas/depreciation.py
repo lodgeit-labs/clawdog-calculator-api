@@ -34,7 +34,106 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+# ---------------------------------------------------------------------------
+# D8a defence-in-depth: basis-conditional field validation at the gateway.
+#
+# Fable post-matrix directive mc00-2026-09-04 D8a defence-in-depth ruling:
+#
+#   "Add gateway-side conditional validation as defence in depth so the
+#    engine is not reached for a caller error — but the mapper is the
+#    safety net and it ships first, because the next conditional rule the
+#    engine grows would otherwise reintroduce this."
+#
+# This helper mirrors the CURRENTLY-KNOWN set of engine basis-conditional
+# rules (F13 UPHELD: engine remains authoritative on the full set). If a
+# caller omits a basis-conditional field, they get a 422 at the pydantic
+# layer with the missing field named, rather than a round-trip to the engine
+# followed by the mapper's engine_validation_error surface. Two boundaries,
+# one for latency + charity to the caller, one for correctness:
+#
+#   Gateway pydantic (this helper) — catches KNOWN engine rules.
+#     Miss surfaces as: gateway 422 (fast, actionable).
+#
+#   Central engine-error mapper §1b — catches UNKNOWN engine rules that
+#     the gateway did not yet learn about (schema drift).
+#     Miss surfaces as: gateway 422 + `gateway_engine_schema_drift`
+#     warning log line (Fable Amendment 3 drift-detector).
+#
+# Rule set (as of engine mc-2026-09-03 wire probe):
+#
+#   basis="accounting" REQUIRES asset.accounting_useful_life_years
+#                      REQUIRES asset.accounting_method
+#                      REFUSES  asset.tax_asset_class
+#
+#   basis="tax"        REQUIRES asset.tax_asset_class
+#                      REFUSES  asset.accounting_useful_life_years
+#                      REFUSES  asset.accounting_method
+#
+# When the engine grows a NEW rule (e.g. `basis="au_aasb116"` gains a
+# unique required field), the engine's own 422 will fire, land on the
+# mapper's 422 branch, emit `gateway_engine_schema_drift`, and Andrew sees
+# the drift as a distinct log line rather than a silent gateway-passed
+# malformed request. The path to fix is to add the rule here.
+
+
+def _validate_basis_conditional_asset_fields(
+    basis: str,
+    asset_dict: dict,
+) -> None:
+    """Raise ValueError with a caller-actionable message when the asset
+    payload does not satisfy the KNOWN basis-conditional rules.
+
+    Called from model_validators on both `DepreciationAtInput` and
+    `DepreciationRangeInput`. The message shape mirrors the engine's own
+    422 detail string (`"basis='X' requires 'asset.Y'"`) so a caller
+    testing against the engine directly and against the gateway sees
+    equivalent text.
+    """
+    if asset_dict is None:
+        return  # nested pydantic will emit its own 422
+
+    if basis == "accounting":
+        missing = []
+        if asset_dict.get("accounting_useful_life_years") is None:
+            missing.append("asset.accounting_useful_life_years")
+        if asset_dict.get("accounting_method") is None:
+            missing.append("asset.accounting_method")
+        if missing:
+            raise ValueError(
+                f"basis='accounting' requires {' + '.join(missing)}"
+            )
+        # Cross-field refusal: tax_asset_class must NOT be present on
+        # accounting basis. Silent acceptance would produce a payload
+        # the engine currently refuses; we surface it at the gateway.
+        if asset_dict.get("tax_asset_class") is not None:
+            raise ValueError(
+                "basis='accounting' refuses 'asset.tax_asset_class' "
+                "(tax_asset_class is a tax-basis field; the engine's fold "
+                "will refuse mixing bases)"
+            )
+    elif basis == "tax":
+        if asset_dict.get("tax_asset_class") is None:
+            raise ValueError(
+                "basis='tax' requires 'asset.tax_asset_class'"
+            )
+        # Cross-field refusal on the other direction.
+        extra_accounting = []
+        if asset_dict.get("accounting_useful_life_years") is not None:
+            extra_accounting.append("asset.accounting_useful_life_years")
+        if asset_dict.get("accounting_method") is not None:
+            extra_accounting.append("asset.accounting_method")
+        if extra_accounting:
+            raise ValueError(
+                f"basis='tax' refuses {' + '.join(extra_accounting)} "
+                f"(accounting-basis fields; the engine's fold will refuse "
+                f"mixing bases)"
+            )
+    # No conditional rules known for other basis values. When D8c narrows
+    # to accounting-only the `elif basis == "tax"` branch becomes dead
+    # code but stays here as a design record until the engine drops the
+    # tax basis or a UK basis lands with its own rules.
 
 # Gateway-scoped basis literals per Fable rider 1: engine's five-literal
 # vocabulary narrowed to AU-only. `uk_frs102_s17` refused at the pydantic
@@ -342,6 +441,17 @@ class DepreciationAtInput(BaseModel):
         ),
     ] = None
 
+    @model_validator(mode="after")
+    def _validate_basis_conditional_fields(self) -> DepreciationAtInput:
+        """D8a defence-in-depth (Fable mc00-2026-09-04): catch known engine
+        basis-conditional rules at the gateway pydantic layer, before the
+        engine round-trip. See `_validate_basis_conditional_asset_fields`
+        module-level docstring for the rule set + drift-detector
+        interaction."""
+        asset_dict = self.asset.model_dump() if self.asset else None
+        _validate_basis_conditional_asset_fields(self.basis, asset_dict)
+        return self
+
 
 class DepreciationAtResponse(BaseModel):
     """Response envelope for the gateway's depreciation `at` route.
@@ -505,6 +615,15 @@ class DepreciationRangeInput(BaseModel):
             ),
         ),
     ]
+
+    @model_validator(mode="after")
+    def _validate_basis_conditional_fields(self) -> DepreciationRangeInput:
+        """D8a defence-in-depth (Fable mc00-2026-09-04): shared helper with
+        DepreciationAtInput. See `_validate_basis_conditional_asset_fields`
+        module-level docstring."""
+        asset_dict = self.asset.model_dump() if self.asset else None
+        _validate_basis_conditional_asset_fields(self.basis, asset_dict)
+        return self
 
 
 class DepreciationRangeResponse(BaseModel):
