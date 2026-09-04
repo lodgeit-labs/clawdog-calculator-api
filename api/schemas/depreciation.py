@@ -633,14 +633,49 @@ class DepreciationRangeResponse(BaseModel):
     with `manifest` + `advisory` blocks per mc35 Div7A wrap pattern.
 
     Ledger vocabulary (Andrew mc10-2026-09-03 08:32 UTC + Fable mc10
-    ratification):
+    ratification, extended by Fable D7 mc00-2026-09-04):
 
-    - `opening_wdv` = value carried INTO the range (close of `from_date - 1`)
-    - `closing_wdv` = value carried OUT of the range (close of `to_date`)
-    - `range_dep` = the charge between them; `opening_wdv - range_dep
-      == closing_wdv` under `monthly` by construction; under
-      `actual/actual` and `actual/365` derived from anchors per Fable
-      D2 mc15 fix so the identity holds by construction.
+    - `opening_wdv`     = value carried INTO the range (close of `from_date - 1`)
+    - `cost_additions`  = TOTAL cost that entered the ledger INSIDE the
+                          range window. Zero when acquisition falls
+                          outside [from_date, to_date] (both endpoints
+                          inclusive per RATIFIED §2 Ask 3); equals
+                          asset.cost when acquisition falls inside.
+                          Future extension will accumulate
+                          `event_type=cost_addition` events on top.
+    - `closing_wdv`     = value carried OUT of the range (close of `to_date`)
+    - `range_dep`       = the charge between them.
+
+    **Three-term identity (Fable D7 mc00-2026-09-04 replaces the earlier
+    two-term):**
+
+        closing_wdv == opening_wdv + cost_additions − range_dep
+
+    Holds under `monthly` by construction (each month quantised then
+    summed); under `actual/actual` and `actual/365` derived from anchors
+    per Fable D2 mc15 fix. Two-term identity is a corollary when
+    `cost_additions == 0` (acquisition-outside-range case; cells 3, 4, 6,
+    11, 12b of Fable's post-matrix probe).
+
+    Fable ruling verbatim (§4): *"`/range/` gains `cost_additions`,
+    always present, and the three-term identity replaces the two-term
+    one everywhere it is asserted. And extend the property test first.
+    The 48-configuration matrix asserts the two-term identity, which
+    means no configuration in it has a range spanning the acquisition
+    date — a fixture that cannot fail on the case this endpoint was
+    rewritten twice to handle. Add acquisition-inside-range
+    configurations, watch them fail, then fix."*
+
+    Gateway-side synthesis: if the engine's response omits
+    `cost_additions`, the gateway derives it from algebraic rearrangement
+    of the three-term identity:
+
+        cost_additions = closing_wdv + range_dep − opening_wdv
+
+    See `api.routes.calculators.invoke_depreciation_range` for the
+    synthesis site. When the engine ships `cost_additions` in its own
+    response (F13-UPHELD engine authority), the gateway passes it
+    through verbatim without rewriting.
     """
 
     model_config = ConfigDict(extra="allow")  # engine may return extra fields
@@ -686,14 +721,39 @@ class DepreciationRangeResponse(BaseModel):
             description=(
                 "Total depreciation charge over [from_date, to_date] "
                 "inclusive. Zero-day range (from_date == to_date) returns "
-                "Decimal('0.00'). **Derived from anchors (Fable D2 mc15 + "
-                "mc16 mint):** `range_dep = opening_wdv - closing_wdv` "
-                "under actual/actual and actual/365; ledger identity "
-                "holds by construction. Under `monthly`, per-month "
-                "round-and-sum; identity also holds."
+                "Decimal('0.00'). **Three-term ledger identity (Fable D7 "
+                "mc00-2026-09-04):** `range_dep = opening_wdv + "
+                "cost_additions − closing_wdv`. Rearrange this to "
+                "reconcile any three of the four fields against the "
+                "fourth. The two-term identity `range_dep = opening_wdv "
+                "- closing_wdv` remains valid whenever `cost_additions "
+                "== 0.00` (acquisition-outside-range case)."
             ),
         ),
     ]
+
+    cost_additions: Annotated[
+        Decimal,
+        Field(
+            default=Decimal("0.00"),
+            description=(
+                "Total cost that entered the ledger INSIDE the range "
+                "window (inclusive of both endpoints). Zero when "
+                "acquisition falls outside [from_date, to_date]; equals "
+                "asset.cost when acquisition falls inside (the range "
+                "spans the acquisition date). Future extension will "
+                "accumulate `event_type=cost_addition` lifecycle events "
+                "on top of the acquisition. Fable D7 mc00-2026-09-04 "
+                "ratification: `always present`, and the three-term "
+                "identity `closing_wdv = opening_wdv + cost_additions "
+                "− range_dep` replaces the two-term one everywhere. "
+                "Gateway synthesises this field from algebraic "
+                "rearrangement when the engine's response omits it "
+                "(engine may ship it directly in a later release; "
+                "F13-UPHELD passthrough when it does)."
+            ),
+        ),
+    ] = Decimal("0.00")
 
     opening_wdv: Annotated[
         Decimal,
