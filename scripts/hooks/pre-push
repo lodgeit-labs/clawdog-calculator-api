@@ -101,33 +101,66 @@ if [ -f "$guard_script" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Layer 3 (mc00-2026-09-04, Fable 05:34 UTC ruling):
+# Layer 3 (mc00-2026-09-04, Fable 05:34 UTC ruling; scope-corrected by
+# Fable 05:41 UTC ruling):
+#
 # Full-CI-mirror `make gates` on every push.
 #
-# Anchor: mc00-2026-09-04 twice-in-a-row local-green-CI-red divergence on PR
-# #33 (commits ee01713 + 405cdb6). Both times ClawDog ran pytest locally
-# without ruff and reported "green"; both times CI's `ruff check api tests`
-# step 6 failed with I001 / F401 before pytest was ever reached.
+# **This layer is a feedback-loop shortener, NOT the enforcement.**
 #
-# Fable's ruling (verbatim): "A pre-push habit that depends on remembering
-# is not a gate. Put the lint + mechanical-gate job in a single make gates
-# target and run it before every push — or better, make the push itself
-# run it."
+# Fable 05:41 UTC ruling (verbatim):
+#   "The pre-push hook is not the enforcement. Say so, or someone will
+#    rely on it. A hook with --no-verify and SKIP_GATES=1 is a feedback-
+#    loop shortener, not a gate. That is a perfectly good thing to be,
+#    and it will save real time. But the enforcement is CI, and only if
+#    branch-protection required-status-checks lists the CI job.
 #
-# `make gates` mirrors CI's five binary-failure-gate steps in order (ruff,
-# deploy-placeholder, openapi-check, pytest, collected-count floor). If any
-# step fails, the push is refused with a clear pointer to the failure class.
+#    Record it that way, because the failure mode of mislabelling it is
+#    precise: a future session sees 'mechanical enforcement installed',
+#    trusts the hook, bypasses it once under pressure, and pushes red
+#    believing the system would have stopped it."
 #
-# Bypass: `git push --no-verify` (auditable via shell history, per the
-# standard bypass covenant this file already documents).
+# What this hook DOES do (well):
+#   - Catches ~all cases where the author forgot to run `make gates` before
+#     `git push`, in the ~1s it takes to fail rather than the ~30s CI takes.
+#   - Emits the exact same failure text the author would have seen from
+#     `make gates` directly, at the point of intent to push.
 #
-# Skipping conditions: (a) `--no-verify` (git skips all pre-push hooks);
-# (b) `SKIP_GATES=1` env override for exec environments where the venv is
-# unavailable and CI is the sole gate authority (rare; leave a note in the
-# commit thread when using it).
+# What this hook does NOT do (do not rely on it for these):
+#   - Prevent `git push --no-verify` from bypassing all pre-push hooks
+#     entirely (this is git's own bypass covenant; the hook has no say).
+#   - Prevent `SKIP_GATES=1 git push` from bypassing only Layer 3.
+#   - Prevent the ~5% of cases where a subtle env/config drift produces
+#     local-green / CI-red (this is what the ruff pin-parity check in
+#     `make gates` targets; but drift outside ruff can still slip past).
+#   - Prevent a red PR from being merged. That is a CI required-status-
+#     check + branch-protection job — which as of mc00-2026-09-04
+#     05:42 UTC is NOT configured on `main` (wire-verified via
+#     `GET /repos/lodgeit-labs/clawdog-calculator-api/branches/main/
+#     protection` returning HTTP 404 "Branch not protected"). Andrew-
+#     action brief for adding it: docs/andrew-action-add-branch-
+#     protection.md.
+#
+# The enforcement is CI + required-status-checks. This hook is the fast
+# feedback loop between author intent and CI knowing. Two different jobs.
+#
+# Anchor for the fast-feedback-loop shape: mc00-2026-09-04 twice-in-a-row
+# local-green-CI-red divergence on PR #33 (commits ee01713 + 405cdb6).
+# Both times ClawDog ran pytest locally without running ruff and reported
+# "green"; both times CI's `ruff check api tests` step 6 failed with
+# I001/F401 before pytest was ever reached. `make gates` closes that
+# specific gap (author forgetting to run a step) by making the push run it.
+#
+# Bypass:
+#   git push --no-verify   — skips ALL pre-push hooks (git covenant).
+#   SKIP_GATES=1 git push  — skips ONLY Layer 3.
+# Both are auditable via shell history; both are legitimate for exec
+# environments where the venv is unavailable or for emergency rollback.
 if [ -z "${SKIP_GATES:-}" ]; then
     printf '\n' >&2
     printf 'pre-push Layer 3: running `make gates` (Fable mc00-2026-09-04 discipline).\n' >&2
+    printf 'This is a feedback-loop shortener, NOT the enforcement. The\n' >&2
+    printf 'enforcement is CI + branch-protection required-status-checks.\n' >&2
     printf 'To bypass in an emergency: git push --no-verify\n' >&2
     printf 'To skip only Layer 3:     SKIP_GATES=1 git push\n' >&2
     printf '\n' >&2

@@ -93,6 +93,12 @@ ruff:
 # `make gates` mirrors CI's binary-failure-gate job EXACTLY, in order, so a
 # local green is a valid predictor of a CI green.
 #
+# **`make gates` is a feedback-loop shortener, NOT the enforcement.**
+# The enforcement is CI + branch-protection required-status-checks on the
+# target branch. This target closes the specific gap of author forgetting
+# to run a CI step before push; it does not (and cannot) prevent a merge
+# of a red PR. See scripts/hooks/pre-push Layer 3 for the scoping.
+#
 # Fable mc00-2026-09-04 05:34 UTC ruling (verbatim):
 #   "A pre-push habit that depends on remembering is not a gate. Put the
 #   lint + mechanical-gate job in a single make gates target and run it
@@ -116,6 +122,28 @@ ruff:
 GATES_FLOOR ?= 230
 
 gates:
+	@echo "===== gate 0/5: ruff version pin parity ====="
+	@# Fable mc00-2026-09-04 05:41 UTC item 3: pin parity check. The
+	@# pyproject.toml carries `ruff==X.Y.Z` (exact pin). This step reads
+	@# the pin + verifies the invoked ruff binary reports the same
+	@# version. If the binary drifts (venv stale; global-vs-venv confusion;
+	@# ruff upgraded in one place not the other), `make gates` fails HERE
+	@# rather than surfacing later as a green-hook / red-CI mismatch.
+	@# CI mirrors this check via the same target when it runs `make gates`
+	@# in future; today CI installs ruff via `pip install -e .[dev]` which
+	@# honours the pin. Either surface flags a drift immediately.
+	@PINNED=$$(grep -oE '"ruff==[0-9]+\.[0-9]+\.[0-9]+"' pyproject.toml | head -1 | tr -d '"' | sed 's/ruff==//'); \
+	 if [ -z "$$PINNED" ]; then \
+	   echo "FAIL: could not read ruff pin from pyproject.toml (expected \"ruff==X.Y.Z\")"; \
+	   exit 1; \
+	 fi; \
+	 ACTUAL=$$($(RUFF) --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1); \
+	 echo "pinned=$$PINNED  actual=$$ACTUAL"; \
+	 if [ "$$PINNED" != "$$ACTUAL" ]; then \
+	   echo "FAIL: ruff pin drift. pyproject.toml pins $$PINNED but $(RUFF) reports $$ACTUAL."; \
+	   echo "      Fix: rm -rf .venv && make install"; \
+	   exit 1; \
+	 fi
 	@echo "===== gate 1/5: ruff check api tests ====="
 	$(RUFF) check api tests
 	@echo "===== gate 2/5: scripts/check_deploy_placeholders ====="

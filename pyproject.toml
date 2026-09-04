@@ -40,7 +40,17 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
-    "ruff>=0.5",
+    # Ruff PINNED exactly, not floored. Fable mc00-2026-09-04 05:41 UTC
+    # ruling: "if any of ruff pin / CI install / make gates binary is
+    # loose, the hook will go green and CI will go red again, and the
+    # next time it happens the hook's own credibility is what gets
+    # spent." Prior spec was `ruff>=0.5` — that shipped ruff 0.16.6 by
+    # coincidence on both local and CI at mc00, but any pip-resolver
+    # difference at any install time could pick different versions with
+    # different rule sets and re-open the local-green/CI-red gap. The
+    # pin below is the closure. Bump this line + `make gates` verify-
+    # ruff-pin check in the same commit; nowhere else.
+    "ruff==0.16.6",
     "anyio>=4.2",
 ]
 
