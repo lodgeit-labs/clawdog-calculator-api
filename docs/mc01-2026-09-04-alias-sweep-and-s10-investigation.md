@@ -224,6 +224,21 @@ Content-Type: application/json
 
 **Anchor banked:** the ValidationError-serialisation defect is a class of its own. Any pydantic `model_validator(mode="after")` or `field_validator` that raises `ValueError` produces a non-JSON-serialisable error object under pydantic v2's default `errors()` output. Every FastAPI route that catches `ValidationError` and passes `exc.errors()` to `HTTPException(detail=...)` MUST use `include_context=False` (or an equivalent scrubber) or it will surface as a 500 text/plain body on the wire. Discipline banked in the route's comment; applies to any future FastAPI-catching-ValidationError site.
 
+**Rider 1 wire-verified 2026-09-04 09:38 UTC (Fable):** the `include_context=False` fix I shipped covers ONE of two ValidationError-handling paths in this repo. The OTHER path is FastAPI's own default `RequestValidationError` handler at `.venv/lib/python3.12/site-packages/fastapi/exception_handlers.py:25`, which passes `exc.errors()` through `jsonable_encoder(...)` (from `fastapi.encoders`) BEFORE JSONResponse serialisation. `jsonable_encoder` falls back to `str()` on arbitrary Python objects instead of raising `TypeError`. That is why cell 15 (native `/at/` route, hits FastAPI's own handler) returned `"ctx":{"error":{}}` and preserved `input` and pydantic docs URL, while cell 25 (generic route, hits my inline `except ValidationError` handler) needed the scrubber.
+
+Wire-verified via TestClient:
+
+  Cell 15 (native): `"ctx":{"error":{}}` present, `"input":{...}` present, `"url":"https://errors.pydantic.dev/..."` present.
+  Cell 15b via generic route (same schema, same defect): my scrubber output. `ctx` absent, `input` absent, `url` absent.
+
+Both are 422 JSON — the wire is safe on both paths. The generic route's response is diagnostically poorer than the native routes'.
+
+**OT queued (Fable rider 1 authorisation):** restore `ctx` + `input` on the generic route behind a safe encoder. Import `jsonable_encoder` at `api/routes/calculators.py` and route `exc.errors()` through it before passing to `HTTPException(detail=...)`. This closes the diagnostic-parity gap between the two paths without reintroducing the 500 wire defect. Ship as a follow-up PR; NOT batched into PR #34 because Fable ruled *"Ship the fix as it stands — safe beats rich — but open an OT."*
+
+**Joint diagnosis-from-code-read anchor (Fable + ClawDog, mc01-2026-09-04 09:38 UTC):** Fable proposed *"engine returned 200 with a body the gateway's response_model rejects, raising ResponseValidationError"* — wrong. I proposed *"engine's `member(FormOfFinance, [owned, hire_purchase])` raises uncaught"* — wrong. Actual cause: gateway-side pydantic field_validator ValueError + FastAPI JSON-serialisation failure. Both parties proposed a mechanism from a code read; the wire refuted both. Fable's ruling verbatim: *"the label 'hypothesis' was the only thing that made one cheaper than the other, and it costs nothing to attach. Bank it as a joint entry, not yours alone."*
+
+Working discipline: **any diagnosis of a wire defect from a code read must be labelled hypothesis (never diagnosis) and wire-verified before being written into canon.** Applies to both ClawDog and Fable output. Anchor sits alongside L#104 ("a check that cannot fail is not a weaker check") and the M-shape mediated-substrate discipline in the same class of shape-diagnosis-without-wire-verification errors.
+
 ## 4a. D18 gateway half — conjunction-guard on FBT COC (SHIPPED)
 
 Sibling to D17 gateway half. Same class of defect (fail-open-on-unsatisfied-conjunction-guard). Shipped in the same commit because both use the same pydantic-validation-error surface.
@@ -371,6 +386,28 @@ pattern COC already uses. NO hardcoded 1.8868.
 **PR #34 batching decision:** items 2 and 3-gateway-half batched onto
 PR #34 before ready-flip. Everything else lands on separate PRs (engine
 repos + fresh sessions per Option-C discipline).
+
+**BREAKING CHANGE MINTED (Fable Rider 2 mc01-2026-09-04 09:38 UTC):**
+
+D18 gateway half is a **breaking contract change on a live deployed endpoint**. Yesterday's callers sending the cell-21 shape (owned/hire_purchase COC without `daysHeldInFBTYear`) received HTTP 200 with `taxable_value: 925.00` (materially understated per FBTAA s10 hypothesis). Today they receive HTTP 422 with the missing keys enumerated.
+
+Fable ruled verbatim: *"That is correct — a loud refusal beats a silent understatement, and it is the same ruling as every other one this week. But it is a contract break on a deployed route, and it must be recorded as a deliberate one with the reasoning attached, not discovered by whoever was calling it. Nobody is calling it. That is exactly when a breaking change is free, and exactly when people forget to mint it."*
+
+**Contract change record:**
+
+| Endpoint | POST `/v1/calculators/urn:sbrm:calculator:fbt:car-operating-cost/urn:sbrm:period:fbt:fy2026` |
+|---|---|
+| **Shipped** | 2026-09-04 (PR #34 tip `24500ed`) |
+| **Effective on production** | On PR #34 merge + deploy (Andrew action) |
+| **Class** | Breaking: additional required-payload constraint on a live route |
+| **Precondition change** | When `form_of_finance ∈ {owned, hire_purchase}`, request MUST include ONE of: (a) `openingDepreciatedValue + daysHeldInFBTYear + acquisitionDate`, (b) `acquisitionCost + acquisitionDate`, or (c) `deemedTotal`. Prior contract accepted incomplete triads and returned HTTP 200 with `taxable_value` silently understated. |
+| **Failure mode change** | Prior: HTTP 200, silent understatement. New: HTTP 422 with `detail[].msg` enumerating missing keys per attempted path. |
+| **Callers affected as of mint time** | Zero (verified via Andrew's operational awareness; no external consumers on this route today). |
+| **Reasoning** | The prior wire behaviour returned a materially-understated `taxable_value` on a FBTAA s10 headline calculator. A loud refusal is the correct posture until the D18 arithmetic is resolved via Waqas oracle concordance. See PR #33 D8a discipline (same class: gateway rejects malformed payloads at pydantic tier before engine round-trip). |
+| **Recorded here because** | Fable Rider 2 mc01-2026-09-04 09:38 UTC verbatim: *"Nobody is calling it. That is exactly when a breaking change is free, and exactly when people forget to mint it."* |
+| **Compensating engine work** | Engine-side typed refusal (`refusal_class: "skipped_incomplete_deemed_inputs"` with missing-keys enumeration + truthful trace label replacing `skipped_no_acquisition`) queued for fresh-session FBT engine PR. Ensures that a caller bypassing the gateway (direct engine tests, out-of-tree consumers) sees the same defence-in-truth. |
+
+Breaking-change discipline: when a live-deployed route gains a new required-payload constraint, mint it in the investigation doc explicitly. Any future breaking change of this shape gets the same table treatment.
 
 ---
 
