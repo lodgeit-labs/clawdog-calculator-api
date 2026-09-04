@@ -159,8 +159,22 @@ def test_fbt_route_returns_structured_502_on_connect_error(
     assert detail.get("engine") == "fbt"
 
 
-def test_fbt_route_returns_503_on_timeout(monkeypatch: pytest.MonkeyPatch):
-    """FBT route returns 503 (not 502) when engine times out."""
+def test_fbt_route_returns_504_on_timeout(monkeypatch: pytest.MonkeyPatch):
+    """FBT route returns 504 Gateway Timeout when engine times out.
+
+    mc00-2026-09-04 Fable Amendment 2 correction (verbatim):
+
+        503 engine_unavailable — the engine never answered the connection:
+            refused, DNS, not running.
+        504 engine_timeout — the request was sent, the engine did not
+            respond in time.
+
+    The historic 503 mapping was Fable's mc21 ruling; Fable corrected it
+    at mc00 05:09 UTC: "That is twice now I have ruled a detail without
+    reading the semantics first, and both times the substrate corrected
+    me." Symmetry across FBT/depreciation/Div7A is achieved by moving
+    FBT+dep UP to 504, not by moving Div7A down to 503.
+    """
     transport = httpx.MockTransport(_timeout_handler)
     client = _build_test_client(transport, monkeypatch)
     try:
@@ -171,7 +185,7 @@ def test_fbt_route_returns_503_on_timeout(monkeypatch: pytest.MonkeyPatch):
         from api.routes.calculators import get_prolog_client
         app.dependency_overrides.pop(get_prolog_client, None)
 
-    assert resp.status_code == 503
+    assert resp.status_code == 504
     body = resp.json()
     detail = body.get("detail", {})
     assert detail.get("error_code") == "engine_timeout"
@@ -232,10 +246,14 @@ def test_depreciation_route_returns_structured_502_on_connect_error(
     assert detail.get("engine") == "depreciation"
 
 
-def test_depreciation_route_returns_503_on_timeout(
+def test_depreciation_route_returns_504_on_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """Depreciation route returns 503 when engine times out."""
+    """Depreciation route returns 504 Gateway Timeout when engine times out.
+
+    Symmetric with `test_fbt_route_returns_504_on_timeout` under Fable
+    Amendment 2. See that test's docstring for the ruling.
+    """
     transport = httpx.MockTransport(_timeout_handler)
     client = _build_test_client(
         transport, monkeypatch, use_depreciation_rate_root=True
@@ -248,7 +266,7 @@ def test_depreciation_route_returns_503_on_timeout(
         from api.routes.calculators import get_prolog_client
         app.dependency_overrides.pop(get_prolog_client, None)
 
-    assert resp.status_code == 503
+    assert resp.status_code == 504
     body = resp.json()
     detail = body.get("detail", {})
     assert detail.get("error_code") == "engine_timeout"

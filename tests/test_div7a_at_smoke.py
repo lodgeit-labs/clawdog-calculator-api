@@ -164,9 +164,42 @@ def test_div7a_at_engine_unavailable_maps_to_502(client: TestClient) -> None:
 
 
 def test_div7a_at_timeout_maps_to_504(client: TestClient) -> None:
-    """PrologEngineUnavailable with 'timeout' error_code maps to HTTP 504."""
+    """PrologEngineUnavailable with 'engine_timeout' error_code maps to HTTP 504.
+
+    mc00-2026-09-04 (Fable D8a mapper refactor + Fable Flag-1/Amendment 2
+    timeout correction):
+
+    The historic Div7A handler checked `exc.error_code == "timeout"` and
+    emitted 504. That code path was dead — PrologClient.dispatch()
+    actually emits `error_code="engine_timeout"` (canonical slug). Evidence:
+
+        $ grep -n 'error_code=' api/prolog_client.py
+        289:                error_code="engine_unreachable",
+        296:                error_code="engine_timeout",
+        303:                error_code="engine_http_error",
+        315:                error_code="engine_transport_error",
+
+        $ grep -rn 'error_code="timeout"' api/
+        (no matches)
+
+    So the old 504 mapping never fired in production; it only fired for
+    this test. The test was the only caller of the dead code path (Fable
+    in-flight-note flag 2: "a mapping whose only caller was a test is the
+    same artefact class as a validator with no consumer"). The old
+    handler's `if exc.error_code == "timeout"` branch has been *removed*
+    alongside this test rewrite — the central mapper only knows the
+    canonical `engine_timeout` slug.
+
+    Fable Flag-1 / Amendment 2 correction (mc00 05:09 UTC): engine_timeout
+    maps to 504 Gateway Timeout, NOT 503. The request was sent, the engine
+    did not respond in time — textbook 504. Div7A's ORIGINAL 504 assertion
+    was right; FBT and depreciation historic 503 are corrected UP to 504
+    via the central mapper, achieving symmetry in the right direction.
+
+    Retitled `_to_504` (the digit that was correct at the start).
+    """
     engine_error = PrologEngineUnavailable(
-        error_code="timeout",
+        error_code="engine_timeout",
         detail="read timeout after 30s",
         engine="div7a",
         url="http://localhost:8083",
