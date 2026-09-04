@@ -50,6 +50,53 @@ def _rate_table_root_for(period_uri: str, taxonomy: str = DEFAULT_TAXONOMY) -> P
     return rate_table_root_for(period_uri, taxonomy)
 
 
+# Fable Q2 rider mc22 2026-09-04: rate-table URIs advertised here that
+# are not consumed by any v1 compute path get a `scope` annotation
+# stating the capability + its status. Depreciation's three URIs
+# (audit-variance-threshold, instant-asset-write-off-threshold,
+# small-business-pool-rate) all fall in this bucket at v1: they belong
+# to pool-asset compute (out of T6 scope) or audit-variance compute
+# (not in v1 endpoints).
+#
+# When these features ship (T6.1 pool-retrofit + future audit lane),
+# remove the annotation for the URI(s) that begin being consumed —
+# the D6 empty-manifest advisory branch will automatically flip to
+# citing-rate-tables text as `rate_uris_consumed` populates, and this
+# annotation should track that consumption state.
+_T6_SCOPE_NOTE = (
+    "Rate-table pre-registered for T6.1 pool-retrofit sprint; NOT "
+    "consumed by the v1 depreciation compute paths (/at/ and /range/). "
+    "Any request that attempts to use this via a pooled asset is "
+    "refused at the engine with refusal_class="
+    "'pool_asset_out_of_t6_scope'. See Amendment 2 §A2.5 for the pool"
+    "-retrofit tranche context."
+)
+
+_T6_SCOPED_DEPRECIATION_RATES = {
+    "audit-variance-threshold",
+    "instant-asset-write-off-threshold",
+    "small-business-pool-rate",
+}
+
+
+def _annotate_t6_scope(
+    period_uri: str, entries: list[dict[str, Any]],
+) -> None:
+    """Add `scope` annotation to entries advertising out-of-v1-scope
+    rate-table URIs.
+
+    Fable Q2 rider mc22 2026-09-04.
+    """
+    # Only depreciation URIs at v1 have this class of pre-registered-
+    # but-not-consumed URIs. FBT + Div7A rate-tables in the same
+    # response shape are all consumed by their respective calculators.
+    if ":depreciation:" not in period_uri:
+        return
+    for entry in entries:
+        if entry.get("rate_id") in _T6_SCOPED_DEPRECIATION_RATES:
+            entry["scope"] = _T6_SCOPE_NOTE
+
+
 def _split_frontmatter(content: str) -> dict[str, Any]:
     """Parse a rate-table fact-node's YAML frontmatter into a dict."""
     lines = content.splitlines()
@@ -116,6 +163,32 @@ def list_rates(
                           and declared_content_hash(path) != live_hash),
             }
         )
+
+    # Fable Q2 rider mc22 2026-09-04 (2026-09-04 02:54 UTC ratifying
+    # letter): rate-table URIs may be advertised here that are not
+    # consumed by any current compute path. Fable verbatim: *"they
+    # belong to pooled assets — which the engine refuses out of T6
+    # scope — and that is a manifest-fidelity item, not a sweep
+    # exemption."*
+    #
+    # The depreciation URIs (audit-variance-threshold, instant-asset-
+    # write-off-threshold, small-business-pool-rate) are pre-registered
+    # here for the T6.1 pool-retrofit sprint. They are NOT consumed by
+    # the v1 /at/ or /range/ compute paths, and any request that
+    # attempts to use them via a pooled asset is refused at the engine
+    # with typed refusal_class `pool_asset_out_of_t6_scope`. Emitting
+    # the discovery entries WITHOUT this note reads to a partner
+    # developer as an advertised capability the constellation performs
+    # — the same class of fiction the empty-manifest advisory retires
+    # (D6). Amendment 2 rider 3 (§A2.4) put the T6-scope statement on
+    # the depreciation calc manifest; this envelope carries the sibling
+    # statement.
+    #
+    # Per-URI scope annotations: rate-tables belonging to unconsumed
+    # capabilities carry a `scope` field naming the capability + its
+    # status. When a rate-table is consumed by v1 compute, the field
+    # is absent (or scope="v1").
+    _annotate_t6_scope(period_uri_decoded, entries)
     return {"period_uri": period_uri_decoded, "entries": entries}
 
 
