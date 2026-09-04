@@ -31,7 +31,6 @@ from api.lib.engine_error_mapper import (
 )
 from api.prolog_client import PrologCalculationError, PrologEngineUnavailable
 
-
 # ============================================================================
 # D8b — sanitisation primitives
 # ============================================================================

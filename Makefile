@@ -45,7 +45,7 @@ GCP_REGION  ?= australia-southeast1
 SERVICE     ?= fbt-calculator-api
 
 .PHONY: help venv install test test-binary-gates ruff openapi openapi-check \
-        run build deploy audit install-hooks clean
+        run build deploy audit install-hooks clean gates
 
 help:
 	@echo "clawdog-calculator-api — Phase 3a Egress Interface"
@@ -55,6 +55,8 @@ help:
 	@echo "  make openapi         regenerate openapi.json"
 	@echo "  make openapi-check   assert committed openapi.json matches the live app"
 	@echo "  make ruff            lint"
+	@echo "  make gates           run the FULL CI gate sequence locally"
+	@echo "                       (Fable mc00-2026-09-04 05:34 UTC discipline)"
 	@echo "  make audit           audit vendored rate-table fixtures"
 	@echo ""
 	@echo "Andrew-side (local execution; subagents do NOT run these):"
@@ -87,6 +89,51 @@ test-binary-gates:
 
 ruff:
 	$(RUFF) check api tests
+
+# `make gates` mirrors CI's binary-failure-gate job EXACTLY, in order, so a
+# local green is a valid predictor of a CI green.
+#
+# Fable mc00-2026-09-04 05:34 UTC ruling (verbatim):
+#   "A pre-push habit that depends on remembering is not a gate. Put the
+#   lint + mechanical-gate job in a single make gates target and run it
+#   before every push — or better, make the push itself run it."
+#
+# CI job source: .github/workflows/ci.yml `lint-and-test`. Steps 6-10 are
+# what fails a CI run; steps 1-5 are runner setup. The five gates below
+# are the wire-truth-equivalent locally:
+#   1. ruff check api tests                     (CI step 6)
+#   2. python scripts/check_deploy_placeholders (CI step 7)
+#   3. make openapi-check                       (CI step 8)
+#   4. pytest tests/                            (CI step 9)
+#   5. collected-count floor >= FLOOR           (CI step 10)
+#
+# Wired into scripts/hooks/pre-push — running `git push` on a clawdog/*
+# branch fires `make gates` first. Bypass via `git push --no-verify` for
+# emergency pushes (auditable via shell history).
+#
+# GATES_FLOOR mirrors the CI floor; bump both together whenever the suite
+# grows by >=15 tests.
+GATES_FLOOR ?= 230
+
+gates:
+	@echo "===== gate 1/5: ruff check api tests ====="
+	$(RUFF) check api tests
+	@echo "===== gate 2/5: scripts/check_deploy_placeholders ====="
+	$(PY) scripts/check_deploy_placeholders.py
+	@echo "===== gate 3/5: openapi-check (drift gate) ====="
+	$(MAKE) openapi-check
+	@echo "===== gate 4/5: pytest tests/ ====="
+	$(PYTEST) tests/
+	@echo "===== gate 5/5: collected-count floor (>= $(GATES_FLOOR)) ====="
+	@COLLECTED=$$($(PYTEST) --collect-only 2>&1 | grep -oE '^[0-9]+ tests? collected' | grep -oE '^[0-9]+' | head -1); \
+	 COLLECTED=$${COLLECTED:-0}; \
+	 echo "collected=$$COLLECTED floor=$(GATES_FLOOR)"; \
+	 if [ "$$COLLECTED" -lt "$(GATES_FLOOR)" ]; then \
+	   echo "FAIL: pytest collected only $$COLLECTED tests; floor is $(GATES_FLOOR)."; \
+	   echo "      Either the suite shrank or venv is stale. Fable mc19 gate."; \
+	   exit 1; \
+	 fi
+	@echo "===== all 5 gates green ====="
 
 # `make openapi` is a STATIC IMPORT operation — it imports the FastAPI app
 # in-process and serialises app.openapi(). No server is started. Subagents

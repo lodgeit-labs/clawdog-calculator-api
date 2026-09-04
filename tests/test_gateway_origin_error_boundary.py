@@ -46,9 +46,7 @@ from urllib.parse import quote
 import pytest
 from fastapi.testclient import TestClient
 
-from api.lib.engine_error_mapper import map_engine_error_to_http
 from api.main import app
-
 
 # ============================================================================
 # Fixtures — retired URN + unknown calc_uri constants

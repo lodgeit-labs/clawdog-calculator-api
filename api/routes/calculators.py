@@ -11,7 +11,6 @@ holds under a second calculator.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import unquote

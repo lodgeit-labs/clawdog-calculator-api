@@ -100,4 +100,45 @@ if [ -f "$guard_script" ]; then
     fi
 fi
 
+# ---------------------------------------------------------------------------
+# Layer 3 (mc00-2026-09-04, Fable 05:34 UTC ruling):
+# Full-CI-mirror `make gates` on every push.
+#
+# Anchor: mc00-2026-09-04 twice-in-a-row local-green-CI-red divergence on PR
+# #33 (commits ee01713 + 405cdb6). Both times ClawDog ran pytest locally
+# without ruff and reported "green"; both times CI's `ruff check api tests`
+# step 6 failed with I001 / F401 before pytest was ever reached.
+#
+# Fable's ruling (verbatim): "A pre-push habit that depends on remembering
+# is not a gate. Put the lint + mechanical-gate job in a single make gates
+# target and run it before every push — or better, make the push itself
+# run it."
+#
+# `make gates` mirrors CI's five binary-failure-gate steps in order (ruff,
+# deploy-placeholder, openapi-check, pytest, collected-count floor). If any
+# step fails, the push is refused with a clear pointer to the failure class.
+#
+# Bypass: `git push --no-verify` (auditable via shell history, per the
+# standard bypass covenant this file already documents).
+#
+# Skipping conditions: (a) `--no-verify` (git skips all pre-push hooks);
+# (b) `SKIP_GATES=1` env override for exec environments where the venv is
+# unavailable and CI is the sole gate authority (rare; leave a note in the
+# commit thread when using it).
+if [ -z "${SKIP_GATES:-}" ]; then
+    printf '\n' >&2
+    printf 'pre-push Layer 3: running `make gates` (Fable mc00-2026-09-04 discipline).\n' >&2
+    printf 'To bypass in an emergency: git push --no-verify\n' >&2
+    printf 'To skip only Layer 3:     SKIP_GATES=1 git push\n' >&2
+    printf '\n' >&2
+    if ! make gates >&2; then
+        gates_exit=$?
+        printf '\n' >&2
+        printf '🔴 pre-push Layer 3: `make gates` failed (exit %s).\n' "$gates_exit" >&2
+        printf 'CI would fail this push. Fix the failing gate above and retry.\n' >&2
+        printf '\n' >&2
+        exit 1
+    fi
+fi
+
 exit 0
