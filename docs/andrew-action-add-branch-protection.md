@@ -1,134 +1,183 @@
-# Andrew-action: Add branch protection to `main` with required CI status check
+# Andrew-action: Branch protection / rulesets on `main`
 
-**Priority:** highest structural change available in this repo (Fable ruling mc00-2026-09-04 05:41 UTC).
-**Complexity:** settings change, not code.
-**Time:** ~2 minutes via the GitHub web UI; ~30 seconds via REST if you'd rather.
-**Blocker for:** every CI gate we've built this week — the collected-count floor, the smoke floor 22, the ruff lint, `make openapi-check`, `test_manifest_fidelity`, `test_advisory_boundary` — is enforced by CI failing red, but nothing prevents a red PR from being merged today.
+**Status:** ✅ **SHIPPED 2026-09-04 mc00 by Andrew.** This document evolves into the runbook + audit log for the ruleset configuration; the "Andrew-action" framing above is retained for the git-log context in which it was created.
 
 ---
 
-## The wire-truth that motivated this brief
+## Wire-verified current state (2026-09-04 06:57 UTC)
 
-Fetched 2026-09-04 05:42 UTC as ClawDog with `lodgeit-labs-pat` (Contents+Actions read):
+Fetched with `lodgeit-labs-pat` (metadata=read + contents=read + actions=read).
+
+### `lodgeit-labs/clawdog-calculator-api` (visibility: PUBLIC)
+
+`GET /repos/lodgeit-labs/clawdog-calculator-api/rules/branches/main` → HTTP 200; ruleset id 22251624 active with:
+
+- `deletion` — refuse `main` deletion
+- `non_fast_forward` — refuse force-push to `main`
+- `required_status_checks`:
+  - `strict_required_status_checks_policy: false` ⚠️
+  - required contexts:
+    - `lint + binary-failure gates` (integration_id 15368 = GitHub Actions)
+
+### `lodgeit-labs/depreciation-engine` (visibility: PRIVATE)
+
+`GET /repos/lodgeit-labs/depreciation-engine/rules/branches/main` → HTTP 200; ruleset id 22252039 active with:
+
+- `deletion`
+- `non_fast_forward`
+- `required_status_checks`:
+  - `strict_required_status_checks_policy: false` ⚠️
+  - required contexts:
+    - `4 mechanical lint gates (D1 active; L#65 operation-probe on gate 4)`
+    - `pytest + hypothesis (D1 populates substrate)`
+
+### Legacy branch-protection API surface
+
+`GET /repos/{repo}/branches/main/protection` → HTTP 404 `"Branch not protected"` on both. This is expected. Rulesets and legacy branch protection are two DIFFERENT enforcement surfaces on GitHub; a ruleset does not populate the legacy branch-protection response. Do not treat the 404 as evidence of "no protection" — check the rulesets endpoint alongside it.
+
+## Prerequisite that was omitted from the original brief
+
+Fable ruling 2026-09-04 06:55 UTC (verbatim):
+
+> *"Rulesets and branch protection do not enforce on private repos under a Free org plan. Andrew hit the warning banner mid-configuration. The brief would have led a future reader to configure a ruleset, see 'Active', and believe the branch was protected while nothing was enforced — a gate that reports success without doing anything, which is the exact artefact class this whole tranche exists to eliminate. Amend it: plan prerequisite first, then the click-path."*
+
+**Correct plan matrix (as of 2026-09):**
+
+| Org plan | Public repos: rulesets enforce | Private repos: rulesets enforce |
+|---|---|---|
+| Free | ✅ Yes | ❌ **No — silently ignored, banner shown mid-config** |
+| Team | ✅ Yes | ✅ Yes |
+| Enterprise | ✅ Yes | ✅ Yes |
+
+**Prerequisite check-path (do this BEFORE clicking "Create ruleset" on any private repo):**
+
+1. Open `https://github.com/organizations/lodgeit-labs/settings/billing` (or the org's Billing page).
+2. Confirm plan is Team or Enterprise. If it says Free, upgrade first — the ruleset UI will let you configure and mark it "Active" but the rules will NOT enforce on private repos until the upgrade lands.
+
+Andrew shipped this on 2026-09-04 by upgrading `lodgeit-labs` → Team **before** configuring the two rulesets, so both are wire-verified enforcing today. Anyone applying this pattern to a sibling repo in a different org MUST re-check the plan first.
+
+## Known non-strict gap (surfaced by wire-verification; not yet closed)
+
+Both current rulesets have `strict_required_status_checks_policy: false`. This means:
+
+- ✅ A PR whose head SHA has a red required check CANNOT merge.
+- ❌ A PR whose head SHA has a green check can merge even if `main` has moved since — the CI green was against an older base, and the merged result has NEVER been tested.
+
+This is the exact defect class the "smoke-prod stale-truncated-checkout" arc surfaced (n=3 on this repo through mc-arc). If a merge-order dependency exists across two PRs, PR-B can merge green against a PR-A base state that PR-A itself just superseded, and the merged `main` state has never run CI.
+
+**To close: turn strict mode ON on both rulesets.**
+
+Web UI path:
+1. Settings → Rules → Rulesets → click the `Protect_Main` ruleset.
+2. Under "Require status checks to pass" → tick "Require branches to be up to date before merging".
+3. Save.
+
+REST path (needs admin scope which `lodgeit-labs-pat` currently lacks — Andrew action):
+
+```bash
+# Fetch the current ruleset payload, flip strict to true, PUT it back.
+PAT=<admin_scoped_pat>
+for repo in clawdog-calculator-api depreciation-engine; do
+  # Get the ruleset id from the branches/main enumeration:
+  RULESET_ID=$(curl -sS -H "Authorization: token $PAT" \
+    "https://api.github.com/repos/lodgeit-labs/$repo/rules/branches/main" \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); \
+      print(next(r['ruleset_id'] for r in d if r['type']=='required_status_checks'))")
+  # Fetch the ruleset:
+  curl -sS -H "Authorization: token $PAT" \
+    "https://api.github.com/repos/lodgeit-labs/$repo/rulesets/$RULESET_ID" \
+    > /tmp/ruleset.json
+  # Edit strict to true in the required_status_checks rule; PUT back.
+  # (Manual edit required; the payload is nested. Web UI is faster.)
+done
+```
+
+The cost of leaving strict off is a class-of-defect (stale-base merge) that ClawDog has already hit n=3 times this arc. The cost of turning it on is one extra CI run per merge when `main` has moved, which is 20-60s on either repo. Recommendation: turn it on.
+
+## Check-name parity discipline (going forward)
+
+Fable ruling 2026-09-04 06:55 UTC (verbatim):
+
+> *"A ruleset that requires a check name nothing reports blocks every merge forever, and a ruleset requiring only lint leaves the test suite ungated. Report specifically which check names appear in the required list."*
+
+**Wire-verified parity as of 2026-09-04 06:57 UTC:**
+
+`clawdog-calculator-api`:
+- Ruleset required: `lint + binary-failure gates` ✅
+- CI job name emitted: `lint + binary-failure gates` (grep `.github/workflows/ci.yml`: `jobs.lint-and-test.name`)
+- Match: exact.
+
+`depreciation-engine`:
+- Ruleset required: `4 mechanical lint gates (D1 active; L#65 operation-probe on gate 4)` ✅
+- Ruleset required: `pytest + hypothesis (D1 populates substrate)` ✅
+- CI jobs emitted (per `.github/workflows/ci.yml`): four total — `Scaffold verification`, `pytest + hypothesis`, `ruff + mypy`, `4 mechanical lint gates`.
+- Match: two of four required. Two jobs (`Scaffold verification`, `ruff + mypy`) run on every push but are NOT gating merge — they are advisory-only. This is a design choice, not a defect, but it's the class Fable flagged: someone reading the ruleset can not tell without cross-checking the workflow.
+
+**Discipline for future ruleset changes:**
+
+Whenever adding a new CI job that should be merge-gating:
+1. Add the job to `.github/workflows/ci.yml` with an EXACT job name (no drift-prone commit refs / dates in the name).
+2. Wait for at least one run against the target branch so GitHub knows the name exists.
+3. Add the exact string to the ruleset's required-checks list.
+4. Wire-verify via `GET /repos/{repo}/rules/branches/main` that the required list now contains it, spelt identically to the workflow job name.
+
+If step 4 shows a mismatch (typo, casing, punctuation drift), the ruleset will block every future PR merge until the check reports — which for a nonexistent name is forever. Fable-named artefact class: "a gate that requires a check name nothing reports."
+
+## Cross-repo TODO (sweep queued, not blocking)
+
+Other repos in the constellation that would benefit from the same shape when reached:
+
+- `lodgeit-labs/LodgeiT_FBT` (FBT engine)
+- `lodgeit-labs/Div7A_Calculator` (Div7A engine)
+- `lodgeit-labs/HP_Calculator` (hire-purchase, not-yet-built)
+- Any new engine spun up post-mc00.
+
+Each should carry the same three rules (`deletion`, `non_fast_forward`, `required_status_checks`) with strict-on and every gating CI job's name in the required list.
+
+---
+
+## Original brief (retained for audit trail; superseded by state above)
+
+*Original context: authored 2026-09-04 05:42 UTC when neither ruleset existed. The web-UI click-path and REST reference below are still valid; the prerequisite section above (Team plan check) is what was missing.*
+
+### The wire-truth that motivated the original brief
 
 ```
 GET https://api.github.com/repos/lodgeit-labs/clawdog-calculator-api/branches/main/protection
-HTTP: 404
-{
-  "message": "Branch not protected",
-  "documentation_url": "https://docs.github.com/rest/branches/branch-protection#get-branch-protection",
-  "status": "404"
-}
+HTTP: 404 "Branch not protected"
 
 GET https://api.github.com/repos/lodgeit-labs/clawdog-calculator-api/rulesets
-HTTP: 200
-[]
+HTTP: 200 []
 
 GET https://api.github.com/repos/lodgeit-labs/clawdog-calculator-api/rules/branches/main
-HTTP: 200
-[]
+HTTP: 200 []
 ```
 
-**No branch protection. No rulesets. No rules on `main`.** PR #33 sat with `CI — binary-failure gates` failing on two commits (ee01713 + 405cdb6) and GitHub still displayed "No conflicts with base branch — merging can be performed automatically." The only thing that stopped a red merge was the `[DRAFT]` flag on the PR and Andrew reading the check screenshot before clicking the button.
+No branch protection. No rulesets. No rules on main. PR #33 sat with `CI — binary-failure gates` failing on two commits (ee01713 + 405cdb6) and GitHub still displayed "No conflicts with base branch — merging can be performed automatically." The only thing that stopped a red merge was the `[DRAFT]` flag on the PR and Andrew reading the check screenshot before clicking the button.
 
-Fable's framing (verbatim):
+Fable's original framing (verbatim):
 
 > *"Everything we have built this week — the collected-count floor, the smoke floor, the mechanical lint gates — is a validator with no consumer at the moment that matters, because a human with the merge button can pass it by without being told they are doing so."*
 
-## What to add
+### Path A — GitHub web UI
 
-Require the CI status check on `main`:
+1. Open the repo Settings → **Rules** → **Rulesets** → **New ruleset** → **New branch ruleset**.
+2. Name: `Protect_Main`.
+3. Enforcement status: **Active**.
+4. Bypass list: leave empty.
+5. Target branches → **Include default branch**.
+6. Rules to enable:
+   - **Restrict deletions**
+   - **Block force pushes**
+   - **Require status checks to pass**
+     - Tick **Require branches to be up to date before merging** (strict) — see "Known non-strict gap" above; original brief had this as required, current shipped state has it as false.
+     - Add each gating CI job name verbatim to the required-checks list.
+7. Save.
 
-- **Required status check name:** `lint + binary-failure gates`
-  (This is the `jobs.<job-id>.name` value in `.github/workflows/ci.yml`. Confirmed at the repo root: workflow name `CI — binary-failure gates`, job name `lint + binary-failure gates`.)
-- **Strict = ON** (require branches to be up-to-date before merging). Prevents the "stale PR passes CI on old base" defect the smoke-prod arc hit twice.
-- **Do not allow bypass by administrators.** Andrew is the only human with write, so this is a one-line "you promise to always merge through the PR flow" self-covenant. In practice CI takes 20-60s to run on a push; the friction cost is trivial.
+### Path B — REST API
 
-## Two paths — pick either
-
-### Path A — GitHub web UI (2 minutes; explicit click-path)
-
-1. Open **https://github.com/lodgeit-labs/clawdog-calculator-api** in a browser (logged in as the `lodgeit-labs` org admin, which is you).
-2. Click the **Settings** tab (top-right of the repo nav bar, next to Insights).
-3. In the left sidebar under **Code and automation**, click **Branches**.
-4. Under **Branch protection rules**, click the green **Add branch protection rule** button.
-5. In **Branch name pattern**, type: `main`
-6. Tick **Require a pull request before merging**.
-   - Under it, tick **Require approvals** and set the count to `1` (self-approval covers this since you're the sole reviewer today; when Anton/Renat join reviewer flow, this stays 1 without any config change).
-   - Leave **Dismiss stale pull request approvals when new commits are pushed** UNticked (would force re-approval after every push; unnecessary given the reviewer is the same person).
-7. Tick **Require status checks to pass before merging**.
-   - Tick **Require branches to be up to date before merging** (strict mode).
-   - In the **Search for status checks in the last week for this repository** box, type: `lint + binary-failure gates`
-     - The check should appear in the dropdown (CI has run for it on both commits of PR #33 within the last hour, so GitHub knows the name).
-     - Click it to add it to the required list.
-   - **If the check does not appear in the dropdown**, that means CI has not registered a run against `main` recently; workaround: type the exact string `lint + binary-failure gates` and press Enter to add it as a required check pending — it will engage on the next run against `main`.
-8. Leave everything else at defaults.
-9. Scroll to the bottom, click the green **Create** button.
-10. You will be prompted for your GitHub credential (usual OAuth flow); complete it.
-
-Verify: re-open the same Branches page and confirm the rule appears with `main` as the pattern and `lint + binary-failure gates` in the "Required status checks" line.
-
-### Path B — REST API (30 seconds; one curl)
-
-Requires a PAT with `admin` scope on the repo. `lodgeit-labs-pat` currently has `metadata=read` + `contents=read` + `actions=read` (fetched mc00 05:34 UTC); it does NOT have `admin`. You (Andrew) can either grant `admin` to the PAT temporarily or use your web session — Path A is more auditable and only takes two minutes.
-
-For reference (do NOT run under the current PAT scope):
-
-```bash
-# Replace <PAT_WITH_ADMIN> with a PAT that has admin:repo_hook + write:repo_admin.
-curl -X PUT \
-  -H "Authorization: token <PAT_WITH_ADMIN>" \
-  -H "Accept: application/vnd.github.v3+json" \
-  https://api.github.com/repos/lodgeit-labs/clawdog-calculator-api/branches/main/protection \
-  -d '{
-    "required_status_checks": {
-      "strict": true,
-      "checks": [
-        {"context": "lint + binary-failure gates"}
-      ]
-    },
-    "enforce_admins": false,
-    "required_pull_request_reviews": {
-      "required_approving_review_count": 1,
-      "dismiss_stale_reviews": false
-    },
-    "restrictions": null
-  }'
-```
-
-Note `enforce_admins: false` is deliberate — the ClawDog Git Protocol already routes all Andrew writes through PR + human sign-off; enforcing it via GitHub too would trigger the friction cost on legitimate emergency rollbacks. If you want that ratcheted up later, flip to `true` in a follow-up.
-
-## Verify it engaged
-
-After either path, this should return HTTP 200 with the protection ruleset body:
-
-```bash
-PAT=$(awk -F'[:@]' '/lodgeit-labs-pat/ {print $3}' ~/.git-credentials | head -1)
-curl -sS -H "Authorization: token $PAT" \
-  https://api.github.com/repos/lodgeit-labs/clawdog-calculator-api/branches/main/protection \
-  | python3 -m json.tool
-```
-
-Expected: `required_status_checks.checks[]` includes `{"context": "lint + binary-failure gates", ...}` and `strict: true`.
-
-Independent probe: open PR #33 in the browser and confirm the merge button says something like *"Required check — waiting for status checks to complete"* rather than the unconditional "merging can be performed automatically" that it says today.
-
-## After this ships
-
-The following gates immediately become enforced-at-merge rather than advisory:
-
-- **Ruff import discipline** — the failure class that caught out mc00 (ee01713 + 405cdb6).
-- **Deploy-placeholder guard** — the mc16-2026-05-25 arc.
-- **OpenAPI drift** — Lesson #35 anchor.
-- **Full pytest suite** — 247 tests as of mc00.
-- **Collected-count floor 230** — Fable mc19 gate; catches stale-checkout / massive test-loss scenarios.
-
-The pre-push hook Layer 3 becomes correctly labelled as what Fable ruled it should be: a feedback-loop shortener. Nothing to change on that side once this ships.
-
-## Cross-repo pattern
-
-Same wire-truth check for the sibling engines: `lodgeit-labs/depreciation-engine`, `lodgeit-labs/div7a-engine`, `lodgeit-labs/LodgeiT_FBT`. Each of them should carry an equivalent `main` protection with their own CI job name required. Not blocking this PR; noted as a follow-up sweep. When you have branch-protection admin on any of them, apply the same shape.
+Requires a PAT with `admin:repo_hook` or `admin` scope on the repo. `lodgeit-labs-pat` today has `metadata=read` + `contents=read` + `actions=read`; not admin. Andrew shipped via Path A.
 
 ---
 
-*Fable ruling banked mc00-2026-09-04 05:41 UTC. ClawDog authored 05:42 UTC. Waiting on Andrew action; not blocking defence-in-depth or the rest of PR #33's six-item batch.*
+*Ruling banked mc00-2026-09-04 05:41 UTC (original) + 06:55 UTC (Fable amendment: plan prerequisite). ClawDog wire-verified 06:57 UTC. Runbook status: ACTIVE.*
