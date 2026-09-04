@@ -111,7 +111,22 @@ def advisory_block(
     differs.
     """
     j = (jurisdiction or "AU").upper()
-    empty_manifest = not manifest_rate_table_uris
+    # Fable Q3 mc22 2026-09-04 ruling: distinguish empty-manifest
+    # (asserts a negative: no rate tables consumed) from missing-manifest
+    # (asserts nothing about consumption).
+    #
+    # * `manifest_rate_table_uris is None` (absent / not supplied):
+    #   default to the incumbent text — it does NOT claim absence, so
+    #   it cannot be a fabrication. Companion `test_manifest_fidelity`
+    #   asserts every registered calculator's response DOES carry a
+    #   manifest block, so a missing manifest is a test failure rather
+    #   than a runtime guess.
+    # * `manifest_rate_table_uris == []` (explicitly empty): use the
+    #   empty-manifest text — the manifest is present + declares no
+    #   rate tables, and the advisory follows that declaration.
+    # * `manifest_rate_table_uris = [...]` (non-empty): use the
+    #   incumbent citing-rate-tables text.
+    empty_manifest_declared = manifest_rate_table_uris == []
     if j == "UK":
         # UK forward-looking placeholder; no empty-manifest variant
         # authored yet because no UK-basis calculator ships. When UK
@@ -125,7 +140,7 @@ def advisory_block(
         }
     # Default = AU.
     disclaimer = (
-        ADVISORY_TEXT_AU_EMPTY_MANIFEST if empty_manifest
+        ADVISORY_TEXT_AU_EMPTY_MANIFEST if empty_manifest_declared
         else ADVISORY_TEXT_AU
     )
     return {

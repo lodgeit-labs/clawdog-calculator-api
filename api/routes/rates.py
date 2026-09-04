@@ -15,7 +15,14 @@ from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import unquote
 
-import yaml
+# Fable Q4 mc22 2026-09-04 ruling: a validator with no consumer is not
+# a safety property (L#105-family). Prior state reported
+# `Library stubs not installed for "yaml"` on every mypy run and
+# nobody acted on it — the reader learned to ignore mypy output. Pinned
+# here with a targeted ignore + the reason so a NEW error surfaces
+# distinctly. If types-PyYAML is later added to the dev deps, remove
+# the ignore.
+import yaml  # type: ignore[import-untyped]  # types-PyYAML not in dev deps; see Fable Q4 mc22
 from fastapi import APIRouter, HTTPException, Query, status
 
 from api.lib.rate_table_resolver import (
