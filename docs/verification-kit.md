@@ -10,6 +10,33 @@
 > #5 (Pydantic schema extension for OT #81 chained-DV `acquisition_cost`)
 > merged.
 
+---
+
+## Section 0 — Per-calculator readiness (Fable-ruled per-calculator table)
+
+_Banked mc05-2026-09-05 per Fable dispatch 04:05 UTC. This section is
+authoritative for cross-calculator sharing decisions. The step-by-step
+verification below (Sections A–D) exercises the FBT car-operating-cost
+path only; it does NOT indicate per-calculator sharing readiness._
+
+| Calc | State | Ship-with-caveat notes |
+|---|---|---|
+| **Depreciation** | ✅ **shareable** | D7 acquisition-inside-range documented as a known limitation. |
+| **Div7A** | ✅ **shareable** | Gateway refuses non-positive `amalgamated_base` at HTTP 422 (`Field(..., gt=0)` in `api/schemas/div7a.py` shipped 2026-09-04 as PR #34). Engine refuses same at HTTP 400 with typed `non_positive_amalgamated_base` refusal (`lodgeit-labs/Div7A_Engine` PR #6 merged 2026-09-05 01:47 UTC; Cloud Run revision `div7a-engine-00005-ppb` serving 100% traffic since 02:33 UTC). Deploy pipeline defect (12 days of merges-not-reaching-wire) fixed at its cause via `lodgeit-labs/Div7A_Engine` PR #7 (`environment: production` removal); no repeat expected. |
+| **FBT** | ❌ **blocked on the aggregate-gross-up class** — **1 of 16, class open** | LAFHA now emits `gross_up_factor` + `grossed_up_taxable_value` + `fbt_payable` (all three non-null; wire-verified 2026-09-05 04:05 UTC after `lodgeit-labs/LodgeiT_FBT` PR #54 merged + deployed). **15 benefit categories still return null on those three fields.** An integrator summing `fbt_payable` across benefit types silently undercounts by whatever share is contributed by the still-null-emitting categories. Non-null-emitting: `car_statutory_formula`, `car_operating_cost`, `lafha`. Null-emitting: `loan_benefit_type_2`, `board`, `housing`, `tebe`, `car_parking_actual`, `car_parking_statutory_228`, `car_parking_register_12wk`, `debt_waiver`, `expense_payment`, `property`, `property_in_house`, `residual`, `residual_in_house`, `meal_entertainment`, + legacy `car_statutory` shim (which emits a different-shape response entirely; ships hardcoded 1.8868/2.0802/0.47/0.20/365 as D20). Fable-ruled Phase 2 (dispatch-boundary decorator) closes the class structurally rather than patch 16 sites individually. Additional defects D19 (silent Type-1 acceptance; 6 predicate sites; **~10% wrong-number silent output**) + D20 (route ambiguity + rate-literals on legacy shim) minted mc03-2026-09-05. Neither shareable-blocking on its own; both class-open state. |
+
+### Correction anchor (Fable-named, banked verbatim)
+
+> *"The gate was never D13; D13 was the instance I happened to observe."* (Fable 2026-09-05 03:49 UTC)
+
+The pre-mc05 FBT row here (from `docs/mc01-2026-09-04-alias-sweep-and-s10-investigation.md`) said *"FBT NOT shareable pending D13 + D18"* — derived from a single wire comparison (LAFHA null vs Car OC 820.29) and generalised without a survey of the calculator registry. Survey ran mc03-2026-09-05 03:30 UTC via grep of every `calculate_fbt_*/2` in `FBT_Engine.pl` and found n=16 non-callers, of which ≥14 are user-reachable. **A readiness gate derived from one observed instance is a sample, not a survey.**
+
+### Manifest-fidelity mechanism verified same session
+
+LAFHA's `manifest.rate_table_uris` went from `[]` to citing `gross-up-type-2` + `fbt-rate` post-D13, and the D6 conditional in the gateway advisory automatically switched from the empty-manifest branch back to the incumbent TAA/TASA framing with no code change. Second instance this week that a self-declaring surface makes downstream text correct by construction instead of by maintenance (first: COC deemed-amounts manifest citing three tables only when the computation ran). Bank as the pattern's payoff; the class of defect that motivates hand-maintained response text is closable structurally by rate_uris_consumed being emit-by-computation.
+
+---
+
 You're being asked to independently verify that the recently-deployed
 two-service application is running correctly on Google Cloud Run.
 
