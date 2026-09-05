@@ -425,6 +425,29 @@ The verification-kit at `docs/verification-kit.md` § Known Issues currently car
 
 Verification-kit update queued for next PR alongside the D13/D18 engine work.
 
+### CORRECTION 2026-09-05 mc05 per Fable ruling 04:05 UTC
+
+The table above's third row was **derived from a single wire comparison** (LAFHA null vs Car OC 820.29) and generalised to a per-calculator readiness claim without a survey. Survey ran mc03-2026-09-05 03:30 UTC via grep of every `calculate_fbt_*/2` in `FBT_Engine.pl`: **19 total calculator predicates; 3 call `fbt_gross_up_arithmetic/6`; 16 do NOT** — of which **≥14 are user-reachable via distinct `route_calc` entries**. LAFHA on its own was one of eleven wire-reachable null-emitting benefit categories.
+
+**Fable-anchored sharper form (verbatim 2026-09-05 03:49 UTC):** *"the gate was never D13; D13 was the instance I happened to observe."* A readiness gate derived from one observed instance is a sample, not a survey.
+
+**Deployment timeline for the Div7A row correction** (parallel arc; ratified same session):
+
+- 2026-09-04 12:38 UTC — Div7A gateway `Field(..., gt=0)` shipped in `clawdog-calculator-api` PR #34; wire-verified live.
+- 2026-09-05 01:47 UTC — Div7A engine typed refusal `non_positive_amalgamated_base` merged as `lodgeit-labs/Div7A_Engine` PR #6.
+- 2026-09-05 02:33 UTC — Div7A deploy pipeline unstuck (12-day defect closed at its cause via `lodgeit-labs/Div7A_Engine` PR #7 `environment: production` removal + waiting-run cancellation + re-run). Cloud Run revision `div7a-engine-00005-ppb` serving 100% traffic with typed refusal live.
+- 2026-09-05 02:34 UTC — engine + gateway both refuse non-positive amalgamated_base at 422 (gateway) + 400 (engine); defence-in-truth verified.
+
+### CORRECTED table (mc05-2026-09-05; supersedes the table above)
+
+| Calc | Sharing state | Blockers | Notes |
+|---|---|---|---|
+| Depreciation | ✅ shareable | D7 acquisition-inside-range documented as a known limitation |  |
+| Div7A | ✅ shareable | none live | Gateway `Field(..., gt=0)` + engine `non_positive_amalgamated_base` typed refusal both live on the wire; deploy pipeline fixed at its cause (`environment: production` removal PR #7) |
+| FBT | ❌ **blocked on the aggregate-gross-up class** — 16 predicates, ≥14 routes | LAFHA is now correct (`fbt_payable`, `gross_up_factor`, `grossed_up_taxable_value` all non-null post-D13 wire-verify 2026-09-05 04:05 UTC). **15 benefit categories still return null** and an integrator summing across them still undercounts. **1 of 16, class open.** | D19 (silent Type-1 acceptance in 5 predicates: housing/tebe/expense_payment/meal_entertainment/property_internal/residual_internal) + D20 (route ambiguity + rate-literals on legacy `calculate_fbt_car_statutory` shim) also minted mc03. Phase-2 dispatch-boundary decorator ruling banked by Fable to close the class structurally rather than patch 16 sites individually. |
+
+**Anchor:** manifest-fidelity mechanism verified same session — LAFHA's `manifest.rate_table_uris` went from `[]` to citing `gross-up-type-2` + `fbt-rate`, and the D6 conditional automatically switched the advisory from the empty-manifest branch back to the incumbent TAA/TASA framing with no code change. Second instance this week (first: COC deemed-amounts manifest citing three tables only when the computation ran). Bank as the pattern's payoff: **a self-declaring surface makes downstream text correct by construction instead of by maintenance.**
+
 ---
 
 ## PR #34 status
