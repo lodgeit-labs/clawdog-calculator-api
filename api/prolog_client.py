@@ -205,10 +205,16 @@ def _authenticated_headers(url: str) -> dict[str, str]:
         token = _google_id_token.fetch_id_token(request, audience)
         return {"Authorization": f"Bearer {token}"}
     except Exception as exc:  # noqa: BLE001 — best-effort; log + fall through
-        logger.warning(
-            "engine ID-token fetch failed for audience=%s (%s: %s); "
-            "emitting unauthenticated request — Cloud Run will 403 if the "
-            "receiving engine has been locked down",
+        # ERROR-level per Fable 2026-09-06 UTC: in production this means
+        # every subsequent engine call from this gateway process is about
+        # to fail with an engine_auth_failed 502. Not a warning, not a
+        # transient — alertable at SRE dashboard threshold.
+        logger.error(
+            "engine_id_token_fetch_failed: audience=%s cause=%s: %s; "
+            "emitting unauthenticated request — Cloud Run engine will 403 "
+            "and gateway will surface as 502 engine_auth_failed. Every "
+            "engine call from this process will fail until the metadata "
+            "server / SA / audience configuration is repaired.",
             audience, exc.__class__.__name__, exc,
         )
         return {}

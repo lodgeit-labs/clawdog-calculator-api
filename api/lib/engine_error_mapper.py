@@ -51,9 +51,13 @@ Mapping (canonical, post-amendments):
     engine 400 bare                 → 400 engine_bad_request  (routes.py:860)
     engine 409 / 413 / 422          → same 4xx, caller's fault (Amendment 1)
         + 422 defence-in-depth log line (Amendment 3)
-    engine 401 / 403                → 502 engine_unavailable  (Amendment 1;
-                                       IAM/authorisation is OUR fault, not
-                                       the caller's — Approach D readiness)
+    engine 401 / 403                → 502 engine_auth_failed  (mut-2026-09-06
+                                       -mc14 per Fable 2026-09-06 UTC
+                                       engine-lock-down directive; DISTINCT
+                                       class from engine_unavailable so
+                                       auth failures partition cleanly from
+                                       network failures at caller + SRE
+                                       dashboard side; live post-Step 4)
     engine 404 / 405                → 502 engine_unavailable  (Amendment 1;
                                        the gateway is calling a path the
                                        engine doesn't serve — mc11-2026-08-02
@@ -108,7 +112,19 @@ _INTERNAL_ENGINE_FIELDS = frozenset({"numeric_mode", "events"})
 # RATE_LIMITED_4XX: engine is throttling us. 503 with Retry-After when the
 #                   engine passes one through; the caller SHOULD retry.
 _CALLER_FAULT_4XX = frozenset({400, 409, 413, 422})
-_GATEWAY_FAULT_4XX_AS_502 = frozenset({401, 403, 404, 405})
+_GATEWAY_FAULT_4XX_AS_502 = frozenset({404, 405})
+# Engine lock-down Step 1 (mut-2026-09-06-mc14 per Fable 2026-09-06 UTC).
+# Split 401/403 out of the generic gateway-fault partition into a distinct
+# auth-failure class. After Step 4 removes allUsers invoker, an engine 403
+# is the live signal for token-fetch failure (metadata-server hiccup,
+# missing IAM invoker binding, expired token). Blending it into the generic
+# engine_unavailable slug would make it impossible to distinguish auth
+# failures from network failures at the caller side (and at the SRE
+# dashboard side), which is exactly what Fable's directive names as the
+# regression to prevent. Same 502 mapping (from the caller's viewpoint the
+# engine is unavailable to us; the auth failure is our identity problem,
+# not theirs) but with a distinct error slug + distinct log signal.
+_GATEWAY_AUTH_FAILURE_4XX = frozenset({401, 403})
 _RATE_LIMITED_4XX = frozenset({429})
 
 
@@ -287,27 +303,63 @@ def map_engine_error_to_http(
                 },
             )
 
-        # --- 1c: gateway-fault 4xx (Fable Amendment 1: 401/403/404/405).
+        # --- 1c.auth: engine 401/403 → distinct 502 engine_auth_failed
+        # class (mut-2026-09-06-mc14; Fable 2026-09-06 UTC directive).
+        #
+        # After Step 4 removes allUsers invoker from each engine, an engine
+        # 403 is the live signal for token-fetch failure (metadata-server
+        # hiccup, missing IAM invoker binding, expired token, wrong
+        # audience). Fable's rule: distinct 5xx with an engine_auth_failed
+        # class; not blended into engine_unavailable; not a 500. Same 502
+        # status (from caller viewpoint the engine is unavailable to us;
+        # the auth failure is our identity problem, not theirs) but
+        # distinct error slug + ERROR-level log so an SRE dashboard can
+        # partition auth failures from network failures.
+        #
+        # The distinct slug also lets the caller's client library
+        # discriminate: retrying on engine_auth_failed is pointless
+        # (misconfiguration persists across retries) whereas retrying on
+        # engine_unavailable can succeed (transient network flake).
+        if status_code in _GATEWAY_AUTH_FAILURE_4XX:
+            logger.error(
+                "gateway_engine_auth_failed: engine=%s url=%s returned %s; "
+                "gateway surfaces as 502 engine_auth_failed. Likely causes: "
+                "(1) gateway SA missing roles/run.invoker on engine; "
+                "(2) metadata-server ID-token fetch failed at request time; "
+                "(3) ID-token audience mismatch. Check Cloud Run IAM policy "
+                "on the engine + the WARNING/ERROR log line from "
+                "api.prolog_client._authenticated_headers on this request.",
+                exc.engine,
+                getattr(exc, "url", "<unknown>"),
+                status_code,
+            )
+            return HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "error": "engine_auth_failed",
+                    "error_code": exc.error_code,
+                    "engine": exc.engine,
+                    "status_code": status_code,
+                    "detail": _sanitise_engine_body(dict(exc.detail)),
+                },
+            )
+
+        # --- 1c.other: gateway-fault 4xx (Fable Amendment 1: 404/405).
         # Never blame the caller for OUR configuration failure. 404 is the
         # incident that opened this arc — the gateway called
         # `/depreciation/audit` on the engine and the engine 404'd; under
         # a digit-based mapper that would have surfaced as "not found" to
         # the caller, sending them to look for a resource that was never
-        # the problem. 401/403 is the Approach-D readiness path (engine
-        # closed to IAM invoker binding; unbound gateway gets 403).
+        # the problem. (401/403 auth-partitioned separately in 1c.auth
+        # above per mut-2026-09-06-mc14.)
         if status_code in _GATEWAY_FAULT_4XX_AS_502:
             logger.error(
                 "gateway_engine_misconfiguration: engine=%s url=%s "
                 "returned %s; gateway surfaces as 502 rather than "
-                "blaming caller. Class: %s.",
+                "blaming caller. Class: wrong_path.",
                 exc.engine,
                 getattr(exc, "url", "<unknown>"),
                 status_code,
-                (
-                    "auth"
-                    if status_code in (401, 403)
-                    else "wrong_path"
-                ),
             )
             return HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,

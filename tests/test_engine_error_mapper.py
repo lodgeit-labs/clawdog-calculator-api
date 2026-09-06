@@ -215,16 +215,30 @@ def test_engine_413_maps_to_gateway_413():
 
 
 # ============================================================================
-# Amendment 1 (gateway-fault) — engine 401/403/404/405 → gateway 502
+# Amendment 1 + mut-2026-09-06-mc14 — engine 401/403 → 502 engine_auth_failed;
+#                                       engine 404/405 → 502 engine_unavailable
 # ============================================================================
 
 
 @pytest.mark.parametrize("engine_status", [401, 403])
-def test_engine_auth_failure_maps_to_gateway_502(engine_status, caplog):
-    """Approach-D readiness (Fable Amendment 1): when engines close to IAM
-    invoker binding, an unbound gateway gets 401/403 from the engine. The
-    mapper must NOT tell every caller they are forbidden — this is OUR
-    misconfiguration."""
+def test_engine_auth_failure_maps_to_gateway_502_engine_auth_failed(engine_status, caplog):
+    """Engine lock-down Step 1 (mut-2026-09-06-mc14 per Fable 2026-09-06 UTC):
+    engine 401/403 is a DISTINCT class from engine_unavailable. After Step 4
+    removes allUsers invoker, 403 is the live signal for token-fetch failure
+    (metadata-server hiccup, missing IAM invoker binding, expired token,
+    wrong audience). Fable's rule:
+
+      *"a distinct 5xx with an engine_auth_failed-style class — not blended
+      into engine-unreachable, and not a 500."*
+
+    Same 502 status (from caller viewpoint the engine is unavailable to us;
+    the auth failure is our identity problem, not theirs) but distinct
+    error slug + ERROR-level log so an SRE dashboard can partition auth
+    failures from network failures. The distinct slug also lets the
+    caller's client library discriminate: retrying on engine_auth_failed
+    is pointless (misconfiguration persists) whereas retrying on
+    engine_unavailable can succeed (transient network flake).
+    """
     exc = PrologEngineUnavailable(
         error_code="engine_http_error",
         detail={"status_code": engine_status, "body": "Unauthorized"},
@@ -234,12 +248,35 @@ def test_engine_auth_failure_maps_to_gateway_502(engine_status, caplog):
     with caplog.at_level(logging.ERROR, logger="api.lib.engine_error_mapper"):
         http_exc = map_engine_error_to_http(exc)
     assert http_exc.status_code == 502, (
-        f"engine {engine_status} is gateway-fault under Amendment 1; "
-        f"must surface as 502 not {http_exc.status_code}"
+        f"engine {engine_status} must surface as 502 not {http_exc.status_code}"
     )
-    assert http_exc.detail["error"] == "engine_unavailable"
+    assert http_exc.detail["error"] == "engine_auth_failed", (
+        f"engine {engine_status} must carry distinct engine_auth_failed slug, "
+        f"got {http_exc.detail['error']!r}"
+    )
+    assert http_exc.detail["status_code"] == engine_status
     assert any(
-        "gateway_engine_misconfiguration" in rec.message for rec in caplog.records
+        "gateway_engine_auth_failed" in rec.message for rec in caplog.records
+    ), "expected distinct gateway_engine_auth_failed log signal"
+
+
+def test_engine_auth_failed_slug_not_blended_with_engine_label_override():
+    """engine_label parameter overrides engine_unavailable / engine_timeout
+    slugs on route-specific paths (e.g. div7a_engine_unavailable). The new
+    engine_auth_failed slug must NOT be overridable by engine_label — the
+    auth-partition semantic must survive label overrides so SRE dashboards
+    can still discriminate auth failures constellation-wide.
+    """
+    exc = PrologEngineUnavailable(
+        error_code="engine_http_error",
+        detail={"status_code": 403, "body": "Unauthorized"},
+        engine="div7a",
+        url="http://div7a-engine.test",
+    )
+    http_exc = map_engine_error_to_http(exc, engine_label="div7a_engine_unavailable")
+    assert http_exc.status_code == 502
+    assert http_exc.detail["error"] == "engine_auth_failed", (
+        "engine_auth_failed slug must survive engine_label override"
     )
 
 

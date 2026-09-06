@@ -118,13 +118,17 @@ def test_authenticated_headers_cloud_run_url_fetches_token() -> None:
     assert call_args.args[1] == "https://fbt-engine-8340695160.australia-southeast1.run.app"
 
 
-def test_authenticated_headers_fetch_failure_returns_empty_and_logs(
+def test_authenticated_headers_fetch_failure_returns_empty_and_logs_error(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """When metadata fetch raises (no metadata server, network flake, IAM
-    misconfig), the helper returns {} + logs a warning. Cloud Run 403 is
-    the authority; the gateway emits the request unauthenticated + the
-    engine's IAM gate rejects it hard.
+    misconfig), the helper returns {} + logs at ERROR level (not WARNING).
+
+    Fable 2026-09-06 UTC: *"the WARNING on token-fetch failure should be
+    ERROR — in production it means every engine call is about to fail."*
+    Cloud Run engine 403 is the authority; the gateway surfaces as 502
+    engine_auth_failed (see engine_error_mapper.py path 1c.auth). Alertable
+    at SRE dashboard threshold.
     """
     with (
         patch.object(prolog_client, "_GOOGLE_AUTH_AVAILABLE", True),
@@ -132,13 +136,17 @@ def test_authenticated_headers_fetch_failure_returns_empty_and_logs(
         patch.object(prolog_client, "_google_id_token") as mock_id_token,
     ):
         mock_id_token.fetch_id_token.side_effect = Exception("metadata server unreachable")
-        with caplog.at_level(logging.WARNING, logger="api.prolog_client"):
+        with caplog.at_level(logging.ERROR, logger="api.prolog_client"):
             result = _authenticated_headers(
                 "https://fbt-engine-8340695160.australia-southeast1.run.app/x"
             )
 
     assert result == {}
-    assert any("engine ID-token fetch failed" in r.message for r in caplog.records)
+    error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(error_records) == 1, (
+        f"expected exactly 1 ERROR log, got {len(error_records)}"
+    )
+    assert "engine_id_token_fetch_failed" in error_records[0].message
 
 
 # ---------------------------------------------------------------------------
