@@ -459,6 +459,34 @@ class FBTDebtWaiverInput(BaseModel):
     )
 
 
+# Phase 3 (mut-2026-09-06-mc12) — shared s.149A-required-fbt_type field-spec
+# used by the 6 D19 predicate input schemas (housing / tebe / expense_payment /
+# meal_entertainment / property / residual). Making the field REQUIRED (no
+# default) removes the silent statute read that a default value would
+# constitute per Fable ruling 2026-09-06 02:18 UTC. Absent value from caller
+# will be rejected by FastAPI/Pydantic as HTTP 422 ("Field required") — the
+# gateway does NOT map that to HTTP 400 today (Fable's specified 400 message
+# comes from the engine's HTTP 400 typed refusal envelope when a caller
+# bypasses the gateway; see LodgeiT_FBT/FBT_Engine.pl handle_calculate_fbt_error
+# for the s.149A message). Both surfaces reject; the specific status code
+# differs at the two entry points until we add a custom Pydantic validator
+# to sharpen the gateway-side 422 → 400 with the same message. That surface-
+# code question is banked for a follow-on turn per Fable's "Anything after
+# the flip is a new PR" discipline.
+_FBT_TYPE_D19_DESCRIPTION = (
+    "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs "
+    "Type 2 turns on whether the provider (or a member of the same GST group) "
+    "is entitled to an input tax credit under Division 111 of the A New Tax "
+    "System (Goods and Services Tax) Act 1999 because of the provision of "
+    "the benefit (s.149A(1)), or entitled to an input tax credit because of "
+    "the acquisition or importation of the thing that the benefit consists "
+    "of (s.149A(2)). This engine cannot infer the provider's GST position "
+    "from the calculator inputs; the caller must state it. 'Type 1' → "
+    "downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' "
+    "→ downstream gross-up factor = 1.8868 (not a GST-creditable benefit)."
+)
+
+
 class _ExpensePaymentBaseInput(BaseModel):
     """Shared input shape for Phase 2c Expense Payment (std + in-house variants).
 
@@ -488,9 +516,9 @@ class _ExpensePaymentBaseInput(BaseModel):
             "in-house variant; clamped to FY2026 in-house cap (FBTAA s.62)."
         ),
     )
-    fbt_type: str | None = Field(
-        None, alias="fbtType",
-        description="'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+    fbt_type: Literal["Type 1", "Type 2"] = Field(
+        ..., alias="fbtType",
+        description=_FBT_TYPE_D19_DESCRIPTION,
     )
 
 
@@ -530,9 +558,9 @@ class _PropertyBaseInput(BaseModel):
             "in-house variant; clamped to FY2026 in-house cap (FBTAA s.62)."
         ),
     )
-    fbt_type: str | None = Field(
-        None, alias="fbtType",
-        description="'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+    fbt_type: Literal["Type 1", "Type 2"] = Field(
+        ..., alias="fbtType",
+        description=_FBT_TYPE_D19_DESCRIPTION,
     )
 
 
@@ -604,9 +632,9 @@ class _ResidualBaseInput(BaseModel):
             "in-house variant; clamped to FY2026 in-house cap (FBTAA s.62)."
         ),
     )
-    fbt_type: str | None = Field(
-        None, alias="fbtType",
-        description="'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+    fbt_type: Literal["Type 1", "Type 2"] = Field(
+        ..., alias="fbtType",
+        description=_FBT_TYPE_D19_DESCRIPTION,
     )
 
 
@@ -699,9 +727,9 @@ class FBTHousingInput(BaseModel):
         0, ge=0, alias="recipientRent",
         description="Rent paid by recipient to employer (AUD); reduces taxable value.",
     )
-    fbt_type: str | None = Field(
-        None, alias="fbtType",
-        description="'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+    fbt_type: Literal["Type 1", "Type 2"] = Field(
+        ..., alias="fbtType",
+        description=_FBT_TYPE_D19_DESCRIPTION,
     )
 
 
@@ -764,12 +792,9 @@ class FBTTebeInput(BaseModel):
         ..., ge=0, alias="recreation",
         description="Total recreation entertainment expenditure (AUD).",
     )
-    fbt_type: str | None = Field(
-        None, alias="fbtType",
-        description=(
-            "'Type 1' (creditable acquisitions) or 'Type 2' (input-taxed); "
-            "defaults engine-side to 'Type 2'."
-        ),
+    fbt_type: Literal["Type 1", "Type 2"] = Field(
+        ..., alias="fbtType",
+        description=_FBT_TYPE_D19_DESCRIPTION,
     )
 
 
@@ -929,9 +954,9 @@ class _MealEntertainmentBaseInput(BaseModel):
         0, ge=0, alias="seminarMeals",
         description="Exempt seminar meals (s.32-30 ITAA 1997); AUD.",
     )
-    fbt_type: str | None = Field(
-        None, alias="fbtType",
-        description="'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
+    fbt_type: Literal["Type 1", "Type 2"] = Field(
+        ..., alias="fbtType",
+        description=_FBT_TYPE_D19_DESCRIPTION,
     )
 
 

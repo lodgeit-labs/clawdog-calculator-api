@@ -107,10 +107,16 @@ def test_outbound_engine_payload_carries_residual_value(
                 f"/v1/calculators/{quote(calc_uri, safe='')}/"
                 f"{quote(PERIOD_URI, safe='')}"
             )
+            # Phase 3 (mut-2026-09-06-mc12): fbtType is required on the 6
+            # D19 predicate input schemas per Fable ruling 2026-09-06 02:18
+            # UTC. This test asserts alias-shape reaches the engine unchanged;
+            # supply fbtType so the schema validates (Type 2 chosen; test is
+            # about wire-shape not Type-1/Type-2 branching).
             body = {
                 "residualValue": 800,
                 "otherwiseDeductiblePercentage": 0,
                 "employeeContribution": 0,
+                "fbtType": "Type 2",
             }
             if "in-house" in calc_uri:
                 body["inhouseBenefitClaimed"] = 500

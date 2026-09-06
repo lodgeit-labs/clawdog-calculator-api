@@ -955,16 +955,13 @@
             "type": "number"
           },
           "fbtType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
+            "enum": [
+              "Type 1",
+              "Type 2"
             ],
-            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
-            "title": "Fbttype"
+            "title": "Fbttype",
+            "type": "string"
           },
           "inhouseBenefitClaimed": {
             "anyOf": [
@@ -989,7 +986,8 @@
         },
         "required": [
           "expenseValue",
-          "otherwiseDeductiblePercentage"
+          "otherwiseDeductiblePercentage",
+          "fbtType"
         ],
         "title": "FBTExpensePaymentInHouseInput",
         "type": "object"
@@ -1012,16 +1010,13 @@
             "type": "number"
           },
           "fbtType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
+            "enum": [
+              "Type 1",
+              "Type 2"
             ],
-            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
-            "title": "Fbttype"
+            "title": "Fbttype",
+            "type": "string"
           },
           "inhouseBenefitClaimed": {
             "anyOf": [
@@ -1046,7 +1041,8 @@
         },
         "required": [
           "expenseValue",
-          "otherwiseDeductiblePercentage"
+          "otherwiseDeductiblePercentage",
+          "fbtType"
         ],
         "title": "FBTExpensePaymentInput",
         "type": "object"
@@ -1056,16 +1052,13 @@
         "description": "Input for Phase 2f Non-Remote Housing Fringe Benefit (engine: ``calculate_fbt_housing``).\n\nFBTAA s.26(1)(c) + s.26(2)(b). Engine arithmetic at FBT_Engine.pl L2761.\nIndexation factor is period-scoped per s.26(2)(b); FY2026 published State\nrates span 0.988 (TAS) to 1.100 (WA). C# range-clamp [0.001, 1.099] under-\nindexes WA \u2014 mirrored here for parity (banked forward concern OT #95\nsibling).",
         "properties": {
           "fbtType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
+            "enum": [
+              "Type 1",
+              "Type 2"
             ],
-            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
-            "title": "Fbttype"
+            "title": "Fbttype",
+            "type": "string"
           },
           "housingBenefitValue": {
             "description": "Statutory annual value of the housing right at start of FBT year (AUD).",
@@ -1103,7 +1096,8 @@
           }
         },
         "required": [
-          "housingBenefitValue"
+          "housingBenefitValue",
+          "fbtType"
         ],
         "title": "FBTHousingInput",
         "type": "object"
@@ -1267,16 +1261,13 @@
             "type": "number"
           },
           "fbtType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
+            "enum": [
+              "Type 1",
+              "Type 2"
             ],
-            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
-            "title": "Fbttype"
+            "title": "Fbttype",
+            "type": "string"
           },
           "overnightMeals": {
             "anyOf": [
@@ -1352,7 +1343,8 @@
         "required": [
           "employees",
           "employeesAssociates",
-          "employeesNonassociates"
+          "employeesNonassociates",
+          "fbtType"
         ],
         "title": "FBTMealEntertainment5050Input",
         "type": "object"
@@ -1394,16 +1386,13 @@
             "type": "number"
           },
           "fbtType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
+            "enum": [
+              "Type 1",
+              "Type 2"
             ],
-            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
-            "title": "Fbttype"
+            "title": "Fbttype",
+            "type": "string"
           },
           "overnightMeals": {
             "anyOf": [
@@ -1487,6 +1476,7 @@
           "employees",
           "employeesAssociates",
           "employeesNonassociates",
+          "fbtType",
           "registerPercentage"
         ],
         "title": "FBTMealEntertainmentRegister12WkInput",
@@ -1504,16 +1494,13 @@
             "type": "number"
           },
           "fbtType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
+            "enum": [
+              "Type 1",
+              "Type 2"
             ],
-            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
-            "title": "Fbttype"
+            "title": "Fbttype",
+            "type": "string"
           },
           "gstInclusiveValue": {
             "description": "GST-inclusive value of the property benefit (AUD).",
@@ -1544,7 +1531,8 @@
         },
         "required": [
           "gstInclusiveValue",
-          "otherwiseDeductiblePercentage"
+          "otherwiseDeductiblePercentage",
+          "fbtType"
         ],
         "title": "FBTPropertyInHouseInput",
         "type": "object"
@@ -1561,16 +1549,13 @@
             "type": "number"
           },
           "fbtType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
+            "enum": [
+              "Type 1",
+              "Type 2"
             ],
-            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
-            "title": "Fbttype"
+            "title": "Fbttype",
+            "type": "string"
           },
           "gstInclusiveValue": {
             "description": "GST-inclusive value of the property benefit (AUD).",
@@ -1601,7 +1586,8 @@
         },
         "required": [
           "gstInclusiveValue",
-          "otherwiseDeductiblePercentage"
+          "otherwiseDeductiblePercentage",
+          "fbtType"
         ],
         "title": "FBTPropertyInput",
         "type": "object"
@@ -1618,16 +1604,13 @@
             "type": "number"
           },
           "fbtType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
+            "enum": [
+              "Type 1",
+              "Type 2"
             ],
-            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
-            "title": "Fbttype"
+            "title": "Fbttype",
+            "type": "string"
           },
           "inhouseBenefitClaimed": {
             "anyOf": [
@@ -1658,7 +1641,8 @@
         },
         "required": [
           "residualValue",
-          "otherwiseDeductiblePercentage"
+          "otherwiseDeductiblePercentage",
+          "fbtType"
         ],
         "title": "FBTResidualInHouseInput",
         "type": "object"
@@ -1675,16 +1659,13 @@
             "type": "number"
           },
           "fbtType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
+            "enum": [
+              "Type 1",
+              "Type 2"
             ],
-            "description": "'Type 1' or 'Type 2'; defaults engine-side to 'Type 2'.",
-            "title": "Fbttype"
+            "title": "Fbttype",
+            "type": "string"
           },
           "inhouseBenefitClaimed": {
             "anyOf": [
@@ -1715,7 +1696,8 @@
         },
         "required": [
           "residualValue",
-          "otherwiseDeductiblePercentage"
+          "otherwiseDeductiblePercentage",
+          "fbtType"
         ],
         "title": "FBTResidualInput",
         "type": "object"
@@ -1725,16 +1707,13 @@
         "description": "Input for Phase 2i Tax-Exempt Body Entertainment (engine: ``calculate_fbt_tebe``).\n\nFBTAA Subdivision B of Division 10 (ss.38\u201339). Engine arithmetic at\nFBT_Engine.pl L3089. s.39 is a thin expenditure-passthrough statute.\n50/50-split method is a sheet/UI-layer caller concern (the caller supplies\nthe post-50/50 totals; engine sums).",
         "properties": {
           "fbtType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
+            "enum": [
+              "Type 1",
+              "Type 2"
             ],
-            "description": "'Type 1' (creditable acquisitions) or 'Type 2' (input-taxed); defaults engine-side to 'Type 2'.",
-            "title": "Fbttype"
+            "title": "Fbttype",
+            "type": "string"
           },
           "recreation": {
             "description": "Total recreation entertainment expenditure (AUD).",
@@ -1751,7 +1730,8 @@
         },
         "required": [
           "salaryPackagedMealEfle",
-          "recreation"
+          "recreation",
+          "fbtType"
         ],
         "title": "FBTTebeInput",
         "type": "object"
