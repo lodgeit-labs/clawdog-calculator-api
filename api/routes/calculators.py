@@ -11,6 +11,7 @@ holds under a second calculator.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import unquote
@@ -65,6 +66,8 @@ from api.schemas.invocation import (
     validate_calc_uri,
     validate_period_uri,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1", tags=["calculators"])
 
@@ -771,6 +774,91 @@ async def invoke_calculator(
     ):
         if key in engine_response and engine_response[key] is not None:
             gross_up_passthrough[key] = engine_response[key]
+
+    # --- D21 (mut-2026-09-06-mc15 per Fable 2026-09-06 UTC): gateway-side
+    # trio-consistency check. Fable observed a 200-with-null-trio on the
+    # LAFHA path at fbt-engine-00017-5zx (identical request seconds apart
+    # returned different responses; same instance, same code). Root cause
+    # (engine-side mutable state) still under investigation via Streamace
+    # sequence-sweep reproduce; the fix at cause lands separately in the
+    # engine PR. This check is the structural defence for the class:
+    #
+    #   *"an engine that cannot produce the trio must return a 5xx, never
+    #    a 200 with nulls. A missing rate table is an error, not an answer."*
+    #                                                       — Fable 2026-09-06 UTC
+    #
+    # Fires only when the engine emitted a positive taxable_value that
+    # would materially affect fbt_payable arithmetic (i.e. we're claiming
+    # a real benefit exists) but is missing the gross-up trio at the wire.
+    # `taxable_value: 0` is legitimate (s.8A exemption zeroes the base;
+    # trio is 0/0/0 downstream + rate_uris_consumed still populated).
+    #
+    # Ships INDEPENDENTLY of the engine fix. When the engine emits the
+    # trio correctly (which is the near-100% case at every rev after the
+    # cause is fixed), this check is a no-op fast path. When the engine
+    # regresses (this D21 shape recurs, or a new calculator forgets the
+    # decorator per the class Fable named at 2026-09-05 03:49 UTC), the
+    # caller sees a structured 502 instead of a silent undercount.
+    #
+    # Scope: FBT calcs only. Depreciation + Div7A have different response
+    # shapes routed through separate handlers below (no gross-up trio
+    # concept applies).
+    if taxable_value is not None and taxable_value != 0:
+        trio_keys_present = all(
+            key in gross_up_passthrough
+            for key in ("gross_up_factor", "grossed_up_taxable_value", "fbt_payable")
+        )
+        rate_uris_populated = bool(rate_uris)
+        # Fires ONLY on the exact Fable-observed shape: taxable_value > 0
+        # AND trio missing AND rate_uris empty. This matches the D21 wire
+        # evidence (2026-09-06 LAFHA call 1 at rev fbt-engine-00017-5zx)
+        # and refuses precisely that class. Trio-present-but-URIs-empty is
+        # a lesser gap (fbt_payable is available; only the manifest citation
+        # surface is empty) and stays 200 for now — it does not match
+        # Fable's rule ("cannot produce the trio must return 5xx").
+        # URIs-present-but-trio-missing is also non-D21 (would be caught
+        # separately by the manifest-build path via 502
+        # manifest_rate_table_unavailable when the URI is unresolvable).
+        if not trio_keys_present and not rate_uris_populated:
+            logger.error(
+                "engine_response_missing_gross_up_trio: calc_uri=%s "
+                "period_uri=%s taxable_value=%s trio_keys_present=%s "
+                "rate_uris_populated=%s (raw engine_response keys=%s); "
+                "gateway surfaces as 502 rather than returning 200 with "
+                "null-trio + empty rate_uris_consumed to caller. Root "
+                "cause is engine-side (D21 mut-2026-09-06-mc15); this "
+                "is the structural defence per Fable ruling.",
+                calc_uri,
+                period_uri_decoded,
+                taxable_value,
+                trio_keys_present,
+                rate_uris_populated,
+                sorted(engine_response.keys()),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "error": "engine_response_missing_gross_up_trio",
+                    "detail": (
+                        "engine returned taxable_value="
+                        f"{taxable_value} but is missing the gross-up trio "
+                        "(gross_up_factor / grossed_up_taxable_value / "
+                        "fbt_payable) AND rate_uris_consumed is empty at "
+                        "the wire. This is the exact D21 defect shape "
+                        "Fable observed 2026-09-06 at fbt-engine-00017-5zx; "
+                        "gateway refuses to materially undercount "
+                        "fbt_payable to caller."
+                    ),
+                    "taxable_value": taxable_value,
+                    "trio_keys_present": {
+                        "gross_up_factor": "gross_up_factor" in gross_up_passthrough,
+                        "grossed_up_taxable_value": "grossed_up_taxable_value" in gross_up_passthrough,
+                        "fbt_payable": "fbt_payable" in gross_up_passthrough,
+                    },
+                    "rate_uris_consumed_count": len(rate_uris),
+                    "engine_response_keys": sorted(engine_response.keys()),
+                },
+            )
 
     response_payload = wrap_response(
         {

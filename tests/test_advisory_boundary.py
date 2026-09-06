@@ -242,7 +242,20 @@ def test_every_registered_calculator_response_carries_manifest_block(
                 "complying": True, "rate_uris_consumed": [],
             }
         # Wave A/B/C FBT default shape.
-        return {"taxable_value": 100.0, "trace": {}}
+        # D21 amendment (mut-2026-09-06-mc15): emit gross-up trio so the
+        # gateway's D21 trio-consistency check (calculators.py) does not
+        # refuse this legitimate mock. Post-Phase-2 engine always emits
+        # trio on non-zero taxable_value; this fixture must match.
+        tv = 100.0
+        grossed_up = round(tv * 1.8868, 2)
+        return {
+            "taxable_value": tv,
+            "fbt_type": "Type 2",
+            "gross_up_factor": 1.8868,
+            "grossed_up_taxable_value": grossed_up,
+            "fbt_payable": round(grossed_up * 0.47, 2),
+            "trace": {},
+        }
 
     class _ManifestPresenceFake:
         """Fake PrologClient that returns the right shape per calc-URI."""

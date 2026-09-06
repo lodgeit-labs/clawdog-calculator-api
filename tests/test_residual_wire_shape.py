@@ -58,13 +58,29 @@ PERIOD_URI = "urn:sbrm:period:fbt:fy2026"
 def _mock_residual_engine_response() -> dict:
     """Byte-shape-plausible engine response mirroring
     ``calculate_fbt_residual_internal/3``'s output dict at
-    ``FBT_Engine.pl:3903``."""
+    ``FBT_Engine.pl:3903``.
+
+    D21 amendment (mut-2026-09-06-mc15 per Fable 2026-09-06 UTC): emits
+    the gross-up trio so the gateway's D21 trio-consistency check
+    (calculators.py) does not reject this legitimate-shape mock. Post-
+    Phase-2 engine always emits the trio on non-zero taxable_value. Kept
+    `rate_uris_consumed: []` to avoid the manifest-hash path attempting
+    to read files the hermetic-test env doesn't stage (this is a shape
+    test for the outbound engine payload, not for manifest wiring).
+    The D21 gateway check fires only when BOTH trio AND URIs are missing;
+    trio-present-URIs-empty is a lesser gap outside D21 scope.
+    """
+    tv = 500.0
+    grossed_up = round(tv * 1.8868, 2)
     return {
-        "taxable_value": 500.0,
+        "taxable_value": tv,
         "gross_taxable_value": 800.0,
         "reductions": 300.0,
         "in_house_benefit": 0.0,
         "fbt_type": "Type 2",
+        "gross_up_factor": 1.8868,
+        "grossed_up_taxable_value": grossed_up,
+        "fbt_payable": round(grossed_up * 0.47, 2),
         "rate_uris_consumed": [],
     }
 

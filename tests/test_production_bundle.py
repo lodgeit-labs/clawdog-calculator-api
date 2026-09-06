@@ -170,7 +170,17 @@ def test_production_resolver_resolves_against_bundle(
 
 def _mock_dispatch_engine_response() -> dict:
     """Minimal engine response shape that triggers the manifest path with
-    the three deemed-dispatch rate URIs."""
+    the three deemed-dispatch rate URIs.
+
+    This fixture deliberately does NOT emit the gross-up trio — the
+    `test_other_calculator_response_byte_stable_without_gross_up_fields`
+    below asserts that calculators which don't engage gross-up arithmetic
+    return responses with those fields ABSENT. The D21 gateway trio
+    -consistency check (calculators.py mut-2026-09-06-mc15) is compatible
+    with this shape because it fires only when BOTH trio AND
+    rate_uris_consumed are missing; here `rate_uris_consumed` is populated
+    (3 deemed-dispatch URIs), so the check no-ops.
+    """
     rate_uris = [
         "urn:sbrm:rate:fbt:fy2026:deemed-depreciation-rates",
         "urn:sbrm:rate:fbt:fy2026:benchmark-interest",
