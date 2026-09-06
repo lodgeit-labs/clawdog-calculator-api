@@ -41,11 +41,37 @@ shape ahead of n=2 signal would be premature design.
 """
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
+
+logger = logging.getLogger(__name__)
+
+# Engine lock-down Step 1 (mut-2026-09-06-mc14 per Fable 2026-09-06 UTC).
+# On Cloud Run, every engine call carries an ID token whose audience is the
+# engine's URL. On the engine side, Cloud Run's built-in IAM check validates
+# the token + confirms the caller SA holds roles/run.invoker before the
+# request reaches user code. Local dev + docker-compose bypass via a
+# localhost audience discriminator (metadata server won't respond there).
+#
+# `google-auth` is a soft optional import: if not installed OR if metadata
+# fetch fails at request time OR if audience is localhost, the header dict
+# is empty and the request goes out unauthenticated. Cloud Run 403 is the
+# authority; header emission is best-effort. This preserves local-dev
+# ergonomics (no gcloud auth required) while enforcing prod behaviour via
+# the engine-side IAM gate rather than gateway-side pre-flight.
+try:
+    from google.auth.transport.requests import Request as _GoogleAuthRequest
+    from google.oauth2 import id_token as _google_id_token
+    _GOOGLE_AUTH_AVAILABLE = True
+except ImportError:  # pragma: no cover — google-auth is a hard dep on Cloud Run
+    _GOOGLE_AUTH_AVAILABLE = False
+    _GoogleAuthRequest = None  # type: ignore[assignment,misc]
+    _google_id_token = None  # type: ignore[assignment]
 
 DEFAULT_PROLOG_URL = "http://localhost:8081"
 DEFAULT_DEPRECIATION_URL = "http://localhost:8082"
@@ -106,6 +132,86 @@ def div7a_engine_url() -> str:
     as those engines for uniform transport-layer failure handling.
     """
     return os.environ.get("DIV7A_ENGINE_URL", DEFAULT_DIV7A_URL).rstrip("/")
+
+
+def _is_localhost_audience(url: str) -> bool:
+    """True iff ``url`` points at localhost (dev / docker-compose / test).
+
+    Metadata-server ID-token fetch would fail (no metadata server on dev
+    boxes) and add no security value (nothing to gate on the receiving
+    side). Discriminator lives here so the two call sites in ``dispatch``
+    stay symmetrical.
+
+    Recognises: ``http://localhost``, ``http://127.``, ``http://0.0.0.0``,
+    and the ``prolog:``/``depreciation:`` docker-compose service hostnames
+    (which resolve inside the compose network only).
+    """
+    try:
+        host = urlparse(url).hostname or ""
+    except (ValueError, AttributeError):
+        return True  # unparseable → err on side of no token
+    if not host:
+        return True  # empty/unparseable host → err on side of no token
+    if host in ("localhost", "0.0.0.0"):
+        return True
+    if host.startswith("127."):
+        return True
+    # docker-compose service hostnames — resolve only inside the compose
+    # network; no ID-token audience possible.
+    if host in ("prolog", "depreciation", "div7a", "fbt-engine",
+                "depreciation-engine", "div7a-engine"):
+        return True
+    return False
+
+
+def _authenticated_headers(url: str) -> dict[str, str]:
+    """Return HTTP headers with a Cloud Run ID token for ``url``, if applicable.
+
+    Engine lock-down Step 1 (mut-2026-09-06-mc14 per Fable 2026-09-06 UTC).
+    On Cloud Run, ``google.oauth2.id_token.fetch_id_token(request, audience)``
+    calls the metadata server + returns a Google-signed JWT scoped to the
+    audience URL. The engine's Cloud Run runtime validates the JWT +
+    checks the caller SA against roles/run.invoker before user code runs.
+
+    Audience = engine base URL (scheme://host[:port]); path is stripped.
+
+    Returns ``{}`` when:
+      - ``google-auth`` package not importable (local-dev shape)
+      - audience is localhost/docker-compose (dev/test shape)
+      - metadata fetch fails at request time (best-effort emission;
+        Cloud Run 403 remains the authority; unauth call fails hard
+        on the engine side)
+
+    Returns ``{"Authorization": "Bearer <jwt>"}`` otherwise.
+
+    Called per-request. ``google-auth`` internally caches tokens per
+    audience until expiry, so the per-call overhead is a dict lookup on
+    the hot path; only the first call per audience per token-lifetime
+    hits the metadata server.
+    """
+    if not _GOOGLE_AUTH_AVAILABLE:
+        return {}
+    if _is_localhost_audience(url):
+        return {}
+
+    # Audience is scheme://host[:port] (Cloud Run's convention). Strip path.
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        return {}
+    audience = f"{parsed.scheme}://{parsed.netloc}"
+
+    try:
+        request = _GoogleAuthRequest()
+        token = _google_id_token.fetch_id_token(request, audience)
+        return {"Authorization": f"Bearer {token}"}
+    except Exception as exc:  # noqa: BLE001 — best-effort; log + fall through
+        logger.warning(
+            "engine ID-token fetch failed for audience=%s (%s: %s); "
+            "emitting unauthenticated request — Cloud Run will 403 if the "
+            "receiving engine has been locked down",
+            audience, exc.__class__.__name__, exc,
+        )
+        return {}
 
 
 class PrologEngineUnavailable(RuntimeError):
@@ -275,14 +381,22 @@ class PrologClient:
         url = f"{base_url}{path}"
         timeout = timeout_override or meta["timeout"]
 
+        # Engine lock-down Step 1 (mut-2026-09-06-mc14 per Fable 2026-09-06 UTC):
+        # attach Cloud Run ID token to every outbound engine call. Header
+        # dict is empty on local/docker-compose/test (see
+        # ``_authenticated_headers`` docstring); harmless while engines are
+        # still ingress=allow-unauthenticated; becomes load-bearing after
+        # Step 4 removes allUsers invoker.
+        headers = _authenticated_headers(url)
+
         try:
             if self._client is not None:
                 resp = await self._client.post(
-                    url, json=dict(payload), timeout=timeout
+                    url, json=dict(payload), timeout=timeout, headers=headers
                 )
             else:
                 async with httpx.AsyncClient(timeout=timeout) as client:
-                    resp = await client.post(url, json=dict(payload))
+                    resp = await client.post(url, json=dict(payload), headers=headers)
             resp.raise_for_status()
         except httpx.ConnectError as exc:
             raise PrologEngineUnavailable(

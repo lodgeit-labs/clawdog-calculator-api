@@ -34,6 +34,14 @@ dependencies = [
     "pydantic>=2.6",
     "httpx>=0.27",
     "PyYAML>=6.0",
+    # Engine lock-down Step 1 (mut-2026-09-06-mc14 per Fable 2026-09-06 UTC):
+    # gateway attaches a Google-signed ID token to every Cloud Run engine
+    # call. `google.auth.transport.requests.Request` + `google.oauth2.id_token.
+    # fetch_id_token(request, audience)` handles metadata-server retrieval,
+    # signature verification, and per-audience caching. Only needed on Cloud
+    # Run (local dev bypasses via localhost audience discriminator in
+    # `api.prolog_client._authenticated_headers`).
+    "google-auth>=2.30",
 ]
 
 [project.optional-dependencies]
