@@ -5,9 +5,12 @@
 After D8a Amendment 1 landed, engine-returned 4xx status codes are
 partitioned by fault:
 
-  * caller-fault  → same 4xx re-emitted with detail
-  * gateway-fault → 502 engine_unavailable (401/403/404/405)
-  * rate-limit    → 503 (429)
+  * caller-fault      → same 4xx re-emitted with detail
+  * gateway-auth-fail → 502 engine_auth_failed (401/403; mut-2026-09-06-mc14
+                          split from generic gateway-fault per Fable
+                          engine-lock-down directive 2026-09-06 UTC)
+  * gateway-fault     → 502 engine_unavailable (404/405)
+  * rate-limit        → 503 (429)
 
 The 404 → 502 rewrite is correct for a 404 THE ENGINE returns. But the
 gateway generates 404s of its own, and they are caller-facing and correct:
