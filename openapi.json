@@ -1806,6 +1806,78 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/_internal/probe/engine-auth": {
+      "post": {
+        "description": "Attempts to mint an ID token for each configured engine URL (or the audiences supplied in the body). Returns per-audience status naming which mint path succeeded (direct_metadata vs fetch_id_token) + per-path error strings on failure. Token itself is NOT returned in full (only prefix + length) to avoid leaking a bearer through response logs.\n\n**Gated by CLAWDOG_ENGINE_AUTH_PROBE_TOKEN env var + X-Clawdog-Probe-Token request header** (per Fable 2026-09-07 04:41 UTC note 1). When env var is unset OR header value doesn't match, endpoint returns 404 (production posture). When both match, endpoint performs the probe (canary posture).\n\n**Deploy gate use:** curl this against a canary/tag revision URL BEFORE promoting the revision to production traffic. If any engine mint fails, the revision stays at 0% traffic and the failure log guides the fix without impacting live callers. Fable's rule: \"the fixed #40 must be proven to mint against a real metadata server before it goes to production traffic.\"",
+        "operationId": "probe_engine_auth__internal_probe_engine_auth_post",
+        "parameters": [
+          {
+            "description": "Shared-secret probe token; must match CLAWDOG_ENGINE_AUTH_PROBE_TOKEN env var.",
+            "in": "header",
+            "name": "X-Clawdog-Probe-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Shared-secret probe token; must match CLAWDOG_ENGINE_AUTH_PROBE_TOKEN env var.",
+              "title": "X-Clawdog-Probe-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Probe Engine Auth  Internal Probe Engine Auth Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "D22 mc20 admin probe: prove gateway can mint ID tokens for engine audiences.",
+        "tags": [
+          "internal-probe"
+        ]
+      }
+    },
     "/healthz": {
       "get": {
         "description": "Return a minimal liveness response for the Cloud Run / Docker HEALTHCHECK.\n\nDoes NOT call into the upstream Prolog engine \u2014 that would couple the\nREST liveness signal to the engine's readiness, which is a deliberately\nindependent dimension.\n\nNOTE (mut-2026-05-25-mc11): Cloud Run / Google edge layer special-cases\nthe literal path ``/healthz`` and returns a Google generic 404 HTML page\nto EXTERNAL public traffic, even when the route is correctly registered\nin FastAPI and the deployed image contains the route bytes (verified\n2026-05-25 00:39 UTC: external curl returns HTML 404 with\n``content-type: text/html`` and NO ``server: Google Frontend`` header,\nwhile FastAPI 404s return JSON ``{\"detail\":\"Not Found\"}`` with\n``server: Google Frontend``; the HTML 404 is from a layer ABOVE GFE).\nCloud Run's INTERNAL startup/liveness probe path uses a different\nnetwork channel that bypasses this interception and DOES reach this\nroute successfully. The path stays at ``/healthz`` so the cloud-run.yaml\nstartupProbe/livenessProbe config continues to work; external operators\nuse ``/livez`` (added below) for public-traffic liveness checks.",

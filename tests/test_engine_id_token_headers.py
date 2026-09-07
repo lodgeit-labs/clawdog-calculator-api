@@ -86,24 +86,35 @@ def test_authenticated_headers_docker_compose_returns_empty() -> None:
 
 
 def test_authenticated_headers_google_auth_unavailable_raises_engineauthunavailable() -> None:
-    """D22 update (mut-2026-09-07-mc19 per Fable 2026-09-07 03:53 UTC): when
-    google-auth is not importable AND the audience is a Cloud Run URL,
-    `_authenticated_headers` MUST raise `EngineAuthUnavailable(reason=
-    "google_auth_missing")`. Prior mc14 shape silently returned `{}` which
-    left the caller sending unauth requests to a locked-down engine and
-    receiving opaque 502 engine_auth_failed — the D22 wire defect.
+    """D22 mc20 update (per Fable 2026-09-07 04:19 UTC): both mint paths
+    (direct_metadata + fetch_id_token) must fail before EngineAuthUnavailable
+    is raised. When google-auth is not importable AND direct-metadata call
+    times out / connects nowhere AND the audience is a Cloud Run URL, the
+    helper raises `EngineAuthUnavailable(reason="all_mint_paths_failed: ...")`.
 
-    For non-Cloud-Run audiences (localhost / docker-compose / .test /
-    .example / .invalid / .localhost), the soft-mode return-{} is
-    preserved because those environments have no metadata server anyway.
+    Prior mc19 shape had a single fetch_id_token path with reason=
+    "google_auth_missing"; mc20 shape has two paths per Fable's ruling that
+    fetch_id_token doesn't work on Cloud Run in the general case; direct
+    metadata call is primary. Reason now aggregates both paths' errors.
     """
     from api.prolog_client import EngineAuthUnavailable
-    with patch.object(prolog_client, "_GOOGLE_AUTH_AVAILABLE", False):
+    with (
+        patch.object(prolog_client, "_GOOGLE_AUTH_AVAILABLE", False),
+        # Stub direct metadata to fail cleanly (no live metadata server on
+        # the sandbox); on real Cloud Run the direct path succeeds first.
+        patch.object(
+            prolog_client, "_fetch_id_token_direct_metadata",
+            lambda audience: (None, "host=metadata.google.internal transport=ConnectError: mocked"),
+        ),
+    ):
         with pytest.raises(EngineAuthUnavailable) as excinfo:
             _authenticated_headers(
                 "https://fbt-engine-8340695160.australia-southeast1.run.app/calculate_fbt"
             )
-    assert excinfo.value.reason == "google_auth_missing"
+    assert "all_mint_paths_failed" in excinfo.value.reason
+    assert "direct_metadata" in excinfo.value.reason
+    assert "fetch_id_token" in excinfo.value.reason
+    assert "google_auth_missing" in excinfo.value.reason
     assert excinfo.value.audience == "https://fbt-engine-8340695160.australia-southeast1.run.app"
 
 
@@ -140,46 +151,49 @@ def test_authenticated_headers_cloud_run_url_fetches_token() -> None:
     assert call_args.args[1] == "https://fbt-engine-8340695160.australia-southeast1.run.app"
 
 
-def test_authenticated_headers_fetch_failure_raises_engineauthunavailable_and_logs_error(
+def test_authenticated_headers_both_mint_paths_fail_raises_engineauthunavailable_and_logs_error(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """D22 update (mut-2026-09-07-mc19 per Fable 2026-09-07 03:53 UTC):
-    when metadata fetch raises (no metadata server, network flake, IAM
-    misconfig), the helper RAISES `EngineAuthUnavailable(reason=
-    "metadata_fetch_failed")` + logs at ERROR level. Prior mc14 shape
-    returned {} + logged only — that silent fallback was the mc14 defect
-    that let depreciation-engine calls go tokenless post-lockdown.
+    """D22 mc20 update (per Fable 2026-09-07 04:19 UTC): when BOTH mint
+    paths fail (direct metadata + fetch_id_token), the helper RAISES
+    `EngineAuthUnavailable` with an aggregated reason naming both paths'
+    errors + logs at ERROR level.
 
-    ERROR-level log per Fable 2026-09-06 UTC: *"the WARNING on token-fetch
-    failure should be ERROR — in production it means every engine call is
-    about to fail."* Cloud Run engine 403 is the authority; the gateway
-    now surfaces as 503 engine_auth_local_fail (see engine_error_mapper.py
-    path 2b) which is DISTINCT from the engine-side 502 engine_auth_failed
-    (path 1c.auth). Alertable at SRE dashboard threshold.
+    Prior mc19 shape had a single fetch_id_token path with reason=
+    "metadata_fetch_failed"; mc20 shape has two paths, so the reason string
+    aggregates both. On real Cloud Run, the direct-metadata path is
+    expected to succeed first (Fable's prior 2026-09-07 04:19 UTC).
     """
     from api.prolog_client import EngineAuthUnavailable
     with (
         patch.object(prolog_client, "_GOOGLE_AUTH_AVAILABLE", True),
         patch.object(prolog_client, "_GoogleAuthRequest", MagicMock()),
         patch.object(prolog_client, "_google_id_token") as mock_id_token,
+        patch.object(
+            prolog_client, "_fetch_id_token_direct_metadata",
+            lambda audience: (None, "host=metadata.google.internal transport=ConnectError: mocked_sandbox"),
+        ),
     ):
-        mock_id_token.fetch_id_token.side_effect = Exception("metadata server unreachable")
+        mock_id_token.fetch_id_token.side_effect = Exception("fetch_id_token also unreachable")
         with caplog.at_level(logging.ERROR, logger="api.prolog_client"):
             with pytest.raises(EngineAuthUnavailable) as excinfo:
                 _authenticated_headers(
                     "https://fbt-engine-8340695160.australia-southeast1.run.app/x"
                 )
 
-    assert excinfo.value.reason == "metadata_fetch_failed"
+    assert "all_mint_paths_failed" in excinfo.value.reason
+    assert "direct_metadata" in excinfo.value.reason
+    assert "fetch_id_token" in excinfo.value.reason
+    assert "mocked_sandbox" in excinfo.value.reason
+    assert "fetch_id_token also unreachable" in excinfo.value.reason
     assert excinfo.value.audience == "https://fbt-engine-8340695160.australia-southeast1.run.app"
-    assert excinfo.value.cause is not None
-    assert "metadata server unreachable" in str(excinfo.value.cause)
 
     error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
     assert len(error_records) == 1, (
         f"expected exactly 1 ERROR log, got {len(error_records)}"
     )
     assert "engine_id_token_fetch_failed" in error_records[0].message
+    assert "attempts=" in error_records[0].message
 
 
 # ---------------------------------------------------------------------------
