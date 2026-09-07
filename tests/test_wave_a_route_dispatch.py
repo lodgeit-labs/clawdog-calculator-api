@@ -263,7 +263,41 @@ def client() -> TestClient:
 
 def _canonical_engine_response(taxable_value: float = 1234.56) -> dict[str, Any]:
     """Stub engine response shape carrying the load-bearing fields the route
-    extracts to build the manifest + advisory blocks."""
+    extracts to build the manifest + advisory blocks.
+
+    D21 amendment (mut-2026-09-06-mc15 per Fable 2026-09-06 UTC): the fixture
+    now emits the gross-up trio to reflect post-Phase-2 engine reality.
+    Prior state emitted `rate_uris_consumed: []` + no trio keys — the
+    exact null-trio shape D21 hardens the gateway against. The gateway
+    trio-consistency check (calculators.py) refuses that shape with 502.
+    `rate_uris_consumed` kept `[]` for hermetic-test parity (the check
+    fires only when BOTH trio AND URIs are missing).
+    """
+    grossed_up = round(taxable_value * 1.8868, 2)
+    fbt_pay = round(grossed_up * 0.47, 2)
+    return {
+        "taxable_value": taxable_value,
+        "gross_taxable_value": taxable_value,
+        "employee_contribution": 0,
+        "reductions": 0,
+        "fbt_type": "Type 2",
+        "gross_up_factor": 1.8868,
+        "grossed_up_taxable_value": grossed_up,
+        "fbt_payable": fbt_pay,
+        "rate_uris_consumed": [],
+        "trace": {"applied_rate_table_uris": []},
+    }
+
+
+def _engine_response_missing_trio(taxable_value: float = 1234.56) -> dict[str, Any]:
+    """D21 null-trio shape (mut-2026-09-06-mc15). Engine emits taxable_value
+    but is missing the gross-up trio + rate_uris_consumed is empty. Used
+    ONLY to exercise the gateway's trio-consistency refusal (should return
+    502 engine_response_missing_gross_up_trio). Not a legitimate engine
+    response shape; Fable observed this in production 2026-09-06 at rev
+    fbt-engine-00017-5zx and ruled the gateway must never pass it to
+    caller as 200.
+    """
     return {
         "taxable_value": taxable_value,
         "gross_taxable_value": taxable_value,
