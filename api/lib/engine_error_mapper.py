@@ -45,6 +45,11 @@ Mapping (canonical, post-amendments):
     engine_unreachable      → 502 engine_unavailable
     engine_timeout          → 504 engine_timeout              (Amendment 2)
     engine_transport_error  → 502 engine_unavailable
+    engine_auth_local_fail  → 503 engine_auth_local_fail       (D22 fix,
+                                mut-2026-09-07-mc19: gateway-side ID-token
+                                mint failure; distinct from engine-side 403
+                                because request was NEVER sent — gateway
+                                identity is broken, not engine's)
 
   Engine returned an HTTP status:
     engine 400 + refusal_class      → 400 (flat refusal envelope; §6 cosmetic)
@@ -444,6 +449,45 @@ def map_engine_error_to_http(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail={
                 "error": engine_label or "engine_timeout",
+                "error_code": exc.error_code,
+                "engine": exc.engine,
+                "detail": exc.detail,
+            },
+        )
+
+    # --- Path 2b: gateway-side auth-mint failure → 503 (D22 fix,
+    # mut-2026-09-07-mc19 per Fable 2026-09-07 03:53 UTC).
+    #
+    # Distinct from engine-side 403 (path 1c.auth → 502 engine_auth_failed):
+    # this fires when THE GATEWAY couldn't mint an ID token for the engine
+    # audience (google-auth missing, metadata server unreachable, audience
+    # rejected). The request was NEVER sent to the engine — gateway is
+    # broken from the identity perspective. 503 (service unavailable) is
+    # right because the caller SHOULD retry (transient metadata outages
+    # resolve; deploy-time google-auth-missing needs a redeploy but IS
+    # transient at the caller's timescale).
+    #
+    # Distinct slug `engine_auth_local_fail` (vs `engine_auth_failed` for
+    # engine-side 403) partitions gateway-identity-broken from engine-
+    # identity-broken at the SRE dashboard.
+    if exc.error_code == "engine_auth_local_fail":
+        logger.error(
+            "engine_auth_local_fail: engine=%s url=%s detail=%s; "
+            "gateway could NOT mint an ID token for this engine's audience. "
+            "Request NEVER sent. Likely causes: (1) google-auth package "
+            "missing in deployed image; (2) Cloud Run metadata server "
+            "outage; (3) audience URL rejected by IAM. Surface as 503; "
+            "caller retry may recover if outage is transient. See sibling "
+            "log 'engine_id_token_fetch_failed' from api.prolog_client for "
+            "the raise-site cause.",
+            exc.engine,
+            getattr(exc, "url", "<unknown>"),
+            exc.detail,
+        )
+        return HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "engine_auth_local_fail",
                 "error_code": exc.error_code,
                 "engine": exc.engine,
                 "detail": exc.detail,
