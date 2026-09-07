@@ -85,15 +85,37 @@ def test_authenticated_headers_docker_compose_returns_empty() -> None:
     assert _authenticated_headers("http://prolog:8081/calculate_fbt") == {}
 
 
-def test_authenticated_headers_google_auth_unavailable_returns_empty() -> None:
-    """When google-auth isn't importable, the helper returns {}. Simulates
-    local-dev environments that haven't installed the optional dependency.
+def test_authenticated_headers_google_auth_unavailable_raises_engineauthunavailable() -> None:
+    """D22 update (mut-2026-09-07-mc19 per Fable 2026-09-07 03:53 UTC): when
+    google-auth is not importable AND the audience is a Cloud Run URL,
+    `_authenticated_headers` MUST raise `EngineAuthUnavailable(reason=
+    "google_auth_missing")`. Prior mc14 shape silently returned `{}` which
+    left the caller sending unauth requests to a locked-down engine and
+    receiving opaque 502 engine_auth_failed — the D22 wire defect.
+
+    For non-Cloud-Run audiences (localhost / docker-compose / .test /
+    .example / .invalid / .localhost), the soft-mode return-{} is
+    preserved because those environments have no metadata server anyway.
+    """
+    from api.prolog_client import EngineAuthUnavailable
+    with patch.object(prolog_client, "_GOOGLE_AUTH_AVAILABLE", False):
+        with pytest.raises(EngineAuthUnavailable) as excinfo:
+            _authenticated_headers(
+                "https://fbt-engine-8340695160.australia-southeast1.run.app/calculate_fbt"
+            )
+    assert excinfo.value.reason == "google_auth_missing"
+    assert excinfo.value.audience == "https://fbt-engine-8340695160.australia-southeast1.run.app"
+
+
+def test_authenticated_headers_google_auth_unavailable_still_soft_on_localhost() -> None:
+    """Soft-mode is preserved for localhost even when google-auth is absent.
+    Dev-loop ergonomics require dev boxes without gcloud auth to still work
+    against http://localhost:* engines.
     """
     with patch.object(prolog_client, "_GOOGLE_AUTH_AVAILABLE", False):
-        result = _authenticated_headers(
-            "https://fbt-engine-8340695160.australia-southeast1.run.app/calculate_fbt"
-        )
-    assert result == {}
+        assert _authenticated_headers("http://localhost:8081/calculate_fbt") == {}
+        assert _authenticated_headers("http://prolog:8081/calculate_fbt") == {}
+        assert _authenticated_headers("http://fbt-engine.test/calculate_fbt") == {}
 
 
 def test_authenticated_headers_cloud_run_url_fetches_token() -> None:
@@ -118,18 +140,24 @@ def test_authenticated_headers_cloud_run_url_fetches_token() -> None:
     assert call_args.args[1] == "https://fbt-engine-8340695160.australia-southeast1.run.app"
 
 
-def test_authenticated_headers_fetch_failure_returns_empty_and_logs_error(
+def test_authenticated_headers_fetch_failure_raises_engineauthunavailable_and_logs_error(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """When metadata fetch raises (no metadata server, network flake, IAM
-    misconfig), the helper returns {} + logs at ERROR level (not WARNING).
+    """D22 update (mut-2026-09-07-mc19 per Fable 2026-09-07 03:53 UTC):
+    when metadata fetch raises (no metadata server, network flake, IAM
+    misconfig), the helper RAISES `EngineAuthUnavailable(reason=
+    "metadata_fetch_failed")` + logs at ERROR level. Prior mc14 shape
+    returned {} + logged only — that silent fallback was the mc14 defect
+    that let depreciation-engine calls go tokenless post-lockdown.
 
-    Fable 2026-09-06 UTC: *"the WARNING on token-fetch failure should be
-    ERROR — in production it means every engine call is about to fail."*
-    Cloud Run engine 403 is the authority; the gateway surfaces as 502
-    engine_auth_failed (see engine_error_mapper.py path 1c.auth). Alertable
-    at SRE dashboard threshold.
+    ERROR-level log per Fable 2026-09-06 UTC: *"the WARNING on token-fetch
+    failure should be ERROR — in production it means every engine call is
+    about to fail."* Cloud Run engine 403 is the authority; the gateway
+    now surfaces as 503 engine_auth_local_fail (see engine_error_mapper.py
+    path 2b) which is DISTINCT from the engine-side 502 engine_auth_failed
+    (path 1c.auth). Alertable at SRE dashboard threshold.
     """
+    from api.prolog_client import EngineAuthUnavailable
     with (
         patch.object(prolog_client, "_GOOGLE_AUTH_AVAILABLE", True),
         patch.object(prolog_client, "_GoogleAuthRequest", MagicMock()),
@@ -137,11 +165,16 @@ def test_authenticated_headers_fetch_failure_returns_empty_and_logs_error(
     ):
         mock_id_token.fetch_id_token.side_effect = Exception("metadata server unreachable")
         with caplog.at_level(logging.ERROR, logger="api.prolog_client"):
-            result = _authenticated_headers(
-                "https://fbt-engine-8340695160.australia-southeast1.run.app/x"
-            )
+            with pytest.raises(EngineAuthUnavailable) as excinfo:
+                _authenticated_headers(
+                    "https://fbt-engine-8340695160.australia-southeast1.run.app/x"
+                )
 
-    assert result == {}
+    assert excinfo.value.reason == "metadata_fetch_failed"
+    assert excinfo.value.audience == "https://fbt-engine-8340695160.australia-southeast1.run.app"
+    assert excinfo.value.cause is not None
+    assert "metadata server unreachable" in str(excinfo.value.cause)
+
     error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
     assert len(error_records) == 1, (
         f"expected exactly 1 ERROR log, got {len(error_records)}"

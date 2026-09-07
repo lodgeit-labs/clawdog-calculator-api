@@ -134,6 +134,42 @@ def div7a_engine_url() -> str:
     return os.environ.get("DIV7A_ENGINE_URL", DEFAULT_DIV7A_URL).rstrip("/")
 
 
+class EngineAuthUnavailable(RuntimeError):
+    """Raised when the gateway cannot mint an ID token for a Cloud Run
+    audience that requires one.
+
+    D22 fix (mut-2026-09-07-mc19 per Fable 2026-09-07 03:53 UTC verbatim):
+    *"every engine call the gateway makes must attach an ID token whose
+    audience is that engine's own URL, through one shared choke point,
+    so no engine can ever be called untokenised again."*
+
+    Prior mc14 shape: `_authenticated_headers` silently fell back to `{}`
+    on any failure (import missing, metadata-fetch throw, empty netloc).
+    Silent fallback means an engine locked down with allUsers-invoker-
+    removed receives an unauth request → Cloud Run 403 → gateway maps to
+    502 engine_auth_failed. Caller sees an opaque 502; operator has no
+    signal that the gateway ITSELF is the broken side (vs the engine).
+
+    New shape: for Cloud Run audiences, missing token IS a gateway-side
+    fault raised at exactly the point-of-emission. `dispatch()` catches
+    it + maps to a distinct 503 `engine_auth_local_fail` so it partitions
+    cleanly from the engine-side 403 `engine_auth_failed`.
+
+    Localhost / docker-compose / test audiences remain soft (return `{}`)
+    because no ID token is applicable in those environments and dev-loop
+    ergonomics require it.
+    """
+
+    def __init__(self, reason: str, audience: str, cause: Exception | None = None) -> None:
+        super().__init__(
+            f"gateway cannot mint ID token for Cloud Run audience "
+            f"{audience!r}: {reason}"
+        )
+        self.reason = reason
+        self.audience = audience
+        self.cause = cause
+
+
 def _is_localhost_audience(url: str) -> bool:
     """True iff ``url`` points at localhost (dev / docker-compose / test).
 
@@ -161,63 +197,150 @@ def _is_localhost_audience(url: str) -> bool:
     if host in ("prolog", "depreciation", "div7a", "fbt-engine",
                 "depreciation-engine", "div7a-engine"):
         return True
+    # RFC 6761 special-use TLDs used by hermetic tests + local mocks:
+    # .test / .example / .invalid / .localhost all reserved for non-production
+    # use per IETF spec. Any hostname ending in one of these is safe to treat
+    # as non-Cloud-Run for token purposes.
+    for tld in (".test", ".example", ".invalid", ".localhost"):
+        if host.endswith(tld):
+            return True
     return False
 
 
 def _authenticated_headers(url: str) -> dict[str, str]:
-    """Return HTTP headers with a Cloud Run ID token for ``url``, if applicable.
+    """Return HTTP headers with a Cloud Run ID token for ``url``.
 
-    Engine lock-down Step 1 (mut-2026-09-06-mc14 per Fable 2026-09-06 UTC).
-    On Cloud Run, ``google.oauth2.id_token.fetch_id_token(request, audience)``
-    calls the metadata server + returns a Google-signed JWT scoped to the
-    audience URL. The engine's Cloud Run runtime validates the JWT +
-    checks the caller SA against roles/run.invoker before user code runs.
+    D22 fix (mut-2026-09-07-mc19 per Fable 2026-09-07 03:53 UTC): for
+    Cloud Run audiences, this function returns a Bearer header OR RAISES
+    `EngineAuthUnavailable`. It NEVER silently returns `{}` for a Cloud
+    Run audience — that was the mc14 defect surfaced when depreciation-
+    engine locked down and the gateway kept calling it without a token.
 
-    Audience = engine base URL (scheme://host[:port]); path is stripped.
+    Localhost / docker-compose / test audiences remain soft (return `{}`)
+    so dev + hermetic tests work without gcloud auth setup.
 
-    Returns ``{}`` when:
-      - ``google-auth`` package not importable (local-dev shape)
-      - audience is localhost/docker-compose (dev/test shape)
-      - metadata fetch fails at request time (best-effort emission;
-        Cloud Run 403 remains the authority; unauth call fails hard
-        on the engine side)
+    Contract:
+      - Cloud Run audience + `google-auth` importable + fetch succeeds
+        → `{"Authorization": "Bearer <jwt>"}` with audience = scheme://netloc
+      - Cloud Run audience + `google-auth` missing
+        → raises `EngineAuthUnavailable(reason="google_auth_missing")`
+      - Cloud Run audience + metadata fetch fails
+        → raises `EngineAuthUnavailable(reason="metadata_fetch_failed", cause=exc)`
+      - Cloud Run audience + unparseable scheme/netloc
+        → raises `EngineAuthUnavailable(reason="invalid_audience_url")`
+      - Localhost / docker-compose / test audience → `{}` (soft mode)
 
-    Returns ``{"Authorization": "Bearer <jwt>"}`` otherwise.
+    Called per-request. `google-auth` internally caches tokens per audience
+    until expiry, so hot-path overhead is a dict lookup; only the first
+    call per audience per token-lifetime hits the metadata server.
 
-    Called per-request. ``google-auth`` internally caches tokens per
-    audience until expiry, so the per-call overhead is a dict lookup on
-    the hot path; only the first call per audience per token-lifetime
-    hits the metadata server.
+    Escape hatch: set `CLAWDOG_ENGINE_AUTH_SOFT_MODE=1` in the environment
+    to force soft-mode-return-{} on Cloud Run audiences too. Reserved for
+    emergency rollback if a metadata-server outage would otherwise take
+    the whole gateway down; NOT for normal operation. Emits a WARNING log
+    on every use so its enablement is visible in Cloud Run logs.
     """
-    if not _GOOGLE_AUTH_AVAILABLE:
-        return {}
     if _is_localhost_audience(url):
         return {}
 
-    # Audience is scheme://host[:port] (Cloud Run's convention). Strip path.
+    # From here down, the audience is a Cloud Run URL (or equivalent).
+    # ANY failure raises EngineAuthUnavailable; silent fallback to {} is
+    # only reached via the emergency-escape env var below.
+
     parsed = urlparse(url)
     if not parsed.scheme or not parsed.netloc:
-        return {}
+        exc = EngineAuthUnavailable(
+            reason="invalid_audience_url",
+            audience=url,
+        )
+        _maybe_soft_mode_return(exc)
+        raise exc
     audience = f"{parsed.scheme}://{parsed.netloc}"
+
+    if not _GOOGLE_AUTH_AVAILABLE:
+        exc = EngineAuthUnavailable(
+            reason="google_auth_missing",
+            audience=audience,
+        )
+        logger.error(
+            "engine_id_token_fetch_failed: audience=%s cause=google_auth_missing; "
+            "the google-auth package is not importable in this process. "
+            "pyproject.toml should carry google-auth>=2.30; container may "
+            "be stale or missing deps. Every engine call from this process "
+            "will fail with EngineAuthUnavailable until the dependency "
+            "is repaired.",
+            audience,
+        )
+        _maybe_soft_mode_return(exc)
+        raise exc
 
     try:
         request = _GoogleAuthRequest()
         token = _google_id_token.fetch_id_token(request, audience)
-        return {"Authorization": f"Bearer {token}"}
-    except Exception as exc:  # noqa: BLE001 — best-effort; log + fall through
-        # ERROR-level per Fable 2026-09-06 UTC: in production this means
-        # every subsequent engine call from this gateway process is about
-        # to fail with an engine_auth_failed 502. Not a warning, not a
-        # transient — alertable at SRE dashboard threshold.
+    except Exception as exc:  # noqa: BLE001 — raised as EngineAuthUnavailable below
         logger.error(
             "engine_id_token_fetch_failed: audience=%s cause=%s: %s; "
-            "emitting unauthenticated request — Cloud Run engine will 403 "
-            "and gateway will surface as 502 engine_auth_failed. Every "
-            "engine call from this process will fail until the metadata "
-            "server / SA / audience configuration is repaired.",
+            "metadata-server ID-token mint failed. Likely causes: "
+            "(1) not running on Cloud Run (no metadata server); "
+            "(2) Cloud Run metadata server outage; "
+            "(3) audience URL rejected by IAM policy. "
+            "Raising EngineAuthUnavailable; dispatch() will surface as "
+            "503 engine_auth_local_fail (gateway-side identity failure, "
+            "distinct from engine-side 403 engine_auth_failed).",
             audience, exc.__class__.__name__, exc,
         )
-        return {}
+        auth_exc = EngineAuthUnavailable(
+            reason="metadata_fetch_failed",
+            audience=audience,
+            cause=exc,
+        )
+        _maybe_soft_mode_return(auth_exc)
+        raise auth_exc from exc
+
+    if not token:
+        # Belt-and-braces: fetch_id_token succeeded but returned falsy.
+        exc = EngineAuthUnavailable(
+            reason="empty_token_returned",
+            audience=audience,
+        )
+        logger.error(
+            "engine_id_token_fetch_failed: audience=%s cause=empty_token_returned; "
+            "google.oauth2.id_token.fetch_id_token returned falsy without "
+            "raising. This is a google-auth library defect surface; "
+            "raising EngineAuthUnavailable.",
+            audience,
+        )
+        _maybe_soft_mode_return(exc)
+        raise exc
+
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _maybe_soft_mode_return(exc: EngineAuthUnavailable) -> None:
+    """If CLAWDOG_ENGINE_AUTH_SOFT_MODE=1, log + swallow the exception so
+    caller falls through to unauthenticated request.
+
+    Reserved for emergency rollback (metadata-server outage). Not for
+    normal operation. If enabled, the WARNING log fires on every request
+    so the abnormal state is visible.
+
+    Return path: caller sees this function return normally + must then
+    also check `_soft_mode_active_this_call` in a thread-local... too
+    complex for a first cut. Simpler contract: this function LOGS the
+    exception's details but does NOT swallow; caller-side handling of
+    the raised exception is in `dispatch()` where the CLAWDOG_ENGINE_AUTH_
+    SOFT_MODE branch converts the exception into a `{}` header dict +
+    continues to the unauth request.
+
+    Implementation kept in a helper so the escape-hatch semantics live
+    in one place; see `PrologClient.dispatch()` for the caller-side
+    check.
+    """
+    # No-op in this signature; the actual soft-mode swallowing happens
+    # at dispatch() where the exception is caught. This helper exists
+    # to make the escape-hatch contract discoverable in _authenticated_
+    # headers' failure paths (all three raise sites call it before raise).
+    return None
 
 
 class PrologEngineUnavailable(RuntimeError):
@@ -387,13 +510,50 @@ class PrologClient:
         url = f"{base_url}{path}"
         timeout = timeout_override or meta["timeout"]
 
-        # Engine lock-down Step 1 (mut-2026-09-06-mc14 per Fable 2026-09-06 UTC):
-        # attach Cloud Run ID token to every outbound engine call. Header
-        # dict is empty on local/docker-compose/test (see
-        # ``_authenticated_headers`` docstring); harmless while engines are
-        # still ingress=allow-unauthenticated; becomes load-bearing after
-        # Step 4 removes allUsers invoker.
-        headers = _authenticated_headers(url)
+        # Engine lock-down Step 1 (mut-2026-09-06-mc14) + D22 fix
+        # (mut-2026-09-07-mc19 per Fable 2026-09-07 03:53 UTC):
+        # attach Cloud Run ID token to every outbound engine call. For a
+        # Cloud Run audience, `_authenticated_headers` returns the Bearer
+        # header OR raises EngineAuthUnavailable — NEVER silently falls
+        # back to {}. That fallback was the mc14 defect surfaced when
+        # depreciation-engine locked down and the gateway kept calling it
+        # tokenless (2026-09-07 03:53 UTC wire evidence). Dev/test/compose
+        # audiences continue to receive {} (soft mode by construction).
+        #
+        # Emergency escape hatch: CLAWDOG_ENGINE_AUTH_SOFT_MODE=1 forces
+        # the pre-mc19 silent-fallback behaviour. Reserved for metadata-
+        # server outages that would otherwise take the whole gateway down;
+        # emits a WARNING log so its enablement is visible.
+        try:
+            headers = _authenticated_headers(url)
+        except EngineAuthUnavailable as auth_exc:
+            if os.environ.get("CLAWDOG_ENGINE_AUTH_SOFT_MODE") == "1":
+                logger.warning(
+                    "engine_auth_soft_mode_engaged: audience=%s reason=%s; "
+                    "CLAWDOG_ENGINE_AUTH_SOFT_MODE=1 in environment. "
+                    "Sending unauthenticated request. Reserved for emergency "
+                    "rollback ONLY; disable env var once metadata server is "
+                    "restored.",
+                    auth_exc.audience, auth_exc.reason,
+                )
+                headers = {}
+            else:
+                # Raise a distinct 503-mapped error so the caller can
+                # partition gateway-side identity failure from engine-side
+                # 403. `engine_auth_local_fail` is the discriminator.
+                raise PrologEngineUnavailable(
+                    error_code="engine_auth_local_fail",
+                    detail={
+                        "reason": auth_exc.reason,
+                        "audience": auth_exc.audience,
+                        "cause": (
+                            f"{auth_exc.cause.__class__.__name__}: {auth_exc.cause}"
+                            if auth_exc.cause is not None else None
+                        ),
+                    },
+                    engine=engine,
+                    url=url,
+                ) from auth_exc
 
         try:
             if self._client is not None:
