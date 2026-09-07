@@ -13,10 +13,21 @@ verbatim rule:
 **Design.**
 
 - Endpoint: `POST /_internal/probe/engine-auth`.
-- No auth on the endpoint itself (Cloud Run ingress + the deployed URL are
-  the only reachability control; the endpoint returns no secrets and mints
-  no engine-side calls — just proves the gateway can mint tokens against
-  its own identity).
+- **Gated by shared-secret env var** `CLAWDOG_ENGINE_AUTH_PROBE_TOKEN`
+  (per Fable 2026-09-07 04:41 UTC note 1: the endpoint discloses engine
+  URLs + auth-path error strings; must not ship as a permanent world-
+  reachable surface).
+    - **When env var unset:** endpoint returns HTTP 404 as if it doesn't
+      exist. Route stays wired for canary use; disappears from the world
+      when the secret is not provisioned. This is the production posture.
+    - **When env var set:** request MUST carry header
+      `X-Clawdog-Probe-Token: <matching-value>`. Missing / mismatched
+      returns HTTP 404 (not 401 — don't reveal that the endpoint
+      exists to unauthenticated probes). This is the canary posture.
+- Andrew's canary sequence: `--set-env-vars` includes
+  `CLAWDOG_ENGINE_AUTH_PROBE_TOKEN=<random-value>` on the canary tag
+  deploy; curl carries the header; the value never gets promoted to the
+  production revision.
 - Body: optional `{"audiences": ["https://x.run.app", ...]}`. When absent,
   the endpoint uses the configured engine URLs from the env-var-resolved
   base URLs (fbt/depreciation/div7a).
@@ -59,9 +70,11 @@ Lessons honoured:
 """
 from __future__ import annotations
 
+import hmac
 import logging
+import os
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Header, HTTPException
 
 from api.prolog_client import (
     EngineAuthUnavailable,
@@ -75,6 +88,37 @@ from api.prolog_client import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/_internal/probe", tags=["internal-probe"])
+
+# D22 mc20 note-1 gate (per Fable 2026-09-07 04:41 UTC).
+#
+# Env var name for the shared-secret token that authorises probe calls.
+# When UNSET: endpoint returns 404 (posture: production, endpoint invisible).
+# When SET:   request MUST carry header `X-Clawdog-Probe-Token: <value>`
+#             matching the env var value (constant-time compare via hmac.compare_digest).
+#             Any mismatch OR missing header returns 404 (not 401 — don't
+#             reveal endpoint existence to unauthenticated probes).
+#
+# Andrew's canary sequence: --set-env-vars=CLAWDOG_ENGINE_AUTH_PROBE_TOKEN=<random>
+# on the canary tag deploy; curl carries the header; the env var is NEVER
+# --set-env-vars on the production revision.
+_PROBE_TOKEN_ENV_VAR = "CLAWDOG_ENGINE_AUTH_PROBE_TOKEN"
+_PROBE_TOKEN_HEADER = "X-Clawdog-Probe-Token"
+
+
+def _assert_probe_authorised(supplied_header: str | None) -> None:
+    """Enforce the shared-secret gate. Raises HTTP 404 on any failure
+    (never 401/403 — don't disclose endpoint existence).
+    """
+    expected = os.environ.get(_PROBE_TOKEN_ENV_VAR)
+    if not expected:
+        # Env var not provisioned — production posture. Endpoint invisible.
+        raise HTTPException(status_code=404, detail="Not Found")
+    if not supplied_header:
+        # Env var set but no header supplied — still 404 to avoid disclosure.
+        raise HTTPException(status_code=404, detail="Not Found")
+    # Constant-time compare to prevent timing side-channels.
+    if not hmac.compare_digest(supplied_header, expected):
+        raise HTTPException(status_code=404, detail="Not Found")
 
 
 def _configured_engine_audiences() -> list[str]:
@@ -158,6 +202,11 @@ def _mint_result_for_audience(audience: str) -> dict:
         "per-path error strings on failure. Token itself is NOT returned in "
         "full (only prefix + length) to avoid leaking a bearer through "
         "response logs.\n\n"
+        "**Gated by CLAWDOG_ENGINE_AUTH_PROBE_TOKEN env var + "
+        "X-Clawdog-Probe-Token request header** (per Fable 2026-09-07 04:41 "
+        "UTC note 1). When env var is unset OR header value doesn't match, "
+        "endpoint returns 404 (production posture). When both match, endpoint "
+        "performs the probe (canary posture).\n\n"
         "**Deploy gate use:** curl this against a canary/tag revision URL "
         "BEFORE promoting the revision to production traffic. If any engine "
         "mint fails, the revision stays at 0% traffic and the failure log "
@@ -168,8 +217,15 @@ def _mint_result_for_audience(audience: str) -> dict:
 )
 async def probe_engine_auth(
     body: dict | None = Body(default=None),
+    x_clawdog_probe_token: str | None = Header(
+        default=None,
+        alias=_PROBE_TOKEN_HEADER,
+        description="Shared-secret probe token; must match CLAWDOG_ENGINE_AUTH_PROBE_TOKEN env var.",
+    ),
 ) -> dict:
     """Probe endpoint. Returns per-audience mint results."""
+    _assert_probe_authorised(x_clawdog_probe_token)
+
     audiences = (body or {}).get("audiences")
     if not audiences:
         audiences = _configured_engine_audiences()

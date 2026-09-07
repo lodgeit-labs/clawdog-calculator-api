@@ -1808,8 +1808,28 @@
   "paths": {
     "/_internal/probe/engine-auth": {
       "post": {
-        "description": "Attempts to mint an ID token for each configured engine URL (or the audiences supplied in the body). Returns per-audience status naming which mint path succeeded (direct_metadata vs fetch_id_token) + per-path error strings on failure. Token itself is NOT returned in full (only prefix + length) to avoid leaking a bearer through response logs.\n\n**Deploy gate use:** curl this against a canary/tag revision URL BEFORE promoting the revision to production traffic. If any engine mint fails, the revision stays at 0% traffic and the failure log guides the fix without impacting live callers. Fable's rule: \"the fixed #40 must be proven to mint against a real metadata server before it goes to production traffic.\"",
+        "description": "Attempts to mint an ID token for each configured engine URL (or the audiences supplied in the body). Returns per-audience status naming which mint path succeeded (direct_metadata vs fetch_id_token) + per-path error strings on failure. Token itself is NOT returned in full (only prefix + length) to avoid leaking a bearer through response logs.\n\n**Gated by CLAWDOG_ENGINE_AUTH_PROBE_TOKEN env var + X-Clawdog-Probe-Token request header** (per Fable 2026-09-07 04:41 UTC note 1). When env var is unset OR header value doesn't match, endpoint returns 404 (production posture). When both match, endpoint performs the probe (canary posture).\n\n**Deploy gate use:** curl this against a canary/tag revision URL BEFORE promoting the revision to production traffic. If any engine mint fails, the revision stays at 0% traffic and the failure log guides the fix without impacting live callers. Fable's rule: \"the fixed #40 must be proven to mint against a real metadata server before it goes to production traffic.\"",
         "operationId": "probe_engine_auth__internal_probe_engine_auth_post",
+        "parameters": [
+          {
+            "description": "Shared-secret probe token; must match CLAWDOG_ENGINE_AUTH_PROBE_TOKEN env var.",
+            "in": "header",
+            "name": "X-Clawdog-Probe-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Shared-secret probe token; must match CLAWDOG_ENGINE_AUTH_PROBE_TOKEN env var.",
+              "title": "X-Clawdog-Probe-Token"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {

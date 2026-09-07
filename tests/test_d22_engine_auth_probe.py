@@ -31,6 +31,17 @@ from fastapi.testclient import TestClient
 from api import prolog_client
 from api.routes import internal_auth_probe as probe_module
 
+_PROBE_TOKEN = "canary-secret-abcdef123456"
+_PROBE_HEADERS = {"X-Clawdog-Probe-Token": _PROBE_TOKEN}
+
+
+@pytest.fixture(autouse=True)
+def _set_probe_token_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every test in this file needs the probe-token env var set (canary
+    posture). Individual tests can override or unset via monkeypatch.
+    """
+    monkeypatch.setenv("CLAWDOG_ENGINE_AUTH_PROBE_TOKEN", _PROBE_TOKEN)
+
 
 @pytest.fixture
 def client() -> TestClient:
@@ -48,7 +59,7 @@ def test_probe_all_ok_when_direct_metadata_mints_all_audiences(client: TestClien
         probe_module, "_fetch_id_token_direct_metadata",
         lambda audience: (fake_token, None),
     ):
-        resp = client.post("/_internal/probe/engine-auth", json={})
+        resp = client.post("/_internal/probe/engine-auth", json={}, headers=_PROBE_HEADERS)
 
     assert resp.status_code == 200
     body = resp.json()
@@ -91,6 +102,7 @@ def test_probe_fallback_to_fetch_id_token_when_direct_fails(client: TestClient) 
         resp = client.post(
             "/_internal/probe/engine-auth",
             json={"audiences": ["https://fbt-engine-8340695160.australia-southeast1.run.app"]},
+            headers=_PROBE_HEADERS,
         )
 
     assert resp.status_code == 200
@@ -124,6 +136,7 @@ def test_probe_reports_fail_when_both_paths_fail(client: TestClient) -> None:
         resp = client.post(
             "/_internal/probe/engine-auth",
             json={"audiences": ["https://depreciation-engine-8340695160.australia-southeast1.run.app"]},
+            headers=_PROBE_HEADERS,
         )
 
     assert resp.status_code == 200
@@ -136,6 +149,60 @@ def test_probe_reports_fail_when_both_paths_fail(client: TestClient) -> None:
     assert result["token_length"] is None
     # Reason MUST name both paths so operator sees what's broken.
     assert "all_mint_paths_failed" in result["reason"]
+
+
+# ---------------------------------------------------------------------------
+# Shared-secret gate (Fable 2026-09-07 04:41 UTC note 1)
+# ---------------------------------------------------------------------------
+
+def test_probe_returns_404_when_env_var_unset(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Production posture: CLAWDOG_ENGINE_AUTH_PROBE_TOKEN env var not
+    provisioned → endpoint returns 404 as if it doesn't exist. This is
+    how the probe becomes inert when not needed.
+    """
+    monkeypatch.delenv("CLAWDOG_ENGINE_AUTH_PROBE_TOKEN", raising=False)
+    fake_token = "eyJ.should.not.be.reached_at_least_20_chars_ok"
+    with patch.object(
+        probe_module, "_fetch_id_token_direct_metadata",
+        lambda audience: (fake_token, None),
+    ):
+        resp = client.post("/_internal/probe/engine-auth", json={}, headers=_PROBE_HEADERS)
+    assert resp.status_code == 404, (
+        f"expected 404 (env-var unset = endpoint invisible); got {resp.status_code}: {resp.text[:200]}"
+    )
+
+
+def test_probe_returns_404_when_header_missing(client: TestClient) -> None:
+    """Canary posture with missing header → 404 (not 401). Do not disclose
+    endpoint existence to unauthenticated probes.
+    """
+    fake_token = "eyJ.should.not.be.reached_at_least_20_chars_ok"
+    with patch.object(
+        probe_module, "_fetch_id_token_direct_metadata",
+        lambda audience: (fake_token, None),
+    ):
+        resp = client.post("/_internal/probe/engine-auth", json={})  # NO headers
+    assert resp.status_code == 404
+
+
+def test_probe_returns_404_when_header_value_mismatched(client: TestClient) -> None:
+    """Canary posture with wrong header value → 404 (constant-time compare
+    via hmac.compare_digest prevents timing-side-channel disclosure of the
+    correct token).
+    """
+    fake_token = "eyJ.should.not.be.reached_at_least_20_chars_ok"
+    with patch.object(
+        probe_module, "_fetch_id_token_direct_metadata",
+        lambda audience: (fake_token, None),
+    ):
+        resp = client.post(
+            "/_internal/probe/engine-auth",
+            json={},
+            headers={"X-Clawdog-Probe-Token": "wrong-value-xyz"},
+        )
+    assert resp.status_code == 404
 
 
 def test_probe_default_audiences_are_the_three_configured_engines(client: TestClient) -> None:
@@ -151,7 +218,7 @@ def test_probe_default_audiences_are_the_three_configured_engines(client: TestCl
         return fake_token, None
 
     with patch.object(probe_module, "_fetch_id_token_direct_metadata", _stub_direct):
-        resp = client.post("/_internal/probe/engine-auth", json={})
+        resp = client.post("/_internal/probe/engine-auth", json={}, headers=_PROBE_HEADERS)
 
     assert resp.status_code == 200
     body = resp.json()

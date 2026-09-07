@@ -41,8 +41,10 @@ shape ahead of n=2 signal would be premature design.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
+import sys
 from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlparse
@@ -313,6 +315,37 @@ def _authenticated_headers(url: str) -> dict[str, str]:
 
     # ---- Both paths failed. Raise with full attempt-log. ----
     reason_summary = "; ".join(f"{path}={err}" for path, err in attempted)
+    # D22 mc20 note-2 fix (per Fable 2026-09-07 04:41 UTC): emit as
+    # structured JSON so Cloud Logging parses stderr into jsonPayload.
+    # filterable fields (event, audience, attempts_list). Text-payload
+    # logs land in Cloud Logging too but require substring filters; JSON
+    # payload lets the SRE dashboard query on jsonPayload.event =
+    # "engine_id_token_fetch_failed" directly.
+    #
+    # The message string is ALSO human-readable so grep-style tooling
+    # still works; the JSON payload is emitted as `extra=` dict which
+    # python's stdlib logger passes to formatters that support it. On
+    # Cloud Run's default log handler, stderr writes that ARE valid JSON
+    # are parsed as jsonPayload; anything else lands as textPayload.
+    # See https://cloud.google.com/run/docs/logging#writing_structured_logs.
+    structured_log = json.dumps({
+        "severity": "ERROR",
+        "event": "engine_id_token_fetch_failed",
+        "audience": audience,
+        "attempts": [{"path": p, "error": e} for p, e in attempted],
+        "reason": f"all_mint_paths_failed: {reason_summary}",
+        "remediation": (
+            "(1) not running on Cloud Run (no metadata server); "
+            "(2) Cloud Run metadata server outage; "
+            "(3) audience URL rejected by IAM policy; "
+            "(4) gateway runtime SA missing roles/run.invoker on target engine. "
+            "gateway will surface as 503 engine_auth_local_fail."
+        ),
+    })
+    # Emit twice: structured JSON to stderr (Cloud Logging picks up as
+    # jsonPayload) + textPayload via logger.error (grep-friendly + also
+    # lands in Cloud Logging). Both surfaces queryable.
+    print(structured_log, file=sys.stderr, flush=True)
     logger.error(
         "engine_id_token_fetch_failed: audience=%s attempts=%s; "
         "ALL mint paths failed. Likely causes: (1) not running on Cloud Run "
