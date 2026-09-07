@@ -96,21 +96,25 @@ async def test_all_three_engines_route_through_dispatch() -> None:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_dispatch_raises_engine_auth_local_fail_when_google_auth_missing() -> None:
-    """When google-auth is missing at runtime AND the audience is a Cloud
-    Run URL, dispatch() must re-raise as PrologEngineUnavailable with
-    error_code='engine_auth_local_fail'. The request must NEVER be sent.
+async def test_dispatch_raises_engine_auth_local_fail_when_both_mint_paths_fail() -> None:
+    """D22 mc20 update (per Fable 2026-09-07 04:19 UTC): when BOTH mint
+    paths fail (direct metadata + fetch_id_token), dispatch() must re-raise
+    as PrologEngineUnavailable(error_code='engine_auth_local_fail'). The
+    request must NEVER be sent to the engine.
     """
     cloud_run_url = "https://depreciation-engine-8340695160.australia-southeast1.run.app"
     mock_client = AsyncMock(spec=httpx.AsyncClient)
-    # Ensure client.post is never called (request not sent).
     mock_client.post = AsyncMock(side_effect=AssertionError(
-        "dispatch() sent an HTTP request despite EngineAuthUnavailable; "
+        "dispatch() sent an HTTP request despite both mint paths failing; "
         "request must NEVER be sent when gateway cannot mint a token."
     ))
 
     with (
         patch.object(prolog_client, "_GOOGLE_AUTH_AVAILABLE", False),
+        patch.object(
+            prolog_client, "_fetch_id_token_direct_metadata",
+            lambda audience: (None, "host=metadata.google.internal transport=ConnectError: mocked_sandbox"),
+        ),
         patch.dict(os.environ, {}, clear=False),
     ):
         os.environ.pop("CLAWDOG_ENGINE_AUTH_SOFT_MODE", None)
@@ -125,27 +129,30 @@ async def test_dispatch_raises_engine_auth_local_fail_when_google_auth_missing()
     assert excinfo.value.error_code == "engine_auth_local_fail"
     assert excinfo.value.engine == DEPRECIATION_ENGINE
     assert isinstance(excinfo.value.detail, dict)
-    assert excinfo.value.detail["reason"] == "google_auth_missing"
+    assert "all_mint_paths_failed" in excinfo.value.detail["reason"]
     assert excinfo.value.detail["audience"] == cloud_run_url
 
 
 @pytest.mark.asyncio
-async def test_dispatch_raises_engine_auth_local_fail_when_metadata_fetch_fails() -> None:
-    """When google-auth is available but metadata-server fetch throws AND
-    the audience is a Cloud Run URL, dispatch() must re-raise as
-    PrologEngineUnavailable with error_code='engine_auth_local_fail'. The
-    request must NEVER be sent.
+async def test_dispatch_raises_engine_auth_local_fail_when_direct_fails_and_fetch_fails() -> None:
+    """When direct-metadata fails AND fetch_id_token also throws AND the
+    audience is a Cloud Run URL, dispatch() must re-raise. Request must
+    NEVER be sent. Reason aggregates both paths' errors.
     """
     cloud_run_url = "https://fbt-engine-8340695160.australia-southeast1.run.app"
     mock_client = AsyncMock(spec=httpx.AsyncClient)
     mock_client.post = AsyncMock(side_effect=AssertionError(
-        "dispatch() sent an HTTP request despite metadata-fetch failure"
+        "dispatch() sent an HTTP request despite both-paths-failed"
     ))
 
     with (
         patch.object(prolog_client, "_GOOGLE_AUTH_AVAILABLE", True),
         patch.object(prolog_client, "_GoogleAuthRequest", MagicMock()),
         patch.object(prolog_client, "_google_id_token") as mock_id_token,
+        patch.object(
+            prolog_client, "_fetch_id_token_direct_metadata",
+            lambda audience: (None, "host=metadata.google.internal transport=ConnectError: mocked"),
+        ),
         patch.dict(os.environ, {}, clear=False),
     ):
         os.environ.pop("CLAWDOG_ENGINE_AUTH_SOFT_MODE", None)
@@ -155,8 +162,10 @@ async def test_dispatch_raises_engine_auth_local_fail_when_metadata_fetch_fails(
             await client.dispatch(FBT_ENGINE, {"payload": "x"})
 
     assert excinfo.value.error_code == "engine_auth_local_fail"
-    assert excinfo.value.detail["reason"] == "metadata_fetch_failed"
-    assert "metadata server unreachable" in str(excinfo.value.detail.get("cause", ""))
+    assert "all_mint_paths_failed" in excinfo.value.detail["reason"]
+    assert "direct_metadata" in excinfo.value.detail["reason"]
+    assert "fetch_id_token" in excinfo.value.detail["reason"]
+    assert "metadata server unreachable" in excinfo.value.detail["reason"]
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +191,10 @@ async def test_soft_mode_env_var_swallows_engineauthunavailable_and_sends_unauth
 
     with (
         patch.object(prolog_client, "_GOOGLE_AUTH_AVAILABLE", False),
+        patch.object(
+            prolog_client, "_fetch_id_token_direct_metadata",
+            lambda audience: (None, "host=metadata.google.internal transport=ConnectError: mocked_sandbox"),
+        ),
         patch.dict(os.environ, {"CLAWDOG_ENGINE_AUTH_SOFT_MODE": "1"}, clear=False),
     ):
         client = PrologClient(div7a_base_url=cloud_run_url, client=mock_client)
@@ -276,12 +289,60 @@ async def test_localhost_audience_still_soft_no_authorization_header() -> None:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_cloud_run_success_path_attaches_bearer() -> None:
-    """When google-auth is available AND metadata fetch succeeds AND
-    audience is a Cloud Run URL, dispatch() attaches the Bearer header on
-    the httpx call. Regression gate for the primary happy path.
+async def test_cloud_run_success_via_direct_metadata_attaches_bearer() -> None:
+    """D22 mc20: PRIMARY mint path is direct metadata call. When it
+    succeeds, dispatch() attaches Bearer header on the httpx call and
+    fetch_id_token is NEVER attempted.
     """
-    fake_token = "eyJ.header.signature.fake"
+    fake_token = "eyJ.direct.metadata.token.fake"
+    cloud_run_url = "https://depreciation-engine-8340695160.australia-southeast1.run.app"
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json = MagicMock(return_value={"wdv_at": "9830.60"})
+    mock_client.post.return_value = mock_response
+
+    fetch_id_token_call_count = 0
+
+    def _fetch_id_token_should_not_fire(*args, **kwargs):
+        nonlocal fetch_id_token_call_count
+        fetch_id_token_call_count += 1
+        raise AssertionError(
+            "fetch_id_token should NOT be called when direct_metadata succeeded"
+        )
+
+    with (
+        patch.object(prolog_client, "_GOOGLE_AUTH_AVAILABLE", True),
+        patch.object(prolog_client, "_GoogleAuthRequest", MagicMock()),
+        patch.object(prolog_client, "_google_id_token") as mock_id_token,
+        patch.object(
+            prolog_client, "_fetch_id_token_direct_metadata",
+            lambda audience: (fake_token, None),  # direct wins
+        ),
+    ):
+        mock_id_token.fetch_id_token.side_effect = _fetch_id_token_should_not_fire
+        client = PrologClient(depreciation_base_url=cloud_run_url, client=mock_client)
+        result = await client.dispatch(
+            DEPRECIATION_ENGINE,
+            {"basis": "accounting"},
+            path_override="/v1/calculators/depreciation/at/x",
+        )
+
+    assert result == {"wdv_at": "9830.60"}
+    call_kwargs = mock_client.post.call_args.kwargs
+    assert call_kwargs["headers"] == {"Authorization": f"Bearer {fake_token}"}
+    assert fetch_id_token_call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_cloud_run_success_via_fetch_id_token_fallback_when_direct_fails() -> None:
+    """D22 mc20: FALLBACK mint path is google.oauth2.id_token.fetch_id_token.
+    When direct-metadata fails, fetch_id_token is tried; if IT succeeds,
+    dispatch() attaches Bearer header on the httpx call. This proves the
+    two-path shape works end-to-end.
+    """
+    fake_token = "eyJ.fetch.id.token.fake"
     cloud_run_url = "https://depreciation-engine-8340695160.australia-southeast1.run.app"
 
     mock_client = AsyncMock(spec=httpx.AsyncClient)
@@ -294,6 +355,10 @@ async def test_cloud_run_success_path_attaches_bearer() -> None:
         patch.object(prolog_client, "_GOOGLE_AUTH_AVAILABLE", True),
         patch.object(prolog_client, "_GoogleAuthRequest", MagicMock()),
         patch.object(prolog_client, "_google_id_token") as mock_id_token,
+        patch.object(
+            prolog_client, "_fetch_id_token_direct_metadata",
+            lambda audience: (None, "host=metadata.google.internal transport=ConnectError: mocked"),
+        ),
     ):
         mock_id_token.fetch_id_token.return_value = fake_token
         client = PrologClient(depreciation_base_url=cloud_run_url, client=mock_client)
@@ -306,6 +371,5 @@ async def test_cloud_run_success_path_attaches_bearer() -> None:
     assert result == {"wdv_at": "9830.60"}
     call_kwargs = mock_client.post.call_args.kwargs
     assert call_kwargs["headers"] == {"Authorization": f"Bearer {fake_token}"}
-    # Audience is scheme://netloc (path stripped).
     audience_arg = mock_id_token.fetch_id_token.call_args.args[1]
     assert audience_arg == cloud_run_url

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api import __version__
 from api.routes import calculators as calculators_routes
+from api.routes import internal_auth_probe as internal_auth_probe_routes
 from api.routes import mcp as mcp_routes
 from api.routes import rates as rates_routes
 
@@ -88,6 +89,9 @@ app.add_middleware(
 app.include_router(calculators_routes.router)
 app.include_router(rates_routes.router)
 app.include_router(mcp_routes.router)
+# D22 mc20 admin probe (per Fable 2026-09-07 04:19 UTC): mint-capability
+# check for the deploy gate. See api/routes/internal_auth_probe.py.
+app.include_router(internal_auth_probe_routes.router)
 
 
 @app.get("/healthz", tags=["system"], summary="Liveness probe (Cloud Run internal).")

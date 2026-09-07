@@ -73,6 +73,30 @@ except ImportError:  # pragma: no cover — google-auth is a hard dep on Cloud R
     _GoogleAuthRequest = None  # type: ignore[assignment,misc]
     _google_id_token = None  # type: ignore[assignment]
 
+# D22 real-metadata mint (mut-2026-09-07-mc20 per Fable 2026-09-07 04:19 UTC).
+#
+# Fable's strong prior verbatim: *"google.oauth2.id_token.fetch_id_token(request,
+# audience) does not mint for the attached service account on Cloud Run in the
+# general case; the working paths are a direct metadata call to …/service-
+# accounts/default/identity?audience=<url> with Metadata-Flavor: Google, or
+# google.auth.compute_engine.IDTokenCredentials."*
+#
+# mc19 relied solely on fetch_id_token. Wire evidence 2026-09-07 04:19 UTC: it
+# never worked in the deployed runtime. mc14's silent fallback masked that
+# because engines were still allUsers-invoker-bound; mc19's strict-raise
+# exposed the underlying capability defect the moment it shipped.
+#
+# mc20 fix: try DIRECT metadata call first (Fable's primary path), fall back to
+# fetch_id_token second. The direct metadata call is the wire-authoritative
+# form documented at:
+#   https://cloud.google.com/run/docs/securing/service-identity#identity_tokens
+# using the Cloud Run metadata server at metadata.google.internal (or IP
+# 169.254.169.254). Uses httpx (already a dep) so no new imports required.
+_METADATA_HOSTS = ("metadata.google.internal", "169.254.169.254")
+_METADATA_HEADER = {"Metadata-Flavor": "Google"}
+_METADATA_TIMEOUT = httpx.Timeout(3.0, connect=2.0)  # fail fast on non-GCE
+_METADATA_ID_TOKEN_PATH = "/computeMetadata/v1/instance/service-accounts/default/identity"
+
 DEFAULT_PROLOG_URL = "http://localhost:8081"
 DEFAULT_DEPRECIATION_URL = "http://localhost:8082"
 # Phase D (mut-2026-08-24-mc20): Div7A_Engine gateway routing. Div7A_Engine
@@ -257,63 +281,103 @@ def _authenticated_headers(url: str) -> dict[str, str]:
         raise exc
     audience = f"{parsed.scheme}://{parsed.netloc}"
 
-    if not _GOOGLE_AUTH_AVAILABLE:
-        exc = EngineAuthUnavailable(
-            reason="google_auth_missing",
-            audience=audience,
-        )
-        logger.error(
-            "engine_id_token_fetch_failed: audience=%s cause=google_auth_missing; "
-            "the google-auth package is not importable in this process. "
-            "pyproject.toml should carry google-auth>=2.30; container may "
-            "be stale or missing deps. Every engine call from this process "
-            "will fail with EngineAuthUnavailable until the dependency "
-            "is repaired.",
-            audience,
-        )
-        _maybe_soft_mode_return(exc)
-        raise exc
+    # D22 mc20 fix (per Fable 2026-09-07 04:19 UTC): try DIRECT metadata
+    # call first (wire-authoritative Cloud Run identity endpoint); fall back
+    # to google.oauth2.id_token.fetch_id_token second. Two independent paths
+    # so a failure mode in one doesn't sink the other. Collect per-path
+    # errors so the log names ALL attempts, not just the last.
+    attempted: list[tuple[str, str]] = []  # [(path_name, error_repr), ...]
 
-    try:
-        request = _GoogleAuthRequest()
-        token = _google_id_token.fetch_id_token(request, audience)
-    except Exception as exc:  # noqa: BLE001 — raised as EngineAuthUnavailable below
-        logger.error(
-            "engine_id_token_fetch_failed: audience=%s cause=%s: %s; "
-            "metadata-server ID-token mint failed. Likely causes: "
-            "(1) not running on Cloud Run (no metadata server); "
-            "(2) Cloud Run metadata server outage; "
-            "(3) audience URL rejected by IAM policy. "
-            "Raising EngineAuthUnavailable; dispatch() will surface as "
-            "503 engine_auth_local_fail (gateway-side identity failure, "
-            "distinct from engine-side 403 engine_auth_failed).",
-            audience, exc.__class__.__name__, exc,
-        )
-        auth_exc = EngineAuthUnavailable(
-            reason="metadata_fetch_failed",
-            audience=audience,
-            cause=exc,
-        )
-        _maybe_soft_mode_return(auth_exc)
-        raise auth_exc from exc
+    # ---- Path 1: DIRECT metadata call (Fable's primary path) ----
+    direct_token, direct_error = _fetch_id_token_direct_metadata(audience)
+    if direct_token:
+        return {"Authorization": f"Bearer {direct_token}"}
+    if direct_error is not None:
+        attempted.append(("direct_metadata", direct_error))
 
-    if not token:
-        # Belt-and-braces: fetch_id_token succeeded but returned falsy.
-        exc = EngineAuthUnavailable(
-            reason="empty_token_returned",
-            audience=audience,
-        )
-        logger.error(
-            "engine_id_token_fetch_failed: audience=%s cause=empty_token_returned; "
-            "google.oauth2.id_token.fetch_id_token returned falsy without "
-            "raising. This is a google-auth library defect surface; "
-            "raising EngineAuthUnavailable.",
-            audience,
-        )
-        _maybe_soft_mode_return(exc)
-        raise exc
+    # ---- Path 2: google.oauth2.id_token.fetch_id_token (fallback) ----
+    if _GOOGLE_AUTH_AVAILABLE:
+        try:
+            request = _GoogleAuthRequest()
+            token = _google_id_token.fetch_id_token(request, audience)
+            if token:
+                return {"Authorization": f"Bearer {token}"}
+            attempted.append(("fetch_id_token", "returned_empty_token"))
+        except Exception as exc:  # noqa: BLE001 — collected + re-raised below
+            attempted.append((
+                "fetch_id_token",
+                f"{exc.__class__.__name__}: {exc}",
+            ))
+    else:
+        attempted.append(("fetch_id_token", "google_auth_missing"))
 
-    return {"Authorization": f"Bearer {token}"}
+    # ---- Both paths failed. Raise with full attempt-log. ----
+    reason_summary = "; ".join(f"{path}={err}" for path, err in attempted)
+    logger.error(
+        "engine_id_token_fetch_failed: audience=%s attempts=%s; "
+        "ALL mint paths failed. Likely causes: (1) not running on Cloud Run "
+        "(no metadata server); (2) Cloud Run metadata server outage; "
+        "(3) audience URL rejected by IAM policy; (4) gateway runtime SA "
+        "missing roles/run.invoker on the target engine. Raising "
+        "EngineAuthUnavailable; dispatch() will surface as 503 "
+        "engine_auth_local_fail (gateway-side identity failure, distinct "
+        "from engine-side 403 engine_auth_failed).",
+        audience, reason_summary,
+    )
+    auth_exc = EngineAuthUnavailable(
+        reason=f"all_mint_paths_failed: {reason_summary}",
+        audience=audience,
+    )
+    _maybe_soft_mode_return(auth_exc)
+    raise auth_exc
+
+
+def _fetch_id_token_direct_metadata(audience: str) -> tuple[str | None, str | None]:
+    """Try Cloud Run's direct metadata identity endpoint.
+
+    D22 mc20 primary mint path (per Fable 2026-09-07 04:19 UTC).
+    Documented at
+    https://cloud.google.com/run/docs/securing/service-identity#identity_tokens.
+
+    Endpoint:
+      GET http://metadata.google.internal/computeMetadata/v1/instance/
+          service-accounts/default/identity?audience=<audience>
+      Header: Metadata-Flavor: Google
+
+    Returns (token, None) on success, (None, error_string) on failure.
+    Tries `metadata.google.internal` first, falls back to `169.254.169.254`
+    (the metadata server IP) in case DNS is not resolving.
+    """
+    last_err: str | None = None
+    for host in _METADATA_HOSTS:
+        url = f"http://{host}{_METADATA_ID_TOKEN_PATH}"
+        params = {"audience": audience}
+        try:
+            with httpx.Client(timeout=_METADATA_TIMEOUT) as client:
+                resp = client.get(url, params=params, headers=_METADATA_HEADER)
+            if resp.status_code == 200:
+                token = resp.text.strip()
+                if token:
+                    return token, None
+                last_err = f"host={host} status=200 empty_body"
+            else:
+                # Cloud Run metadata returns 403 if the audience-with-audience
+                # combination is rejected. 404 = wrong path. 401 = header missing.
+                # Any non-200 is a hard fail for this host; move to next host or
+                # fall through to fetch_id_token.
+                body_preview = resp.text[:200] if resp.text else "<empty>"
+                last_err = (
+                    f"host={host} status={resp.status_code} body={body_preview!r}"
+                )
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            # Not on GCE / Cloud Run — metadata server unreachable.
+            last_err = f"host={host} transport={exc.__class__.__name__}: {exc}"
+            # Try next host in the loop.
+            continue
+        except Exception as exc:  # noqa: BLE001 — broad on purpose; direct-mint MUST NOT crash caller
+            last_err = f"host={host} unexpected={exc.__class__.__name__}: {exc}"
+            continue
+    return None, last_err
 
 
 def _maybe_soft_mode_return(exc: EngineAuthUnavailable) -> None:
