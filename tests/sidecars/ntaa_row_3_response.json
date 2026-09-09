@@ -1,5 +1,8 @@
 {
-    "taxable_value": 3880.959999999999,
+    "_recorded_from": "https://fbt-calculator-api-8340695160.australia-southeast1.run.app/v1/calculators/urn:sbrm:calculator:fbt:car-operating-cost/urn:sbrm:period:fbt:fy2026 (POST)",
+    "_recorded_at": "2026-09-09T08:59Z",
+    "_recorded_note": "D12 fixture-update straggler: re-recorded from deployed wire; taxable_value + tv_* now D12 decimal strings (were pre-D12 floats)",
+    "taxable_value": "3880.96",
     "trace": {
         "applied_rate_table_uris": [
             "urn:sbrm:rate:fbt:fy2026:deemed-depreciation-rates",
@@ -7,22 +10,22 @@
             "urn:sbrm:rate:fbt:fy2026:days-in-year",
             "urn:sbrm:rate:fbt:fy2026:days-in-year-by-fy"
         ],
-        "business_use_pct": 75.0,
-        "business_use_reduction": 12242.87,
-        "deemed_depreciation": 8792.26,
+        "business_use_pct": "75",
+        "business_use_reduction": "12242.87",
+        "deemed_depreciation": "8792.26",
         "deemed_dispatch": "computed_chained",
-        "deemed_interest": 3031.57,
-        "deemed_total": 11823.83,
-        "employee_contribution": 200.0,
+        "deemed_interest": "3031.57",
+        "deemed_total": "11823.83",
+        "employee_contribution": "200.00",
         "form_of_finance": "owned",
-        "fuel_repairs_servicing": 3000.0,
-        "lease_payments": 0,
-        "no_private_use_reduction": 0.0,
-        "registration_insurance": 1500.0,
-        "total_after_npur": 16323.83,
-        "tv_before_operating": 4080.959999999999,
-        "tv_final": 3880.959999999999,
-        "tv_net_pre_clamp": 3880.959999999999
+        "fuel_repairs_servicing": "3000.00",
+        "lease_payments": "0.00",
+        "no_private_use_reduction": "0.00",
+        "registration_insurance": "1500.00",
+        "total_after_npur": "16323.83",
+        "tv_before_operating": "4080.96",
+        "tv_final": "3880.96",
+        "tv_net_pre_clamp": "3880.96"
     },
     "manifest": {
         "rate_table_uris": [
@@ -62,5 +65,11 @@
             }
         ],
         "jurisdiction": "AU"
-    }
+    },
+    "fbt_type": "Type 2",
+    "gross_up_factor": "1.8868",
+    "grossed_up_taxable_value": "7322.60",
+    "fbt_payable": "3441.62",
+    "rfba_notional_taxable_value": null,
+    "rfba_notional_grossed_up_t2": null
 }
