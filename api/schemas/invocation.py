@@ -1094,7 +1094,48 @@ class CalculatorInvocationResponse(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    taxable_value: float
+    # D12 Stage 2 mut-2026-09-09-mc00 gateway PR — A2 amendment per Fable
+    # ruling 2026-09-08 06:41 UTC (revised Ruling 3): 4 fields str (not
+    # str | None; wire-verified 2026-09-08T06:32:10Z on board taxable_value=0
+    # probe that D21 trio-consistency defence populates them on every 200); 2
+    # rfba_* fields str | None (only these two are actually nullable in the
+    # observed wire). Regex patterns per A2: money `^-?\d+\.\d{2}$`, factor
+    # `^\d+\.\d+$`. Engine-side D12 CLOSED-GREEN per Fable ratification 2026-
+    # 09-08 10:04 UTC (LodgeiT_FBT PR #64 head 31da01879188; hotfix PR #65
+    # head 10829ae03445; wire-proof paste ratified on comment-5583005098).
+    #
+    # Constellation pass-through parity (single-concern spec):
+    #   depreciation-engine: emits money as Pydantic Decimal-serialised strings
+    #     via Annotated[Decimal, Field(...)] declarations at
+    #     depreciation-engine `depreciation_core/api/schemas.py:719` +
+    #     following (class DepreciationAtResponse); forwarded through this
+    #     gateway via `api/routes/calculators.py:452` `response_model=
+    #     DepreciationAtResponse`. Wire shape: `wdv_at: "30265.03"` (string).
+    #   Div7A_Engine:      emits money as str directly on the Pydantic model
+    #     at `div7a_core/../api/main.py:69` (class CalculateResponse; every
+    #     money field declared `str`). Forwarded through this gateway via the
+    #     `POST /v1/calculators/div7a/at/{period_uri:path}` handler in
+    #     `api/routes/calculators.py`. Wire shape: `statutory_myr: "15497.53"`.
+    #   FBT (this PR):     the 4 top-level money fields flipped from `float` to
+    #     `str` below match Div7A's str-directly-on-model shape; regex
+    #     constraints add defence-in-depth (rejects a float-emitting engine
+    #     regression as HTTP 502 rather than silently coercing). Post-D12
+    #     engine emits `"4392.06"` etc. verbatim through this model.
+    #
+    # D25 (gateway drops predicate-specific top-level fields the FBT engine
+    # emits — 13 predicates, 4-5 fields each; `api/routes/calculators.py:
+    # 863-871` fixed 4+6-key construction) is the NEXT PR, not this one.
+
+    taxable_value: str = Field(
+        pattern=r"^-?\d+\.\d{2}$",
+        description=(
+            "Post-D12: 2dp decimal string (money). Engine emits via"
+            " emit_wire_money/2 with cent-boundary assertion + HTTP 500"
+            " on non-boundary values. Div7A emits money as str directly;"
+            " depreciation emits via Pydantic Decimal-serialised strings;"
+            " FBT matches both via this PR (D12 constellation-parity)."
+        ),
+    )
     trace: dict[str, Any]
     manifest: Manifest
     advisory: AdvisoryBlock
@@ -1109,42 +1150,57 @@ class CalculatorInvocationResponse(BaseModel):
             "engage the gross-up arithmetic surface."
         ),
     )
-    gross_up_factor: float | None = Field(
-        None,
+    gross_up_factor: str = Field(
+        pattern=r"^\d+\.\d+$",
         description=(
-            "Gross-up factor consumed for fbt_payable arithmetic. 2.0802 "
+            "Post-D12: native-precision decimal string (rate/factor). 2.0802 "
             "for Type 1; 1.8868 for Type 2. Rate-table-fed via "
             "`urn:sbrm:rate:fbt:fy2026:gross-up-type-{1,2}` (the URI is "
-            "present in `manifest.rate_table_uris` when this field is set)."
+            "present in `manifest.rate_table_uris` when this field is set). "
+            "Nullability wire-verified on board taxable_value=0 probe 2026-"
+            "09-08T06:32:10Z: populated on every 200 (D21 trio-consistency "
+            "defence); therefore `str` not `str | None`."
         ),
     )
-    grossed_up_taxable_value: float | None = Field(
-        None,
+    grossed_up_taxable_value: str = Field(
+        pattern=r"^-?\d+\.\d{2}$",
         description=(
-            "`taxable_value * gross_up_factor`, rounded half-up to 2dp. "
-            "Equals 0 when s.8A exempts (taxable_value=0 ⇒ grossed_up=0)."
+            "Post-D12: 2dp decimal string (money). `taxable_value * "
+            "gross_up_factor`, rounded half-up to 2dp engine-side. "
+            "Equals `\"0.00\"` when s.8A exempts (taxable_value=0 ⇒ "
+            "grossed_up=0). Nullability wire-verified: populated on every "
+            "200 per D21 trio-consistency defence; therefore `str` not "
+            "`str | None`."
         ),
     )
-    fbt_payable: float | None = Field(
-        None,
+    fbt_payable: str = Field(
+        pattern=r"^-?\d+\.\d{2}$",
         description=(
-            "`grossed_up_taxable_value * 0.47`, rounded half-up to 2dp. "
-            "FBT rate 0.47 is rate-table-fed via "
-            "`urn:sbrm:rate:fbt:fy2026:fbt-rate` (FBTAA s.6). Equals 0 "
-            "when s.8A exempts."
+            "Post-D12: 2dp decimal string (money). `grossed_up_taxable_value"
+            " * 0.47`, rounded half-up to 2dp engine-side. FBT rate 0.47 is"
+            " rate-table-fed via `urn:sbrm:rate:fbt:fy2026:fbt-rate` (FBTAA"
+            " s.6). Equals `\"0.00\"` when s.8A exempts. Nullability wire-"
+            "verified: populated on every 200 per D21 trio-consistency"
+            " defence; therefore `str` not `str | None`."
         ),
     )
-    rfba_notional_taxable_value: float | None = Field(
+    rfba_notional_taxable_value: str | None = Field(
         None,
+        pattern=r"^-?\d+\.\d{2}$",
         description=(
-            "Pre-s.8A taxable value for the RFBA reporting surface. Engine "
-            "emits this on Phase 2l SF + OC; mc07 surfaces it at calc-api "
-            "(previously dropped by the response shaper)."
+            "Post-D12: 2dp decimal string (money) or null. Pre-s.8A taxable "
+            "value for the RFBA reporting surface. Engine emits this on Phase"
+            " 2l SF + OC; mc07 surfaces it at calc-api (previously dropped by"
+            " the response shaper). Nullability wire-verified on board"
+            " taxable_value=0 probe 2026-09-08T06:32:10Z: observed `null` when"
+            " engine did not populate; therefore `str | None`."
         ),
     )
-    rfba_notional_grossed_up_t2: float | None = Field(
+    rfba_notional_grossed_up_t2: str | None = Field(
         None,
+        pattern=r"^-?\d+\.\d{2}$",
         description=(
+            "Post-D12: 2dp decimal string (money) or null. "
             "Pre-s.8A taxable value grossed up at Type 2 (1.8868) for the "
             "employee's RFBA payment-summary surface. Engine emits this on "
             "Phase 2l SF + OC regardless of operator-supplied `fbt_type`; "

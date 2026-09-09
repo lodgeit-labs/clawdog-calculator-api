@@ -54,7 +54,7 @@ def _invoke(client) -> dict:
 def test_phase3a_pr_d_case_5_taxable_value(fastapi_test_client) -> None:
     """The bridge passes through the engine's deterministic taxable_value."""
     body = _invoke(fastapi_test_client)
-    assert body["taxable_value"] == pytest.approx(5547.75, abs=0.01)
+    assert float(body["taxable_value"]) == pytest.approx(5547.75, abs=0.01)
 
 
 def test_phase3a_pr_d_case_5_trace_deemed_dispatch(fastapi_test_client) -> None:
@@ -63,9 +63,11 @@ def test_phase3a_pr_d_case_5_trace_deemed_dispatch(fastapi_test_client) -> None:
     trace = body["trace"]
     assert trace["deemed_dispatch"] == "computed"
     assert trace["form_of_finance"] == "owned"
-    assert trace["deemed_depreciation"] == pytest.approx(13750, abs=0.01)
-    assert trace["deemed_interest"] == pytest.approx(4741, abs=0.01)
-    assert trace["deemed_total"] == pytest.approx(18491, abs=0.01)
+    # D12 mut-2026-09-09-mc00: trace money values are 2dp strings post-D12
+    # engine emit_wire; parse via float() for numeric comparison.
+    assert float(trace["deemed_depreciation"]) == pytest.approx(13750, abs=0.01)
+    assert float(trace["deemed_interest"]) == pytest.approx(4741, abs=0.01)
+    assert float(trace["deemed_total"]) == pytest.approx(18491, abs=0.01)
 
 
 def test_phase3a_pr_d_case_5_manifest_three_entries(fastapi_test_client) -> None:

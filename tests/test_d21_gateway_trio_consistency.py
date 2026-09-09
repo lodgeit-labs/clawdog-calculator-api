@@ -75,10 +75,10 @@ def _d21_shape_response() -> dict[str, Any]:
     positive taxable_value + fbt_type + no trio + empty rate_uris_consumed.
     """
     return {
-        "taxable_value": 900.0,
-        "gross_taxable_value": 1500.0,
-        "employee_contribution": 0,
-        "reductions": 600,
+        "taxable_value": "900.00",
+        "gross_taxable_value": "1500.00",
+        "employee_contribution": "0.00",
+        "reductions": "600.00",
         "fbt_type": "Type 2",
         "rate_uris_consumed": [],
     }
@@ -87,14 +87,14 @@ def _d21_shape_response() -> dict[str, Any]:
 def _healthy_response() -> dict[str, Any]:
     """Post-Phase-2 healthy shape: trio + URIs both populated."""
     return {
-        "taxable_value": 900.0,
-        "gross_taxable_value": 1500.0,
-        "employee_contribution": 0,
-        "reductions": 600,
+        "taxable_value": "900.00",
+        "gross_taxable_value": "1500.00",
+        "employee_contribution": "0.00",
+        "reductions": "600.00",
         "fbt_type": "Type 2",
-        "gross_up_factor": 1.8868,
-        "grossed_up_taxable_value": 1698.12,
-        "fbt_payable": 798.12,
+        "gross_up_factor": "1.8868",
+        "grossed_up_taxable_value": "1698.12",
+        "fbt_payable": "798.12",
         "rate_uris_consumed": [
             "urn:sbrm:rate:fbt:fy2026:gross-up-type-2",
             "urn:sbrm:rate:fbt:fy2026:fbt-rate",
@@ -113,28 +113,37 @@ def _trio_present_empty_uris_response() -> dict[str, Any]:
     D21 scope (D21 fires only when BOTH trio AND URIs are missing).
     """
     return {
-        "taxable_value": 900.0,
-        "gross_taxable_value": 1500.0,
-        "employee_contribution": 0,
-        "reductions": 600,
+        "taxable_value": "900.00",
+        "gross_taxable_value": "1500.00",
+        "employee_contribution": "0.00",
+        "reductions": "600.00",
         "fbt_type": "Type 2",
-        "gross_up_factor": 1.8868,
-        "grossed_up_taxable_value": 1698.12,
-        "fbt_payable": 798.12,
+        "gross_up_factor": "1.8868",
+        "grossed_up_taxable_value": "1698.12",
+        "fbt_payable": "798.12",
         "rate_uris_consumed": [],
     }
 
 
 def _zero_taxable_value_response() -> dict[str, Any]:
     """taxable_value=0 (e.g. s.8A exemption zeroes the base). D21 check
-    does not fire; trio would legitimately be 0/0/0 downstream.
+    does not fire; trio is legitimately 0/0/0 downstream.
+
+    D12 amendment (mut-2026-09-09-mc00 gateway PR): money as strings; A2
+    amendment made the trio required at the Pydantic schema (not just at the
+    D21 runtime check), so the mock must carry them even for taxable_value=0.
+    Real engine post-D21-mut-2026-09-06-mc15 always populates the trio,
+    including with 0/0/0 at s.8A-exempt shape.
     """
     return {
-        "taxable_value": 0.0,
-        "gross_taxable_value": 1500.0,
-        "employee_contribution": 0,
-        "reductions": 600,
+        "taxable_value": "0.00",
+        "gross_taxable_value": "1500.00",
+        "employee_contribution": "0.00",
+        "reductions": "600.00",
         "fbt_type": "Type 2",
+        "gross_up_factor": "1.8868",
+        "grossed_up_taxable_value": "0.00",
+        "fbt_payable": "0.00",
         "rate_uris_consumed": [],
     }
 
@@ -169,7 +178,9 @@ def test_d21_exact_shape_returns_502_engine_response_missing_gross_up_trio(
     )
     body = resp.json()
     assert body["detail"]["error"] == "engine_response_missing_gross_up_trio"
-    assert body["detail"]["taxable_value"] == 900.0
+    # D12 amendment: taxable_value now surfaces as 2dp string in error detail
+    # (matches wire shape; error handler emits the raw value).
+    assert body["detail"]["taxable_value"] == "900.00"
     assert body["detail"]["trio_keys_present"] == {
         "gross_up_factor": False,
         "grossed_up_taxable_value": False,
@@ -206,8 +217,8 @@ def test_healthy_response_passes_through_200(client: TestClient) -> None:
         f"expected 200; got {resp.status_code}: {resp.text[:400]}"
     )
     body = resp.json()
-    assert body["gross_up_factor"] == 1.8868
-    assert body["fbt_payable"] == 798.12
+    assert body["gross_up_factor"] == "1.8868"
+    assert body["fbt_payable"] == "798.12"
 
 
 def test_trio_present_empty_uris_still_returns_200(client: TestClient) -> None:
@@ -230,7 +241,7 @@ def test_trio_present_empty_uris_still_returns_200(client: TestClient) -> None:
         f"expected 200; got {resp.status_code}: {resp.text[:400]}"
     )
     body = resp.json()
-    assert body["gross_up_factor"] == 1.8868
+    assert body["gross_up_factor"] == "1.8868"
     assert body["manifest"]["rate_table_uris"] == []
 
 
@@ -253,7 +264,7 @@ def test_zero_taxable_value_does_not_fire_check(client: TestClient) -> None:
         f"{resp.text[:400]}"
     )
     body = resp.json()
-    assert body["taxable_value"] == 0.0
+    assert body["taxable_value"] == "0.00"
     # Trio is absent (engine didn't emit it); Pydantic defaults to null.
     # This is consistent with pre-D21 wire behaviour for s.8A-exemption
     # shapes.

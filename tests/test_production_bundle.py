@@ -186,27 +186,37 @@ def _mock_dispatch_engine_response() -> dict:
         "urn:sbrm:rate:fbt:fy2026:benchmark-interest",
         "urn:sbrm:rate:fbt:fy2026:days-in-year",
     ]
+    # D12 mut-2026-09-09-mc00 gateway PR: A2 amendment made gross-up trio
+    # required at Pydantic schema. Mock now emits the trio (matches real
+    # engine post-mc07 shape).
+    gross_up_factor = 1.8868
+    grossed_up = round(5547.75 * gross_up_factor, 2)
+    fbt_pay = round(grossed_up * 0.47, 2)
     return {
-        "taxable_value": 5547.75,
+        "taxable_value": "5547.75",
+        "fbt_type": "Type 2",
+        "gross_up_factor": f"{gross_up_factor}",
+        "grossed_up_taxable_value": f"{grossed_up:.2f}",
+        "fbt_payable": f"{fbt_pay:.2f}",
         "rate_uris_consumed": rate_uris,
         "trace": {
             "applied_rate_table_uris": rate_uris,
             "deemed_dispatch": "computed",
             "form_of_finance": "owned",
-            "deemed_depreciation": 13750.0,
-            "deemed_interest": 4741.0,
-            "deemed_total": 18491.0,
+            "deemed_depreciation": "13750.00",
+            "deemed_interest": "4741.00",
+            "deemed_total": "18491.00",
             "business_use_pct": 75,
-            "business_use_reduction": 13868.25,
-            "employee_contribution": 200.0,
-            "fuel_repairs_servicing": 3000.0,
-            "lease_payments": 0.0,
-            "no_private_use_reduction": 0.0,
-            "registration_insurance": 1500.0,
-            "total_after_npur": 24991.0,
-            "tv_before_operating": 5547.75,
-            "tv_final": 5547.75,
-            "tv_net_pre_clamp": 5547.75,
+            "business_use_reduction": "13868.25",
+            "employee_contribution": "200.00",
+            "fuel_repairs_servicing": "3000.00",
+            "lease_payments": "0.00",
+            "no_private_use_reduction": "0.00",
+            "registration_insurance": "1500.00",
+            "total_after_npur": "24991.00",
+            "tv_before_operating": "5547.75",
+            "tv_final": "5547.75",
+            "tv_net_pre_clamp": "5547.75",
         },
     }
 
@@ -262,7 +272,7 @@ def test_dispatch_path_against_production_bundle(
         f"failed with {resp.status_code}: {resp.text[:500]}"
     )
     body = resp.json()
-    assert body["taxable_value"] == pytest.approx(5547.75, abs=0.01)
+    assert float(body["taxable_value"]) == pytest.approx(5547.75, abs=0.01)
 
     entries = body["manifest"]["rate_table_uris"]
     assert len(entries) == 3, f"expected 3 manifest entries, got {len(entries)}: {entries}"
@@ -581,18 +591,19 @@ def _mock_oc_gross_up_engine_response(fbt_type: str = "Type 2") -> dict:
         gross_up_uri,
         "urn:sbrm:rate:fbt:fy2026:fbt-rate",
     ]
+    # D12 mut-2026-09-09-mc00 gateway PR: money + rate/factor as strings.
     return {
-        "taxable_value": 9120.0,
+        "taxable_value": "9120.00",
         "fbt_type": fbt_type,
-        "gross_up_factor": gross_up_factor,
-        "grossed_up_taxable_value": grossed_up,
-        "fbt_payable": fbt_payable,
-        "rfba_notional_taxable_value": 9120.0,
-        "rfba_notional_grossed_up_t2": round(9120 * 1.8868, 2),
+        "gross_up_factor": f"{gross_up_factor}",
+        "grossed_up_taxable_value": f"{grossed_up:.2f}",
+        "fbt_payable": f"{fbt_payable:.2f}",
+        "rfba_notional_taxable_value": "9120.00",
+        "rfba_notional_grossed_up_t2": f"{round(9120 * 1.8868, 2):.2f}",
         "rate_uris_consumed": rate_uris,
         "trace": {
             "applied_rate_table_uris": rate_uris,
-            "tv_final": 9120.0,
+            "tv_final": "9120.00",
         },
     }
 
@@ -667,20 +678,20 @@ def test_oc_gross_up_output_round_trips_through_production_bundle(
     body = resp.json()
 
     # Pre-mc07 wire-shape byte-stability (regression gate).
-    assert body["taxable_value"] == pytest.approx(9120.0, abs=0.01)
+    assert float(body["taxable_value"]) == pytest.approx(9120.0, abs=0.01)
     assert "manifest" in body and "rate_table_uris" in body["manifest"]
     assert "advisory" in body
 
     # New mc07 output fields are surfaced at the top level.
     assert body["fbt_type"] == resolved_fbt_type
     expected_factor = 2.0802 if resolved_fbt_type == "Type 1" else 1.8868
-    assert body["gross_up_factor"] == pytest.approx(expected_factor, abs=0.0001)
+    assert float(body["gross_up_factor"]) == pytest.approx(expected_factor, abs=0.0001)
     expected_grossed = round(9120 * expected_factor, 2)
     expected_fbt_payable = round(expected_grossed * 0.47, 2)
-    assert body["grossed_up_taxable_value"] == pytest.approx(expected_grossed, abs=0.01)
-    assert body["fbt_payable"] == pytest.approx(expected_fbt_payable, abs=0.01)
-    assert body["rfba_notional_taxable_value"] == pytest.approx(9120.0, abs=0.01)
-    assert body["rfba_notional_grossed_up_t2"] == pytest.approx(
+    assert float(body["grossed_up_taxable_value"]) == pytest.approx(expected_grossed, abs=0.01)
+    assert float(body["fbt_payable"]) == pytest.approx(expected_fbt_payable, abs=0.01)
+    assert float(body["rfba_notional_taxable_value"]) == pytest.approx(9120.0, abs=0.01)
+    assert float(body["rfba_notional_grossed_up_t2"]) == pytest.approx(
         round(9120 * 1.8868, 2), abs=0.01
     )
 
@@ -798,17 +809,17 @@ def test_sf_gross_up_output_round_trips_through_production_bundle(
         "urn:sbrm:rate:fbt:fy2026:fbt-rate",
     ]
     engine_response = {
-        "taxable_value": 11400.0,
-        "gross_taxable_value": 11400.0,
-        "taxable_value_before_statutory": 11400.0,
-        "employee_contribution": 0,
-        "reductions": 0,
+        "taxable_value": "11400.00",
+        "gross_taxable_value": "11400.00",
+        "taxable_value_before_statutory": "11400.00",
+        "employee_contribution": "0.00",
+        "reductions": "0.00",
         "fbt_type": "Type 2",
-        "gross_up_factor": 1.8868,
-        "grossed_up_taxable_value": grossed_up,
-        "fbt_payable": fbt_payable,
-        "rfba_notional_taxable_value": 11400.0,
-        "rfba_notional_grossed_up_t2": grossed_up,
+        "gross_up_factor": "1.8868",
+        "grossed_up_taxable_value": f"{grossed_up:.2f}",
+        "fbt_payable": f"{fbt_payable:.2f}",
+        "rfba_notional_taxable_value": "11400.00",
+        "rfba_notional_grossed_up_t2": f"{grossed_up:.2f}",
         "rate_uris_consumed": rate_uris,
         "trace": {"applied_rate_table_uris": rate_uris},
     }
@@ -849,11 +860,11 @@ def test_sf_gross_up_output_round_trips_through_production_bundle(
 
     assert resp.status_code == 200, resp.text[:500]
     body = resp.json()
-    assert body["taxable_value"] == pytest.approx(11400.0, abs=0.01)
+    assert float(body["taxable_value"]) == pytest.approx(11400.0, abs=0.01)
     assert body["fbt_type"] == "Type 2"
-    assert body["gross_up_factor"] == pytest.approx(1.8868, abs=0.0001)
-    assert body["grossed_up_taxable_value"] == pytest.approx(grossed_up, abs=0.01)
-    assert body["fbt_payable"] == pytest.approx(fbt_payable, abs=0.01)
+    assert float(body["gross_up_factor"]) == pytest.approx(1.8868, abs=0.0001)
+    assert float(body["grossed_up_taxable_value"]) == pytest.approx(grossed_up, abs=0.01)
+    assert float(body["fbt_payable"]) == pytest.approx(fbt_payable, abs=0.01)
 
 
 def test_other_calculator_response_byte_stable_without_gross_up_fields(
@@ -898,22 +909,35 @@ def test_other_calculator_response_byte_stable_without_gross_up_fields(
     finally:
         app.dependency_overrides.pop(get_prolog_client, None)
 
+    # D12 mut-2026-09-09-mc00 gateway PR + A2 amendment: pre-mc07 wire-shape
+    # is no longer supported at the Pydantic layer — the 4 top-level trio
+    # fields (taxable_value + gross_up_factor + grossed_up_taxable_value +
+    # fbt_payable) are now REQUIRED (not `str | None`). Rationale: wire-verified
+    # 2026-09-08T06:32:10Z on board taxable_value=0 probe that D21 trio-
+    # consistency defence populates them on every 200. The mc07 gross-up
+    # surface + D21 defence + A2 amendment collectively promote the trio to
+    # a required contract; a pre-mc07-shape response is now rejected at the
+    # gateway boundary (502) rather than passed through as 200-with-omitted-
+    # fields. This test's original contract ("pre-mc07 wire-shape stable") is
+    # therefore superseded. The `test_dispatch_path_against_production_bundle`
+    # test above exercises the mc07+ shape end-to-end and is the current
+    # contract test for this surface.
+    #
+    # If the mock omitted the trio, we would expect 502 (schema rejection).
+    # The mock in this test carries the trio (added mc00-2026-09-09 to match
+    # A2); expect 200 + trio present.
     assert resp.status_code == 200
     body = resp.json()
-    # Pre-mc07 wire-shape stable.
-    assert body["taxable_value"] == pytest.approx(5547.75, abs=0.01)
-    # The 6 new fields are absent (or None) when engine doesn't emit them.
-    for new_field in (
-        "fbt_type",
-        "gross_up_factor",
-        "grossed_up_taxable_value",
-        "fbt_payable",
-        "rfba_notional_taxable_value",
-        "rfba_notional_grossed_up_t2",
-    ):
-        assert body.get(new_field) is None, (
-            f"backward-compat regression: {new_field}={body.get(new_field)!r} "
-            f"present on response that did not emit gross-up arithmetic"
+    assert float(body["taxable_value"]) == pytest.approx(5547.75, abs=0.01)
+    # A2-post-amendment contract: trio is present (D21 defence promoted to schema).
+    assert body["gross_up_factor"] == "1.8868"
+    assert body["grossed_up_taxable_value"] is not None
+    assert body["fbt_payable"] is not None
+    # rfba fields remain optional (str | None) — present as null when engine
+    # doesn't emit them.
+    for optional_field in ("rfba_notional_taxable_value", "rfba_notional_grossed_up_t2"):
+        assert body.get(optional_field) is None, (
+            f"expected {optional_field} to be null when engine doesn't emit it; got {body.get(optional_field)!r}"
         )
 
 
