@@ -70,17 +70,18 @@ def _mock_residual_engine_response() -> dict:
     The D21 gateway check fires only when BOTH trio AND URIs are missing;
     trio-present-URIs-empty is a lesser gap outside D21 scope.
     """
+    # D12 mut-2026-09-09-mc00 gateway PR: money + rate/factor as strings.
     tv = 500.0
     grossed_up = round(tv * 1.8868, 2)
     return {
-        "taxable_value": tv,
-        "gross_taxable_value": 800.0,
-        "reductions": 300.0,
-        "in_house_benefit": 0.0,
+        "taxable_value": f"{tv:.2f}",
+        "gross_taxable_value": "800.00",
+        "reductions": "300.00",
+        "in_house_benefit": "0.00",
         "fbt_type": "Type 2",
-        "gross_up_factor": 1.8868,
-        "grossed_up_taxable_value": grossed_up,
-        "fbt_payable": round(grossed_up * 0.47, 2),
+        "gross_up_factor": "1.8868",
+        "grossed_up_taxable_value": f"{grossed_up:.2f}",
+        "fbt_payable": f"{round(grossed_up * 0.47, 2):.2f}",
         "rate_uris_consumed": [],
     }
 

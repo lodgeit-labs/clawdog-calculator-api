@@ -261,6 +261,18 @@ def client() -> TestClient:
     return TestClient(app)
 
 
+# D12 mut-2026-09-09-mc00 gateway PR: mock engine emits D12 wire shape
+# (money fields as 2dp strings; rate/factor as native-precision string)
+# to match the post-D12 engine emit_wire serialiser output. Pre-D12 shape
+# (floats) is preserved in `_engine_response_pre_d12_floats` below to keep
+# the gateway's post-D12 schema-rejection defence exercised.
+
+
+def _money2dp(v: float) -> str:
+    """Format a money value as post-D12 2dp string. Mirrors emit_wire_money."""
+    return f"{v:.2f}"
+
+
 def _canonical_engine_response(taxable_value: float = 1234.56) -> dict[str, Any]:
     """Stub engine response shape carrying the load-bearing fields the route
     extracts to build the manifest + advisory blocks.
@@ -272,18 +284,22 @@ def _canonical_engine_response(taxable_value: float = 1234.56) -> dict[str, Any]
     trio-consistency check (calculators.py) refuses that shape with 502.
     `rate_uris_consumed` kept `[]` for hermetic-test parity (the check
     fires only when BOTH trio AND URIs are missing).
+
+    D12 amendment (mut-2026-09-09-mc00 gateway PR per Fable 2026-09-09 03:24
+    UTC): money fields flipped to 2dp strings; rate/factor as native string;
+    matches post-D12 engine emit_wire serialiser output.
     """
     grossed_up = round(taxable_value * 1.8868, 2)
     fbt_pay = round(grossed_up * 0.47, 2)
     return {
-        "taxable_value": taxable_value,
-        "gross_taxable_value": taxable_value,
-        "employee_contribution": 0,
-        "reductions": 0,
+        "taxable_value": _money2dp(taxable_value),
+        "gross_taxable_value": _money2dp(taxable_value),
+        "employee_contribution": "0.00",
+        "reductions": "0.00",
         "fbt_type": "Type 2",
-        "gross_up_factor": 1.8868,
-        "grossed_up_taxable_value": grossed_up,
-        "fbt_payable": fbt_pay,
+        "gross_up_factor": "1.8868",
+        "grossed_up_taxable_value": _money2dp(grossed_up),
+        "fbt_payable": _money2dp(fbt_pay),
         "rate_uris_consumed": [],
         "trace": {"applied_rate_table_uris": []},
     }
@@ -297,12 +313,14 @@ def _engine_response_missing_trio(taxable_value: float = 1234.56) -> dict[str, A
     response shape; Fable observed this in production 2026-09-06 at rev
     fbt-engine-00017-5zx and ruled the gateway must never pass it to
     caller as 200.
+
+    D12 amendment: money as strings.
     """
     return {
-        "taxable_value": taxable_value,
-        "gross_taxable_value": taxable_value,
-        "employee_contribution": 0,
-        "reductions": 0,
+        "taxable_value": _money2dp(taxable_value),
+        "gross_taxable_value": _money2dp(taxable_value),
+        "employee_contribution": "0.00",
+        "reductions": "0.00",
         "fbt_type": "Type 2",
         "rate_uris_consumed": [],
         "trace": {"applied_rate_table_uris": []},

@@ -716,6 +716,20 @@ async def invoke_calculator(
         raise map_calculation_error_to_http(exc) from exc
 
     taxable_value = engine_response.get("taxable_value")
+    # D12 mut-2026-09-09-mc00 gateway PR: engine emits taxable_value as a
+    # 2dp decimal string post-D12 (`emit_wire_money/2`); pre-D12 shape was
+    # float. Normalise to float for arithmetic checks (the D21 trio-consistency
+    # check compares numerically). Wire response keeps the string shape; only
+    # this local variable is normalised.
+    if isinstance(taxable_value, str):
+        try:
+            taxable_value_num = float(taxable_value)
+        except (TypeError, ValueError):
+            taxable_value_num = None
+    elif isinstance(taxable_value, (int, float)) and not isinstance(taxable_value, bool):
+        taxable_value_num = float(taxable_value)
+    else:
+        taxable_value_num = None
     if taxable_value is None:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -803,7 +817,7 @@ async def invoke_calculator(
     # Scope: FBT calcs only. Depreciation + Div7A have different response
     # shapes routed through separate handlers below (no gross-up trio
     # concept applies).
-    if taxable_value is not None and taxable_value != 0:
+    if taxable_value_num is not None and taxable_value_num != 0:
         trio_keys_present = all(
             key in gross_up_passthrough
             for key in ("gross_up_factor", "grossed_up_taxable_value", "fbt_payable")

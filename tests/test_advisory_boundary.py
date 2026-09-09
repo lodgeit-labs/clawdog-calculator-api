@@ -246,14 +246,16 @@ def test_every_registered_calculator_response_carries_manifest_block(
         # gateway's D21 trio-consistency check (calculators.py) does not
         # refuse this legitimate mock. Post-Phase-2 engine always emits
         # trio on non-zero taxable_value; this fixture must match.
+        # D12 amendment (mut-2026-09-09-mc00 gateway PR): money fields
+        # flipped to 2dp strings; rate/factor as native string.
         tv = 100.0
         grossed_up = round(tv * 1.8868, 2)
         return {
-            "taxable_value": tv,
+            "taxable_value": f"{tv:.2f}",
             "fbt_type": "Type 2",
-            "gross_up_factor": 1.8868,
-            "grossed_up_taxable_value": grossed_up,
-            "fbt_payable": round(grossed_up * 0.47, 2),
+            "gross_up_factor": "1.8868",
+            "grossed_up_taxable_value": f"{grossed_up:.2f}",
+            "fbt_payable": f"{grossed_up * 0.47:.2f}",
             "trace": {},
         }
 

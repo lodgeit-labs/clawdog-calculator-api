@@ -43,7 +43,7 @@ def _mock_transport(handler):
 @pytest.mark.anyio
 async def test_dispatch_fbt_success_returns_dict():
     """dispatch(FBT_ENGINE, payload) returns the parsed JSON dict on success."""
-    expected_response = {"taxable_value": 3880.96, "trace": {}}
+    expected_response = {"taxable_value": "3880.96", "trace": {}}
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
@@ -221,7 +221,7 @@ async def test_dispatch_structured_engine_error_maps_to_calculation_error():
 @pytest.mark.anyio
 async def test_calculate_fbt_wrapper_still_works_via_dispatch():
     """Backward-compat: calculate_fbt() is a thin wrapper around dispatch(FBT_ENGINE)."""
-    expected = {"taxable_value": 1234.56}
+    expected = {"taxable_value": "1234.56"}
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/calculate_fbt"
