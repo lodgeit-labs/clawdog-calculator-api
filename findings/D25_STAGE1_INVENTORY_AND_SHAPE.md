@@ -138,3 +138,57 @@ I recommend **Option A**: declare each dropped field on `CalculatorInvocationRes
 - `jq '[paths(scalars)] | ...'` type walk asserting every money field is a JSON string, none numeric.
 
 `mut-2026-09-10-mc00-d25-stage1-inventory`
+
+---
+
+# Stage 1 Addendum — Fable due-diligence (2026-09-10 04:51 UTC)
+
+Fable's lean moved to **Option B (full pass-through)** on the parity finding, keeping the six A2-typed money fields declared on the model so a regressed float still 502s. Two due-diligence answers before Fable rules B. Both are **source-side** (L#96: engine `FBT_Engine.pl` + `emit_wire.pl` @ `LodgeiT_FBT@997f6d5`; gateway @ `8360d0b`) — not a deployed-wire probe (Cloud Run identity-token auth is Andrew's lane).
+
+## Q1 — Does full pass-through expose any field that shouldn't be public? **No. B is clean; no denylist needed.**
+
+### Complete top-level key enumeration (every FBT engine emission, depth-1 only)
+
+Method: walked all 15 `DictBase`/`DictOut` emission blocks tracking brace depth, recording only keys at depth==1 (trace-nested keys excluded), then added the 3 keys `apply_dispatch_gross_up_to_dict/3` merges in (`FBT_Engine.pl:1305`).
+
+**Money (string post-D12, `emit_wire.pl` MONEY class):** `taxable_value`, `gross_taxable_value`, `taxable_value_before_statutory`, `taxable_value_before_operating`, `taxable_value_net_operating_pre_clamp`, `operating_expenses_total`, `business_use_reduction`, `deemed_total`, `no_private_use_reduction`, `employee_contribution`, `reductions`, `in_house_benefit`, `grossed_up_value` (legacy v1, unexposed route), `grossed_up_taxable_value`, `fbt_payable`, `rfba_notional_taxable_value`, `rfba_notional_grossed_up_t2`.
+
+**Rate/factor (string):** `gross_up_factor`.
+
+**Percentage-echo (string):** `business_use_percentage_clamped`. **Input-echo mirrors:** `form_of_finance` (atom), `register_percentage`, `clamp_mode`, `method`, `pre_clamp_reductions_applied`.
+
+**Structural / consumer-facing:** `fbt_type` (Literal), `trace` (dict), `rate_uris_consumed` (list; consumed by manifest builder), `s8a_inputs`, `advisory`, `applied_rate_table_uris`.
+
+**Booleans / provenance:** `nil_cost_guard_triggered`, `counts_towards_fbt_cap`, `verification_required`, `exempt_under`, `exemption_provenance`, `deemed_dispatch`.
+
+### Internal/debug audit — clean
+1. **`numeric_mode` / `events`** — the gateway's existing internal-field set (`api/lib/engine_error_mapper.py:105` `_INTERNAL_ENGINE_FIELDS`). **Neither string appears anywhere in `FBT_Engine.pl` or `emit_wire.pl`.** They are fields from *other* engines that the error-path scrubber guards against; the FBT engine never emits them. (That scrubber runs only on the **error** path, not success — but since the FBT success dict never contains them, full pass-through cannot leak them.)
+2. **Success-path envelope is calculator-only.** `handle_calculate_fbt/1` (`FBT_Engine.pl:666-681`) wraps exactly `DictOut` via `emit_wire:emit_wire_dict/2` → `reply_json_dict/1`. No diagnostic/debug envelope is injected on success. (The `/health` handler at `:656` emits `swipl_version`/`port_env`/`rate_table_facts` — but that's a **different endpoint** the gateway never proxies as a calc response.)
+3. **`s8a_inputs`** is an **echo of validated s.8A electric-vehicle exemption inputs** (`exempt_electric`, `first_held_date`, `first_retail_sale_value`, `vehicle_type`, `phev_grandfathered`; def at `FBT_Engine.pl:1524`). Audit-legitimate — the caller's own exemption inputs reflected back for provenance; not internal.
+4. **`advisory`** is a **Fable-ratified consumer advisory** (mut-2026-09-06-mc12, Fable ruling 2026-09-06 02:18 UTC) on meal-entertainment basket decomposition — explicitly consumer-facing.
+
+**Conclusion:** every top-level FBT key is a money/echo/structural field the consumer should see, a provenance boolean, or a ratified advisory. **No internal/debug/diagnostic key exists on the FBT success surface.** Option B exposes nothing that shouldn't be public → **clean, no denylist**.
+
+## Q2 — Do the sibling routes type their money fields, or pass them untyped? **Asymmetry named + justified.**
+
+At the **gateway** layer, sibling money fields are **typed on the engines' own schemas**, not re-declared on the gateway's `CalculatorInvocationResponse` (source: gateway schema comment `api/schemas/invocation.py:1100-1120`, cross-checked against the sibling routes):
+
+| Engine | Where money is typed | Shape | Gateway forwarding |
+|---|---|---|---|
+| depreciation-engine | its own `DepreciationAtResponse`, `depreciation_core/api/schemas.py:719+` (`Annotated[Decimal, Field(...)]`) | `wdv_at: "30265.03"` | `response_model=DepreciationAtResponse` pins it |
+| Div7A_Engine | its own `CalculateResponse`, `div7a_core/../api/main.py:69` (every money field `str`) | `statutory_myr: "15497.53"` | forwarded via `{**engine_response, "manifest"}`; **untyped as extras at the gateway model** |
+| **FBT (this PR)** | the **gateway** model `CalculatorInvocationResponse` (6 A2-typed money fields, regex-constrained) | `fbt_payable: "4392.06"` | `{**engine_response, ...}` + 6 fields keep gateway typing |
+
+**The asymmetry, plainly:** after D25, FBT is the **only** engine whose money fields are typed *at the gateway boundary* (the six A2 fields). depreciation-engine types its money on its **own** Pydantic model (`Decimal`-serialised); Div7A types its money on its **own** model (`str`); the gateway re-validates neither — it trusts the engine model and forwards.
+
+**Why this is deliberate, not sloppy:**
+- **FBT is the only engine that went through D12's float scare.** D21 (2026-09-06) surfaced a 200-with-inconsistent-trio on the LAFHA path; D12 (2026-09-08) flipped FBT money from float to string engine-side *and* added the six gateway-boundary regex guards (A2) so a regression back to float 502s at the gateway, not silently at the consumer. That guard exists because FBT *earned* it empirically.
+- **The siblings emit strings natively and never had the scare.** depreciation-engine has always serialised money as `Decimal`→string via its Pydantic model; Div7A declares `str` directly. Neither passed through a float-emission regression, so neither needed a gateway-boundary regex tourniquet. Their engine-model typing is the guard.
+- **D25 keeps FBT's six A2 fields typed on the gateway model** (Fable's B-with-typed-six) precisely to preserve that hard-won gate, while the ~10 newly-exposed FBT workings ride as `extra="allow"` extras — the same untyped-passthrough posture the siblings already have for their non-headline fields. So B does **not** widen the asymmetry: it holds FBT's existing guard and matches the siblings' passthrough posture for the rest.
+
+**Net:** the asymmetry is real, one-directional (FBT typed-at-gateway, siblings typed-at-engine), and justified by FBT's unique D12/D21 history. Named here so a future reader sees the six-typed-fields-on-FBT-only is intentional.
+
+## A/B recommendation (updated)
+Stage-1 recommended **A**; Fable's parity finding correctly moves the lean to **B**. I concur with **B**: uniformity across the four routes (`{**engine_response, "manifest"}`) *is* the contract, the six A2-typed money fields stay declared (float-regression gate preserved), and Q1 confirms nothing internal leaks. B with the six retained-typed fields is the clean end-state. **No serialisation code lands until Fable formally rules.**
+
+`mut-2026-09-10-mc00-d25-stage1-ddq-addendum`
