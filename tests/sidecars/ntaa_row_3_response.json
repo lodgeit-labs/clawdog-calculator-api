@@ -2,6 +2,7 @@
     "_recorded_from": "https://fbt-calculator-api-8340695160.australia-southeast1.run.app/v1/calculators/urn:sbrm:calculator:fbt:car-operating-cost/urn:sbrm:period:fbt:fy2026 (POST)",
     "_recorded_at": "2026-09-09T08:59Z",
     "_recorded_note": "D12 fixture-update straggler: re-recorded from deployed wire; taxable_value + tv_* now D12 decimal strings (were pre-D12 floats)",
+    "_d25_pending_wire_rerecord": "After D25 (mut-2026-09-10-mc00 full pass-through) deploys, this car-operating-cost FBT wire will carry NEW top-level workings that the pre-D25 wire dropped: gross_taxable_value, employee_contribution, reductions, plus the OC money fields currently under trace (operating_expenses_total, business_use_reduction, taxable_value_before_operating, taxable_value_net_operating_pre_clamp, deemed_total, no_private_use_reduction) surfaced at top level. Re-record this sidecar FROM THE DEPLOYED WIRE at deploy (Andrew's Cloud Run identity-token lane; L#96 — not fabricated locally). The smoke Check-2 comparator asserts only taxable_value + trace.{deemed_depreciation,deemed_interest,deemed_total}, all UNCHANGED by D25, so this stale-shape sidecar keeps the gate GREEN until re-recorded; the re-record is a fidelity refresh, not a gate unblock.",
     "taxable_value": "3880.96",
     "trace": {
         "applied_rate_table_uris": [
