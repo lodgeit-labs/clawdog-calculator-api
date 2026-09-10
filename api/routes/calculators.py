@@ -768,26 +768,35 @@ async def invoke_calculator(
             },
         ) from exc
 
-    # --- Phase 3a (mut-2026-06-19-mc07-ot-104-calc-api-fbttype-gross-up-output)
-    # OT #104 sprint PR β: surface engine's gross-up + RFBA notional fields
-    # at calc-api response. Engine PR α (LodgeiT_FBT PR #44) added:
-    #   * fbt_type / gross_up_factor / grossed_up_taxable_value / fbt_payable
-    #     on Phase 2l SF + Phase 2l OC.
-    #   * rfba_notional_taxable_value / rfba_notional_grossed_up_t2 already
-    #     emitted since Rung 3 mut-2026-05-21-mc06 but dropped here.
-    # We pass them through ONLY when the engine emits them (calculators that
-    # do not emit gross-up keep the pre-mc07 wire shape byte-stable).
-    gross_up_passthrough: dict[str, Any] = {}
-    for key in (
-        "fbt_type",
-        "gross_up_factor",
-        "grossed_up_taxable_value",
-        "fbt_payable",
-        "rfba_notional_taxable_value",
-        "rfba_notional_grossed_up_t2",
-    ):
-        if key in engine_response and engine_response[key] is not None:
-            gross_up_passthrough[key] = engine_response[key]
+    # --- D25 (mut-2026-09-10-mc00 per Fable ruling 2026-09-10 07:19 UTC):
+    # full pass-through. The FBT route previously hand-built a fixed-shape
+    # dict from a 6-key gross-up allowlist and DROPPED every other top-level
+    # field the engine emits (the workings: gross_taxable_value,
+    # employee_contribution, reductions, in_house_benefit, the OC trace-adjacent
+    # money fields, etc.). D25 brings FBT to the SAME `{**engine_response,
+    # "manifest": manifest}` pass-through shape the other three engine routes
+    # already ship (Div7A-at :1067, depreciation-at :1201, depreciation-range
+    # :1348). Additive-only: gateway-owned keys are layered ON TOP of
+    # `**engine_response` at construction below, so existing keys stay
+    # byte-identical and only previously-dropped keys are net-new.
+    #
+    # The former `gross_up_passthrough` allowlist loop is deleted; its 6 keys
+    # now flow via `**engine_response`. The six A2-typed money fields stay
+    # declared on CalculatorInvocationResponse (invocation.py) so a float
+    # regression on any of them still 502s at the gateway boundary; the
+    # newly-exposed workings ride as `extra="allow"` extras (Q1 due-diligence
+    # confirmed no internal/debug key exists on the FBT success surface).
+    # `rate_uris_consumed` is KEPT on the wire (not popped): the sibling
+    # routes already expose it via the same `{**engine_response}` pattern, so
+    # dropping it on FBT would break the parity D25 establishes; it is
+    # legitimate consumed-rate provenance and its overlap with
+    # manifest.rate_table_uris is harmless (the workings are the product).
+    #
+    # D21 trio-detection below reads `engine_response` directly (the former
+    # `gross_up_passthrough` dict was only ever a filtered copy; testing the
+    # source is equivalent and removes the now-deleted intermediate).
+    def _trio_key_present(k: str) -> bool:
+        return k in engine_response and engine_response[k] is not None
 
     # --- D21 (mut-2026-09-06-mc15 per Fable 2026-09-06 UTC): gateway-side
     # trio-consistency check. Fable observed a 200-with-null-trio on the
@@ -819,7 +828,7 @@ async def invoke_calculator(
     # concept applies).
     if taxable_value_num is not None and taxable_value_num != 0:
         trio_keys_present = all(
-            key in gross_up_passthrough
+            _trio_key_present(key)
             for key in ("gross_up_factor", "grossed_up_taxable_value", "fbt_payable")
         )
         rate_uris_populated = bool(rate_uris)
@@ -865,21 +874,27 @@ async def invoke_calculator(
                     ),
                     "taxable_value": taxable_value,
                     "trio_keys_present": {
-                        "gross_up_factor": "gross_up_factor" in gross_up_passthrough,
-                        "grossed_up_taxable_value": "grossed_up_taxable_value" in gross_up_passthrough,
-                        "fbt_payable": "fbt_payable" in gross_up_passthrough,
+                        "gross_up_factor": _trio_key_present("gross_up_factor"),
+                        "grossed_up_taxable_value": _trio_key_present("grossed_up_taxable_value"),
+                        "fbt_payable": _trio_key_present("fbt_payable"),
                     },
                     "rate_uris_consumed_count": len(rate_uris),
                     "engine_response_keys": sorted(engine_response.keys()),
                 },
             )
 
+    # D25 full pass-through: engine fields flow through; gateway-owned keys
+    # (`taxable_value`, `trace`, `manifest`) are layered ON TOP so they always
+    # win any key collision -> byte-identical to the pre-D25 wire for those
+    # keys, plus the six A2-typed gross-up fields (which flow via
+    # **engine_response and keep their schema typing). Only previously-dropped
+    # workings are net-new. Mirrors the sibling routes' construction exactly.
     response_payload = wrap_response(
         {
+            **engine_response,
             "taxable_value": taxable_value,
             "trace": trace,
             "manifest": manifest,
-            **gross_up_passthrough,
         },
         jurisdiction=meta["jurisdiction"],
     )
