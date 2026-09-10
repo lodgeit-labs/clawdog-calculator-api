@@ -53,6 +53,8 @@ from urllib.parse import quote
 import pytest
 from fastapi.testclient import TestClient
 
+from api.main import app as _app
+
 _FBT_CALC_URI = "urn:sbrm:calculator:fbt:lafha"
 _FBT_PERIOD_URI = "urn:sbrm:period:fbt:fy2026"
 _LAFHA_BODY = {
@@ -219,6 +221,31 @@ def test_healthy_response_passes_through_200(client: TestClient) -> None:
     body = resp.json()
     assert body["gross_up_factor"] == "1.8868"
     assert body["fbt_payable"] == "798.12"
+    # --- D25 (mut-2026-09-10-mc00 per Fable ruling 2026-09-10 07:19 UTC):
+    # full pass-through. The previously-DROPPED engine workings must now
+    # appear on the wire, verbatim, as D12 strings (not floats, not absent).
+    # Pre-D25 these were filtered out by the :780-790 gross_up_passthrough
+    # allowlist; post-D25 they flow via {**engine_response, ...}.
+    assert body["gross_taxable_value"] == "1500.00", (
+        "D25 regression: gross_taxable_value dropped from wire"
+    )
+    assert body["employee_contribution"] == "0.00", (
+        "D25 regression: employee_contribution dropped from wire"
+    )
+    assert body["reductions"] == "600.00", (
+        "D25 regression: reductions dropped from wire"
+    )
+    # Every newly-exposed money working is a JSON string, never numeric.
+    for _k in ("gross_taxable_value", "employee_contribution", "reductions"):
+        assert isinstance(body[_k], str), f"{_k} must be a string on the wire, got {type(body[_k])}"
+    # rate_uris_consumed is KEPT (parity with sibling routes; not popped).
+    assert body.get("rate_uris_consumed") == [
+        "urn:sbrm:rate:fbt:fy2026:gross-up-type-2",
+        "urn:sbrm:rate:fbt:fy2026:fbt-rate",
+    ], "D25 ruling: rate_uris_consumed exposed (not popped) for sibling parity"
+    # Additive-only: gateway-owned keys unchanged + present.
+    assert body["taxable_value"] == "900.00"
+    assert "trace" in body and "manifest" in body and "advisory" in body
 
 
 def test_trio_present_empty_uris_still_returns_200(client: TestClient) -> None:
@@ -268,3 +295,86 @@ def test_zero_taxable_value_does_not_fire_check(client: TestClient) -> None:
     # Trio is absent (engine didn't emit it); Pydantic defaults to null.
     # This is consistent with pre-D21 wire behaviour for s.8A-exemption
     # shapes.
+
+
+# ---------------------------------------------------------------------------
+# D25 (mut-2026-09-10-mc00 per Fable ruling 2026-09-10 07:19 UTC) —
+# regression guard intact under full pass-through.
+#
+# Fable hard constraint: "A float in one of the six typed fields still 502s;
+# keep/extend the D21 trio test." The A2 regex on the six money fields lives
+# on CalculatorInvocationResponse (invocation.py). D25 changed route
+# CONSTRUCTION (allowlist -> {**engine_response, ...}) but the six fields stay
+# declared+typed, so a float-emitting engine regression must still be rejected
+# at the gateway boundary — now proven through the new pass-through path.
+# ---------------------------------------------------------------------------
+
+def _healthy_response_with_float_fbt_payable() -> dict[str, Any]:
+    """Healthy shape EXCEPT fbt_payable regressed to a float (pre-D12 shape).
+    The A2 regex `^-?\\d+\\.\\d{2}$` on the typed field must reject it.
+    """
+    r = _healthy_response()
+    r["fbt_payable"] = 798.12  # float regression (must 502, not coerce)
+    return r
+
+
+def test_d25_float_in_typed_field_still_rejected_5xx_under_passthrough(
+    client: TestClient,
+) -> None:
+    """A float in a six-A2-typed money field is rejected even under D25 full
+    pass-through. The typed-field regex gate is preserved by keeping the six
+    fields declared on the response model; {**engine_response} does not bypass
+    Pydantic validation.
+    """
+    calc_uri_enc = quote(_FBT_CALC_URI, safe="")
+    # A float fbt_payable fails the A2 regex at the final
+    # CalculatorInvocationResponse.model_validate -> the response is rejected
+    # with a 5xx server error, never a 200 with a coerced/echoed float. This
+    # is the load-bearing guarantee: the typed-field gate is NOT bypassed by
+    # D25's {**engine_response} construction.
+    #
+    # NOTE (D25 finding, surfaced to Fable): the rejection is currently an
+    # UNHANDLED pydantic ValidationError on the response model -> FastAPI
+    # default HTTP 500 ("Internal Server Error", opaque body), NOT the 502
+    # structured-detail shape the engine-transport failures use. This is
+    # PRE-EXISTING behaviour unchanged by D25 (the same final model_validate
+    # was the gate pre-D25); D25 is additive-only and deliberately does not
+    # alter response-error semantics. Asserting the true contract (5xx, not
+    # 200) rather than a fabricated 502. raise_server_exceptions=False so the
+    # TestClient returns the wire status instead of re-raising.
+    _c = TestClient(_app, raise_server_exceptions=False)
+    with patch(
+        "api.routes.calculators.PrologClient.calculate_fbt",
+        new=AsyncMock(return_value=_healthy_response_with_float_fbt_payable()),
+    ):
+        resp = _c.post(
+            f"/v1/calculators/{calc_uri_enc}/{_FBT_PERIOD_URI}",
+            json=_LAFHA_BODY,
+        )
+    assert resp.status_code >= 500 and resp.status_code != 200, (
+        "D25 regression: a float in the A2-typed fbt_payable did not produce a "
+        f"5xx rejection; the typed-field gate was bypassed. "
+        f"status={resp.status_code} body={resp.text[:400]}"
+    )
+
+
+def test_d25_newly_exposed_field_is_string_not_float_on_wire(
+    client: TestClient,
+) -> None:
+    """Belt-and-braces: a newly-exposed working (gross_taxable_value) emitted
+    by the engine as a D12 string reaches the wire AS a string, never numeric.
+    Confirms extra='allow' does not coerce and the workings ride verbatim.
+    """
+    calc_uri_enc = quote(_FBT_CALC_URI, safe="")
+    with patch(
+        "api.routes.calculators.PrologClient.calculate_fbt",
+        new=AsyncMock(return_value=_healthy_response()),
+    ):
+        resp = client.post(
+            f"/v1/calculators/{calc_uri_enc}/{_FBT_PERIOD_URI}",
+            json=_LAFHA_BODY,
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert isinstance(body["gross_taxable_value"], str)
+    assert body["gross_taxable_value"] == "1500.00"
