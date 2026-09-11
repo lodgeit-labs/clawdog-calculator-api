@@ -214,6 +214,14 @@ jobs:
           chmod +x scripts/smoke_prod.sh
           make smoke-prod
 
+      # Computed-value gate (mut-2026-09-11-mc00): asserts every FBT calculator
+      # returns a decimal-string trio with no bare float. Complements smoke-prod
+      # (discovery + error-shape). Fires against the same freshly-deployed URL.
+      - name: Post-deploy smoke-fbt (FBT trio + no-bare-float)
+        id: smoke_fbt
+        run: |
+          make smoke-fbt
+
       # mc05-2026-05-30 widening per mc04 dogfood-discovered gap:
       # the original single rollback-hint step was gated on smoke.outcome
       # == 'failure' but when DEPLOY step #6 fails (mc03 attempts 1+2 IAM
