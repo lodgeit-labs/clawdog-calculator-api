@@ -243,6 +243,25 @@ install-hooks:
 smoke-prod:
 	@./scripts/smoke_prod.sh
 
+# `make smoke-fbt` — FBT computed-value gate (mut-2026-09-11-mc00).
+#
+# The "computed-value smoke" queued since the emit_wire 502 arc. Enumerates
+# every urn:sbrm:calculator:fbt:* from live discovery, POSTs a minimal body to
+# each, and asserts the grossed-up trio (gross_up_factor,
+# grossed_up_taxable_value, fbt_payable) is present, non-null, and a decimal
+# string, with no bare JSON float anywhere in the body (parsed-tree walk +
+# raw-text regex). LAFHA called twice (D21 first-call null-trio guard).
+# Complements smoke-prod (discovery + error-shape); this one asserts the
+# numbers themselves. Same tri-state exit contract (0 GREEN / 1 DRIFT /
+# 2 INFRA). Pure read, no auth, no secrets.
+#
+#   make smoke-fbt API_BASE_URL=https://...
+#
+# Origin: 2026-09-10 Stage-2a FBT-available sweep that caught the
+# meal-entertainment-register-12wk register_percentage bare-float leak.
+smoke-fbt:
+	@python3 scripts/smoke_fbt_computed.py
+
 clean:
 	rm -rf $(VENV) .pytest_cache .ruff_cache **/__pycache__ \
 	       *.egg-info build dist
