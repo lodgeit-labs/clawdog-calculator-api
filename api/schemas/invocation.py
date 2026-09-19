@@ -1220,6 +1220,34 @@ class CalculatorListing(BaseModel):
     supported_periods: list[str]
     input_schema_ref: str
     jurisdiction: str
+    # Module metadata (mut-2026-09-19); sourced verbatim from
+    # api/data/calculator_metadata.json.
+    module: str
+    benefit_type: str | None = None
+    statutes: list[dict[str, Any]] = Field(default_factory=list)
+    selection: dict[str, Any] = Field(default_factory=dict)
+    description: str
+
+
+class ModuleListing(BaseModel):
+    """One entry in the module-discovery listing (GET /v1/modules).
+
+    Fields are copied verbatim from the ``modules`` array of
+    ``api/data/calculator_metadata.json``; ``calculators`` is the list of
+    that module's calculator URNs in registry order (mut-2026-09-19).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    module_uri: str
+    label: str
+    jurisdiction: str
+    statutes: list[dict[str, Any]] = Field(default_factory=list)
+    period_family: str
+    description: str
+    resolution_order: list[str] = Field(default_factory=list)
+    election_groups: list[dict[str, Any]] = Field(default_factory=list)
+    calculators: list[str] = Field(default_factory=list)
 
 
 def validate_period_uri(period_uri: str) -> str:

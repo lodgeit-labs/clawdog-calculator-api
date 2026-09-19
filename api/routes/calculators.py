@@ -21,6 +21,15 @@ from fastapi import Path as PathParam
 from pydantic import ValidationError
 
 from api.lib.advisory_boundary import wrap_response
+from api.lib.calculator_metadata import (
+    load_metadata as _load_calculator_metadata,
+)
+from api.lib.calculator_metadata import (
+    merge_into_registry as _merge_metadata_into_registry,
+)
+from api.lib.calculator_metadata import (
+    modules as _metadata_modules,
+)
 from api.lib.engine_error_mapper import (
     map_calculation_error_to_http,
     map_engine_error_to_http,
@@ -63,6 +72,7 @@ from api.schemas.invocation import (
     FBTResidualInHouseInput,
     FBTResidualInput,
     FBTTebeInput,
+    ModuleListing,
     validate_calc_uri,
     validate_period_uri,
 )
@@ -422,6 +432,20 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
 }
 
 
+# --- Module/registry metadata merge (mut-2026-09-19) ------------------------
+# Fable-authored `api/data/calculator_metadata.json` is the authoritative
+# source for label + module + benefit_type + statutes + selection +
+# description. Merge it into `_CALCULATOR_REGISTRY` at import time (strings
+# verbatim), enforcing the three build-fails-on-violation invariants:
+#   1. every registry URN present in the metadata;
+#   2. every metadata URN present in the registry;
+#   3. module == "urn:sbrm:module:" + the URN's second-last segment.
+# `_CALCULATOR_METADATA` is retained so `GET /v1/modules` reads the same
+# document (single source of truth).
+_CALCULATOR_METADATA = _load_calculator_metadata()
+_merge_metadata_into_registry(_CALCULATOR_REGISTRY, _CALCULATOR_METADATA)
+
+
 # --- Per-URN input-model dispatch table (mut-2026-05-31-mc15) ---------------
 # Wave A widens the existing single-URN body type to a per-URN dispatch. The
 # generic ``/v1/calculators/{calc_uri}/{period_uri}`` route now accepts a raw
@@ -489,18 +513,73 @@ async def get_prolog_client() -> PrologClient:
 
 
 @router.get(
+    "/modules",
+    response_model=list[ModuleListing],
+    summary="List calculator modules available through the REST surface.",
+)
+async def list_modules() -> list[ModuleListing]:
+    """Return one entry per metadata module (mut-2026-09-19).
+
+    Each module's fields are copied verbatim from
+    ``api/data/calculator_metadata.json``; ``calculators`` is the list of
+    that module's calculator URNs in ``_CALCULATOR_REGISTRY`` order.
+    """
+    # Calculator URNs grouped by module, preserving registry order.
+    calcs_by_module: dict[str, list[str]] = {}
+    for calc_uri, meta in _CALCULATOR_REGISTRY.items():
+        calcs_by_module.setdefault(meta["module"], []).append(calc_uri)
+
+    out: list[ModuleListing] = []
+    for module in _metadata_modules(_CALCULATOR_METADATA):
+        module_uri = module["module_uri"]
+        out.append(
+            ModuleListing(
+                module_uri=module_uri,
+                label=module["label"],
+                jurisdiction=module["jurisdiction"],
+                statutes=module["statutes"],
+                period_family=module["period_family"],
+                description=module["description"],
+                resolution_order=module["resolution_order"],
+                election_groups=module["election_groups"],
+                calculators=calcs_by_module.get(module_uri, []),
+            )
+        )
+    return out
+
+
+@router.get(
     "/calculators",
     response_model=list[CalculatorListing],
     summary="List calculators available through the REST surface.",
 )
-async def list_calculators() -> list[CalculatorListing]:
-    """Return a manifest of the calculators wired into this Phase 3a deployment.
+async def list_calculators(
+    module: Annotated[
+        str | None,
+        Query(description="Optional module URN filter (urn:sbrm:module:<name>)."),
+    ] = None,
+) -> list[CalculatorListing]:
+    """Return a manifest of the calculators wired into this deployment.
 
-    Phase 3a hardcodes one entry (FBT Car Operating Cost). Phase 3c onboards a
-    second calculator; the registry above grows but the route signature does not.
+    The registry grows but the route signature does not. When ``module`` is
+    supplied, the listing is filtered to that module; an unknown module URN
+    returns 404 naming the known ones (mut-2026-09-19).
     """
+    if module is not None:
+        known_modules = [m["module_uri"] for m in _metadata_modules(_CALCULATOR_METADATA)]
+        if module not in known_modules:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    f"Unknown module {module!r}. Known modules: "
+                    + ", ".join(known_modules)
+                ),
+            )
+
     out: list[CalculatorListing] = []
     for calc_uri, meta in _CALCULATOR_REGISTRY.items():
+        if module is not None and meta["module"] != module:
+            continue
         out.append(
             CalculatorListing(
                 calc_uri=calc_uri,
@@ -509,6 +588,11 @@ async def list_calculators() -> list[CalculatorListing]:
                 supported_periods=meta["supported_periods"],
                 input_schema_ref=meta["input_schema_ref"],
                 jurisdiction=meta["jurisdiction"],
+                module=meta["module"],
+                benefit_type=meta["benefit_type"],
+                statutes=meta["statutes"],
+                selection=meta["selection"],
+                description=meta["description"],
             )
         )
     return out

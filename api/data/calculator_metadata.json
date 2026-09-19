@@ -1,0 +1,273 @@
+{
+  "_meta": {
+    "file": "calculator_registry_metadata_v1.json",
+    "author": "Fable",
+    "date": "2026-09-19",
+    "status": "DRAFT v1: statute-checked where noted in FBT_module_and_election_map_DRAFT_2026-09-19.md v0.2; descriptions not yet practitioner-reviewed",
+    "purpose": "Authoritative source for the module, benefit_type, statutes, selection, label and description fields of _CALCULATOR_REGISTRY in clawdog-calculator-api, and for GET /v1/modules. Copy strings verbatim. Do not paraphrase, extend or 'improve' the tax content.",
+    "rules": [
+      "label is a short human name only: no section numbers, no OT numbers, no sheet rows, no product-thesis prose",
+      "selection.kind is one of: fact, election, statutory_default",
+      "every calculator in an election group carries the same agent_rule",
+      "module is derived from the second-last URN segment; the value here must equal that derivation or the build fails"
+    ]
+  },
+  "agent_rules": {
+    "election": "This method is an employer election, not a fact. Never choose it on the employer's behalf. Compute every method in the group that the supplied records support, present the results side by side with the election provision, and state that the employer chooses.",
+    "fact": "Select this calculator only if the facts supplied establish this benefit type. If they do not, ask; do not guess."
+  },
+  "modules": [
+    {
+      "module_uri": "urn:sbrm:module:fbt",
+      "label": "Fringe Benefits Tax (AU)",
+      "jurisdiction": "AU",
+      "statutes": [{"act": "Fringe Benefits Tax Assessment Act 1986", "provisions": ["Part III"]}],
+      "period_family": "urn:sbrm:period:fbt:*",
+      "description": "Taxable value of a single fringe benefit under FBTAA 1986 Part III, by benefit type. Every calculator assumes a fringe benefit has arisen and is not exempt; none tests exemptions (for example minor benefits), none aggregates to the FBT return, and none makes an employer election. Choose the benefit type from the facts, testing the specific types in resolution_order before residual, which is defined by exclusion (s 45). Where a benefit type has more than one valuation method, the method is an employer election: compute each supported method and present them. The in-house calculators take the portion of the employee's s 62 reduction allocated to that benefit as an input; they cannot see the employee's other in-house benefits, so the caller must keep the yearly total within $1,000.",
+      "resolution_order": ["car", "debt-waiver", "loan", "expense-payment", "housing", "lafha", "board", "meal-entertainment", "tebe", "car-parking", "property", "residual"],
+      "election_groups": [
+        {
+          "group": "car",
+          "default": "urn:sbrm:calculator:fbt:car-statutory-formula",
+          "alternatives": ["urn:sbrm:calculator:fbt:car-operating-cost"],
+          "provision": "FBTAA s 10(1) election; s 10(5): if the operating cost figure exceeds the statutory formula figure the election is treated as not made",
+          "scope": "per car, per FBT year"
+        },
+        {
+          "group": "meal-entertainment",
+          "default": null,
+          "alternatives": ["urn:sbrm:calculator:fbt:meal-entertainment-50-50", "urn:sbrm:calculator:fbt:meal-entertainment-register-12wk"],
+          "provision": "FBTAA s 37AA election for Division 9A to apply (50/50 is then the default, ss 37B-37BA); further election s 37CA for the 12-week register (s 37CB)",
+          "scope": "employer-wide, whole FBT year. Couples to the income tax deduction (ITAA 1936 ss 51AEA-51AEB) and GST credits (GST Act Div 69): the lowest FBT figure is not necessarily the best outcome. With no s 37AA election, meal entertainment is valued on the actual basis under the ordinary Divisions; no calculator here covers that case."
+        },
+        {
+          "group": "car-parking-count",
+          "default": "urn:sbrm:calculator:fbt:car-parking-actual",
+          "alternatives": ["urn:sbrm:calculator:fbt:car-parking-statutory-228", "urn:sbrm:calculator:fbt:car-parking-register-12wk"],
+          "provision": "FBTAA s 39FA(1) (statutory formula, spaces); s 39GA(1) (12-week register)",
+          "scope": "all employees, a class of employees, or particular employees; different groups may use different methods in the same year. Independent of how each benefit is valued (commercial parking station s 39C, market value s 39D, average cost s 39DA), which arrives as the daily rate input."
+        }
+      ]
+    },
+    {
+      "module_uri": "urn:sbrm:module:div7a",
+      "label": "Division 7A loans (AU)",
+      "jurisdiction": "AU",
+      "statutes": [{"act": "Income Tax Assessment Act 1936", "provisions": ["Division 7A", "s 109D", "s 109E", "s 109N"]}],
+      "period_family": "urn:sbrm:period:div7a:*",
+      "description": "Minimum yearly repayment, shortfall and deemed dividend for a complying Division 7A loan. Period-scoped: the period URN selects the benchmark interest rate. Does not decide whether a payment or loan is caught by Division 7A, does not test distributable surplus, and refuses a zero or negative balance.",
+      "resolution_order": ["div7a"],
+      "election_groups": []
+    },
+    {
+      "module_uri": "urn:sbrm:module:depreciation",
+      "label": "Depreciation, accounting basis (AU)",
+      "jurisdiction": "AU",
+      "statutes": [{"act": "AASB 116 Property, Plant and Equipment", "provisions": []}],
+      "period_family": "urn:sbrm:period:depreciation:unscoped",
+      "description": "Carrying amount and depreciation charge for a single individually-depreciated asset on the accounting basis (AASB 116), prime cost or diminishing value, at a date or over a date range. This is not a tax deduction under ITAA 1997 Division 40 and must not be carried into a tax return. Pooled assets are refused.",
+      "resolution_order": ["depreciation"],
+      "election_groups": []
+    }
+  ],
+  "calculators": [
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:car-statutory-formula",
+      "label": "FBT car: statutory formula method",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "car",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["s 7", "s 9"]}],
+      "selection": {"kind": "statutory_default", "group": "car", "provision": "s 9 applies unless the employer elects s 10"},
+      "description": "Use when an employer's car is available for an employee's private use (s 7). Taxable value is the statutory fraction of the car's base value, pro-rated for days available, less employee contributions. This is the default method. Not for vehicles that are not a 'car' for FBT (those are residual benefits), and not where the employer merely pays the employee's own car costs (expense payment)."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:car-operating-cost",
+      "label": "FBT car: operating cost method",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "car",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["s 10", "s 10A", "s 10B"]}],
+      "selection": {"kind": "election", "group": "car", "provision": "s 10(1), per car, per FBT year; s 10(5) lower-of rule"},
+      "description": "Use only alongside the statutory formula, when operating costs and a business-use percentage are supplied. Taxable value is operating cost times the private-use percentage, less employee contributions. Without a log book the business-use percentage is nil (s 10A). Under s 10(5), if this figure exceeds the statutory formula figure the election is treated as not made."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:debt-waiver",
+      "label": "FBT debt waiver",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "debt-waiver",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["s 14", "s 15"]}],
+      "selection": {"kind": "fact"},
+      "description": "Use when the employer releases an employee from an obligation to pay or repay an amount. Taxable value is the amount waived (s 15). Not where the debt is still owed at low or no interest (loan). No GST credit arises, so the benefit is Type 2."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:loan",
+      "label": "FBT loan",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "loan",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["Division 4"]}],
+      "selection": {"kind": "fact"},
+      "description": "Use when an employee owes the employer money at an interest rate below the statutory benchmark. Taxable value is the interest shortfall against the benchmark rate for the FBT year, reduced under the otherwise deductible rule where applicable. Not where the debt has been released (debt waiver). Type 2."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:expense-payment",
+      "label": "FBT expense payment (external)",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "expense-payment",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["Division 5", "s 20"]}],
+      "selection": {"kind": "fact", "variant_of": "expense-payment", "variant_fact": "external"},
+      "description": "Use when the employer pays or reimburses an expense the employee incurred (s 20), and the thing paid for is not of a kind the employer sells to the public. Not where the employer supplies the goods or services itself (property or residual)."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:expense-payment-in-house",
+      "label": "FBT expense payment (in-house)",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "expense-payment",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["s 22A", "s 62"]}],
+      "selection": {"kind": "fact", "variant_of": "expense-payment", "variant_fact": "in-house"},
+      "description": "Use when the employer pays or reimburses an employee's purchase of goods or services of a kind the employer (or an associate) sells to the public in the ordinary course of business. The inhouseBenefitClaimed input is the part of the employee's s 62 reduction allocated to this benefit: s 62 allows at most $1,000 per employee per FBT year across ALL in-house benefits combined, and nothing for a benefit provided under a salary packaging arrangement. This calculator cannot see the employee's other in-house benefits; the caller must keep the yearly total within $1,000."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:housing",
+      "label": "FBT housing (non-remote)",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "housing",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["Division 6", "s 26"]}],
+      "selection": {"kind": "fact"},
+      "description": "Use when an employee is granted a right to occupy a unit of accommodation as their usual place of residence, not in a remote area. Remote-area housing and its concessions are not covered. A cash allowance for living away from home is LAFHA; meals supplied with accommodation are board."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:lafha",
+      "label": "FBT living-away-from-home allowance",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "lafha",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["Division 7", "s 31"]}],
+      "selection": {"kind": "fact"},
+      "description": "Use when an allowance is paid because the employee's duties require living away from their normal residence AND the employee maintains a home in Australia (s 31). Computes the s 31 reduction from caller-supplied exempt accommodation and exempt food components. The fly-in fly-out and other limbs of Division 7 are not covered. Where the employer pays the rent directly, the benefit is an expense payment, housing or residual benefit, not LAFHA. Type 2."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:board",
+      "label": "FBT board",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "board",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["Division 9", "s 36"]}],
+      "selection": {"kind": "fact"},
+      "description": "Use when meals are provided to an employee who is entitled to accommodation and to at least two meals a day. Taxable value is the statutory amount per meal, less contributions. One-off meals are property or meal entertainment, not board."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:meal-entertainment-50-50",
+      "label": "FBT meal entertainment: 50/50 split method",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "meal-entertainment",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["s 37AA", "s 37B", "s 37BA"]}],
+      "selection": {"kind": "election", "group": "meal-entertainment", "provision": "s 37AA, employer-wide, whole FBT year"},
+      "description": "Use when the employer elects under s 37AA for Division 9A to apply. Taxable value is 50% of ALL meal entertainment expenditure for the FBT year, including expenditure on clients and other non-employees. The election also fixes the income tax deduction and GST credit at 50%. Tax-exempt employers use the tax-exempt body entertainment calculator."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:meal-entertainment-register-12wk",
+      "label": "FBT meal entertainment: 12-week register method",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "meal-entertainment",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["s 37AA", "s 37CA", "s 37CB"]}],
+      "selection": {"kind": "election", "group": "meal-entertainment", "provision": "s 37CA, in addition to s 37AA; requires a valid register"},
+      "description": "Use when the employer has elected under s 37AA and further elects under s 37CA, and holds a valid 12-week register. Taxable value is total meal entertainment expenditure for the year times the register percentage (s 37CB). Never assume a register exists; the register percentage must be supplied."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:tebe",
+      "label": "FBT tax-exempt body entertainment",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "tebe",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["Division 10", "s 38", "s 39"]}],
+      "selection": {"kind": "fact"},
+      "description": "Use when the employer is wholly or partly exempt from income tax and incurs non-deductible entertainment expenditure for employees or associates. Taxable employers use meal entertainment, property or expense payment instead."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:car-parking-actual",
+      "label": "FBT car parking: actual records",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "car-parking",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["Division 10A", "s 39A", "s 39C"]}],
+      "selection": {"kind": "statutory_default", "group": "car-parking-count", "provision": "applies unless the employer elects s 39FA or s 39GA"},
+      "description": "Use when the number of car parking benefits comes from actual records for the year. Assumes a car parking fringe benefit has arisen under s 39A (this is not tested). The value of each benefit is supplied as an input and may come from the commercial parking station, market value or average cost method."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:car-parking-statutory-228",
+      "label": "FBT car parking: statutory formula (spaces) method",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "car-parking",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["s 39FA", "s 39FB", "s 39FC"]}],
+      "selection": {"kind": "election", "group": "car-parking-count", "provision": "s 39FA(1); all employees, a class, or particular employees"},
+      "description": "Use when the employer elects the spaces method. Per space: daily rate times days in the availability period divided by 366, times 228, summed and reduced by recipients' contributions (s 39FA(4)). Assumes a car parking fringe benefit has arisen under s 39A. The s 39FB adjustment where spaces exceed employees must be applied by the caller unless supplied as an input."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:car-parking-register-12wk",
+      "label": "FBT car parking: 12-week register method",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "car-parking",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["s 39GA", "s 39GB", "s 39GC"]}],
+      "selection": {"kind": "election", "group": "car-parking-count", "provision": "s 39GA(1); requires a valid register; all employees, a class, or particular employees"},
+      "description": "Use when the employer elects the register method and holds a valid 12-week register. Register total times 52/12, times days in the car parking availability period divided by 366 (s 39GB), less contributions. Never assume a register exists. Assumes a car parking fringe benefit has arisen under s 39A."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:property",
+      "label": "FBT property (external)",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "property",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["Division 11", "s 43"]}],
+      "selection": {"kind": "fact", "variant_of": "property", "variant_fact": "external"},
+      "description": "Use when the employer provides goods or other property to an employee, and the property is not of a kind the employer sells to the public. Taxable value is cost to the provider, the employer's expenditure, or notional value, less the recipient's contribution (s 43). Services and the use of property are residual benefits, not property."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:property-in-house",
+      "label": "FBT property (in-house)",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "property",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["Division 11", "s 42", "s 62"]}],
+      "selection": {"kind": "fact", "variant_of": "property", "variant_fact": "in-house"},
+      "description": "Use when the employer provides goods of a kind it (or an associate) sells to the public in the ordinary course of business. If the goods are provided under a salary packaging arrangement the concessional valuation does not apply (s 42(1)(aa)) and no s 62 reduction is available. The inhouseBenefitClaimed input is the part of the employee's s 62 reduction allocated to this benefit: at most $1,000 per employee per FBT year across ALL in-house benefits combined. This calculator cannot see the employee's other in-house benefits; the caller must keep the yearly total within $1,000."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:residual",
+      "label": "FBT residual (external)",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "residual",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["Division 12", "s 45"]}],
+      "selection": {"kind": "fact", "variant_of": "residual", "variant_fact": "external"},
+      "description": "Use only after every specific benefit type has been ruled out: a residual benefit is any benefit not covered by Divisions 2 to 11 (s 45), typically services or the use of property. Takes a single residual value; it does not distinguish period from non-period residual benefits, so the caller must supply the value appropriate to the case."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:fbt:residual-in-house",
+      "label": "FBT residual (in-house)",
+      "module": "urn:sbrm:module:fbt",
+      "benefit_type": "residual",
+      "statutes": [{"act": "FBTAA 1986", "provisions": ["Division 12", "s 45", "s 48", "s 49", "s 62"]}],
+      "selection": {"kind": "fact", "variant_of": "residual", "variant_fact": "in-house"},
+      "description": "Use only after every specific benefit type has been ruled out, where the service or use is of a kind the employer (or an associate) provides to the public in the ordinary course of business. Does not distinguish period from non-period benefits. The inhouseBenefitClaimed input is the part of the employee's s 62 reduction allocated to this benefit: at most $1,000 per employee per FBT year across ALL in-house benefits combined, and nothing under a salary packaging arrangement. This calculator cannot see the employee's other in-house benefits; the caller must keep the yearly total within $1,000."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:div7a:at",
+      "label": "Division 7A minimum yearly repayment",
+      "module": "urn:sbrm:module:div7a",
+      "benefit_type": null,
+      "statutes": [{"act": "ITAA 1936", "provisions": ["s 109D", "s 109E", "s 109N"]}],
+      "selection": {"kind": "fact"},
+      "description": "Minimum yearly repayment, shortfall and deemed dividend for an amalgamated Division 7A loan in the selected income year. Maximum term 7 years unsecured, 25 years secured over real property. Refuses a zero or negative balance."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:depreciation:at",
+      "label": "Depreciation: carrying amount at a date",
+      "module": "urn:sbrm:module:depreciation",
+      "benefit_type": null,
+      "statutes": [{"act": "AASB 116", "provisions": []}],
+      "selection": {"kind": "fact"},
+      "description": "Carrying amount of a single asset at a nominated date, prime cost or diminishing value, accounting basis (AASB 116). The date lives in at_date; the period URN is fixed at unscoped. Individually-depreciated assets only; pooled assets are refused. Not a tax figure."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:depreciation:range",
+      "label": "Depreciation: charge over a date range",
+      "module": "urn:sbrm:module:depreciation",
+      "benefit_type": null,
+      "statutes": [{"act": "AASB 116", "provisions": []}],
+      "selection": {"kind": "fact"},
+      "description": "Depreciation charge over an inclusive date range with opening and closing carrying amounts, prime cost or diminishing value, accounting basis (AASB 116). A zero-day range returns 0.00. Individually-depreciated assets only; pooled assets are refused with pool_asset_out_of_t6_scope. Not a tax figure."
+    }
+  ]
+}
