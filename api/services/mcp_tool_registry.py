@@ -205,6 +205,18 @@ def list_tools() -> list[dict[str, Any]]:
                 # the protocol's defined shape are permitted.
                 "_calc_uri": calc_uri,
                 "_jurisdiction": meta.get("jurisdiction"),
+                # Module metadata (mut-2026-09-19). list_tools() previously
+                # mapped only `label`; the new registry fields are surfaced
+                # here as `_`-prefixed extension fields (same convention as
+                # `_calc_uri`/`_jurisdiction`) so MCP clients can route on
+                # module + benefit type + selection semantics and read the
+                # statute/description prose. Strings verbatim from
+                # api/data/calculator_metadata.json.
+                "_module": meta.get("module"),
+                "_benefit_type": meta.get("benefit_type"),
+                "_statutes": meta.get("statutes"),
+                "_selection": meta.get("selection"),
+                "_description": meta.get("description"),
             }
         )
     return out
