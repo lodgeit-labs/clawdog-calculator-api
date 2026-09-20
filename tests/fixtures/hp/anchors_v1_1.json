@@ -1,0 +1,169 @@
+{
+ "_provenance": {
+  "written_by": "Fable",
+  "date": "2026-09-20",
+  "source": "LodgeiT 'Hire Purchase Detailed' reports (edge.lodgeit.net.au org 1598 report hp/176; org 962 reports hp/252, hp/227), read from PDF images by Fable 2026-09-20; every figure below reproduced in Decimal with unrounded internal balances, display rounded half-up to cents",
+  "status": "[wire] anchors; solved rates are Fable-computed, not lender-stated",
+  "version": "v1.1 \u2014 Scania lender contract added"
+ },
+ "semantics": {
+  "rate_basis": "nominal annual / 12 per monthly period",
+  "internal_rounding": "none; display only",
+  "in_arrears": "row interest = opening balance x r, payment after",
+  "in_advance": "row 1 interest 0.00; payment first",
+  "balloon": "replaces the regular instalment on its row (Scania row 60); Term in header excludes the balloon row",
+  "row_date": "month label = accrual period start month; FY = Jul-Jun",
+  "current_liabilities": "gross of next 12 instalments after balance date",
+  "non_current_liabilities": "gross of remaining instalments incl. balloon",
+  "unexpired_interest": "interest column summed over the same rows as each split",
+  "identity": "current_net + non_current_net = principal_balance + final_residual",
+  "contract_form": "fact input: hire_purchase | chattel_mortgage | equipment_loan \u2014 changes GST/title treatment, not the amortisation",
+  "residual_rule": "final balance must be 0.00 against the lender's total repayable; any residual from a rounded stated rate is reported as rate_precision_residual, never forced to zero silently and never carried"
+ },
+ "contracts": [
+  {
+   "name": "Toyota Hilux",
+   "entity": "Edwards & Co Pty Ltd",
+   "contract": "csdfghj",
+   "amount": "31000.00",
+   "rate_pct_stated": "9.153",
+   "begin": "2016-05-27",
+   "term": 60,
+   "instalment": "645.82",
+   "timing": "in_arrears",
+   "balloon": null,
+   "anchors": {
+    "first_interest": "236.45",
+    "total_interest": "7748.70",
+    "total_payments": "38749.20",
+    "final_balance": "-0.50",
+    "fy_interest": {
+     "2016": "469.78",
+     "2017": "2547.56",
+     "2018": "2050.90",
+     "2019": "1506.83",
+     "2020": "910.81",
+     "2021": "262.83"
+    }
+   },
+   "split_2016-06-30": {
+    "principal": "30178.14",
+    "current_gross": "7749.84",
+    "current_unexpired": "2547.56",
+    "non_current_gross": "29707.72",
+    "non_current_unexpired": "4731.36"
+   },
+   "solved_rate_pct_zero_residual": "9.1534434231",
+   "tg_old_solver_returned": "9.153439043438993"
+  },
+  {
+   "name": "Scania White Prime Mover",
+   "entity": "Desert Run Pty Ltd",
+   "contract": "G500A6X4NA",
+   "amount": "273269.35",
+   "rate_pct_stated": "3.84",
+   "begin": "2021-08-30",
+   "term": 59,
+   "instalment": "4180.02",
+   "timing": "in_arrears",
+   "balloon": {
+    "amount": "59180.02",
+    "date": "2026-07-30",
+    "row": 60
+   },
+   "anchors": {
+    "first_interest": "874.46",
+    "row2_interest": "863.88",
+    "total_interest": "32531.96",
+    "total_payments": "305801.20",
+    "final_balance": "0.11",
+    "fy_interest": {
+     "2022": "9031.68",
+     "2023": "8343.85",
+     "2024": "6709.53",
+     "2025": "5011.34",
+     "2026": "3246.78",
+     "2027": "188.77"
+    }
+   },
+   "split_2025-06-30": {
+    "principal": "105904.81",
+    "current_gross": "50160.24",
+    "current_unexpired": "3246.78",
+    "non_current_gross": "59180.02",
+    "non_current_unexpired": "188.77"
+   },
+   "solved_rate_pct_zero_residual": "3.8399894390",
+   "lender_contract": {
+    "lender": "National Australia Bank",
+    "form": "Equipment Loan & Goods Mortgage (NAB form N127-306 02/2020) \u2014 a chattel mortgage, not a hire purchase in legal form; same amortisation",
+    "signed": "2021-07-28",
+    "loan_amount": "273269.35",
+    "rate_stated": "3.8400% per annum",
+    "interest_charges": "32531.85",
+    "total_amount_repayable": "305801.20",
+    "term": "60 months",
+    "regular_payments": {
+     "count": 59,
+     "amount": "4180.02",
+     "frequency": "Monthly"
+    },
+    "final_payment": {
+     "count": 1,
+     "amount": "59180.02"
+    },
+    "fees": {
+     "settlement": "475.00",
+     "pps_registration": "25.00",
+     "early_termination_admin": "125.00",
+     "unrecovered_establishment_costs": "275.00 prorated on remaining months, payable on full early repayment",
+     "economic_costs": "payable on early termination, formula in Parts B\u2013E (not in scan)"
+    },
+    "source": "Contract_-_Scania.pdf pp.1\u201312, Part A only; Parts B\u2013E not present",
+    "status": "[wire] read by Fable 2026-09-20"
+   },
+   "reconciliation": {
+    "lodgeit_total_interest": "32531.96",
+    "lender_interest_charges": "32531.85",
+    "difference": "0.11 = LodgeiT final residual; lender defines interest = total repayable \u2212 loan amount and closes at 0.00",
+    "rule": "lender figure is the anchor; the stated 3.84% is a display rounding of the rate that amortises exactly (\u22483.8399894%)"
+   }
+  },
+  {
+   "name": "Wacker Neuson Compactor",
+   "entity": "Desert Run Pty Ltd",
+   "contract": "048-1692-048-002",
+   "amount": "21255.00",
+   "rate_pct_stated": "5.6125",
+   "begin": "2019-08-10",
+   "term": 36,
+   "instalment": "639.90",
+   "timing": "in_advance",
+   "balloon": null,
+   "anchors": {
+    "first_interest": "0.00",
+    "row2_interest": "96.42",
+    "total_interest": "1781.40",
+    "total_payments": "23036.40",
+    "final_balance": "0.00",
+    "fy_interest": {
+     "2020": "848.36",
+     "2021": "666.94",
+     "2022": "263.12",
+     "2023": "2.98"
+    }
+   },
+   "split_2021-06-30": {
+    "principal": "8052.60",
+    "current_gross": "7678.80",
+    "current_unexpired": "263.12",
+    "non_current_gross": "639.90",
+    "non_current_unexpired": "2.98"
+   },
+   "solved_rate_pct_zero_residual": "5.6125026086"
+  }
+ ],
+ "negative_results": {
+  "per_row_interest_rounding": "does NOT reproduce: Scania total 32531.91 / final 0.06; Wacker total 1781.43 / final 0.03"
+ }
+}
