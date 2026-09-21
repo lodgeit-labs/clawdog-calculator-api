@@ -13,7 +13,7 @@ Semantics enforced:
 - In-arrears: row interest = opening balance × r, payment after
 - In-advance: row 1 interest 0.00; payment first
 - Balloon replaces the regular instalment on its row
-- Identity: current_net + non_current_net = principal_balance + final_residual
+- Identity: current_net + non_current_net = principal_balance − final_balance (≤ 0.01)
 
 Negative result enforced:
 - Per-row interest rounding must NOT reproduce Scania/Wacker totals
