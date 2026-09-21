@@ -100,7 +100,7 @@ jobs:
       # "a green check is evidence that something passed, not evidence
       # of what ran. Add a step asserting collected >= N, floor bumped
       # with the suite, to both engine and gateway CI — same discipline
-      # as smoke floor 22, no token scope, and it cannot be forgotten
+      # as smoke floor 23, no token scope, and it cannot be forgotten
       # because it fails the run rather than a separate check nobody
       # fires."
       #
