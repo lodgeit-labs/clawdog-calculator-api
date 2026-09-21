@@ -426,6 +426,11 @@ required = {
     # _CALCULATOR_REGISTRY entry + _CALC_INPUT_MODEL_REST entry + MCP
     # tool registry entry + smoke floor.
     'urn:sbrm:calculator:depreciation:range',
+    # 2026-09-21 (clawdog/smoke-prod-hp-floor): module hp shipped in PR #48
+    # (merge 798fe93) but its smoke floor was missed, so the post-deploy
+    # smoke-prod on the #48 merge failed with UNEXPECTED:hp:schedule. This
+    # line is that missed floor raise (URN floor 22 -> 23).
+    'urn:sbrm:calculator:hp:schedule',
 }
 # OT #131 fold (RATIFIED mc11-2026-08-31): bidirectional declared-vs-live
 # check. missing = required - uris catches under-registration (a URN
@@ -460,7 +465,7 @@ else:
     print('OK')
 ")
     if [ "$CALCS_OK" = "OK" ]; then
-        echo "🟢 PASS: all 22 expected calculator URNs registered (2 existing + 8 Wave A + 4 Wave B + 6 Wave C + 1 Div7A + 1 depreciation:range) and no unexpected URNs"
+        echo "🟢 PASS: all 23 expected calculator URNs registered (2 existing + 8 Wave A + 4 Wave B + 6 Wave C + 1 Div7A + 1 depreciation:range + 1 hp:schedule) and no unexpected URNs"
         PASS_COUNT=$((PASS_COUNT + 1))
     else
         echo "🔴 FAIL: $CALCS_OK"
@@ -515,6 +520,16 @@ required = {
     'fbt-meal-entertainment-register-12wk',
     'fbt-car-statutory-formula',
     'depreciation-at',
+    # 2026-09-21 (clawdog/smoke-prod-hp-floor): the MCP tool floor had drifted
+    # behind the URN floor — div7a-at and depreciation-range were live tools
+    # never added to this required-set, and module hp adds hp-schedule. Bring
+    # the tool floor to the full live set so it matches tools/list (23) and
+    # the URN floor (23). Tool count == URN count: every registered
+    # calculator surfaces exactly one MCP tool, so there is no discrepancy to
+    # reconcile.
+    'div7a-at',
+    'depreciation-range',
+    'hp-schedule',
 }
 missing = required - names
 if missing:
@@ -523,7 +538,7 @@ else:
     print('OK')
 ")
     if [ "$MCP_OK" = "OK" ]; then
-        echo "🟢 PASS: MCP tools/list advertises all 20 expected tools"
+        echo "🟢 PASS: MCP tools/list advertises all 23 expected tools"
         PASS_COUNT=$((PASS_COUNT + 1))
     else
         echo "🔴 FAIL: $MCP_OK"

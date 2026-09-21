@@ -397,7 +397,7 @@ def test_every_registered_calculator_response_carries_manifest_block(
             + "\n  ".join(missing_manifest)
         )
         # Sanity: we should have exercised at least the three non-FBT
-        # calcs successfully. If skipped_no_bundle covers all 22
+        # calcs successfully. If skipped_no_bundle covers all 23
         # something is wrong with the harness itself.
         assert len(skipped_no_bundle) < len(_CALCULATOR_REGISTRY), (
             "All calculators were skipped as bundle-missing/422; "
