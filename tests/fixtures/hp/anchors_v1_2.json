@@ -4,7 +4,7 @@
   "date": "2026-09-20",
   "source": "LodgeiT 'Hire Purchase Detailed' reports (edge.lodgeit.net.au org 1598 report hp/176; org 962 reports hp/252, hp/227), read from PDF images by Fable 2026-09-20; every figure below reproduced in Decimal with unrounded internal balances, display rounded half-up to cents",
   "status": "[wire] anchors; solved rates are Fable-computed, not lender-stated",
-  "version": "v1.1 \u2014 Scania lender contract added"
+  "version": "v1.2 \u2014 identity sign corrected (was '+ final_residual', a Fable error caught via PR #47); supersedes edad8551\u2026b316"
  },
  "semantics": {
   "rate_basis": "nominal annual / 12 per monthly period",
@@ -16,7 +16,7 @@
   "current_liabilities": "gross of next 12 instalments after balance date",
   "non_current_liabilities": "gross of remaining instalments incl. balloon",
   "unexpired_interest": "interest column summed over the same rows as each split",
-  "identity": "current_net + non_current_net = principal_balance + final_residual",
+  "identity": "current_net + non_current_net = principal_balance \u2212 final_balance, to within 0.01 (one cent of summation rounding); no wider tolerance is permitted",
   "contract_form": "fact input: hire_purchase | chattel_mortgage | equipment_loan \u2014 changes GST/title treatment, not the amortisation",
   "residual_rule": "final balance must be 0.00 against the lender's total repayable; any residual from a rounded stated rate is reported as rate_precision_residual, never forced to zero silently and never carried"
  },

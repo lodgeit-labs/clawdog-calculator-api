@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-FIXTURES_PATH = Path(__file__).parent / "fixtures" / "hp" / "anchors_v1_1.json"
+FIXTURES_PATH = Path(__file__).parent / "fixtures" / "hp" / "anchors_v1_2.json"
 
 def _add_months(date, months: int):
     """Add months to a date, clamping day to valid range."""
@@ -362,16 +362,16 @@ def test_hp_liability_split(fixtures, contract_idx):
             f"{contract['name']}: {key} mismatch at {balance_date}"
         )
 
-    # Assert identity: current_net + non_current_net ≈ principal + final_balance
-    # Allow $1 tolerance for cumulative rounding drift in display-rounded systems
+    # Assert identity: current_net + non_current_net == principal_balance - final_balance
     final_balance = _round_display(schedule[-1]["balance"])
     identity_lhs = split["current_net"] + split["non_current_net"]
-    identity_rhs = principal_balance + final_balance
+    identity_rhs = principal_balance - final_balance
     identity_lhs_display = _round_display(identity_lhs)
     identity_rhs_display = _round_display(identity_rhs)
 
     delta = abs(identity_lhs_display - identity_rhs_display)
-    assert delta <= Decimal("1.00"), (
+    print(f"IDENTITY DELTA {contract['name']} @ {balance_date}: {delta}")
+    assert delta <= Decimal("0.01"), (
         f"{contract['name']}: identity failed at {balance_date}: "
         f"{identity_lhs_display} != {identity_rhs_display} (delta {delta})"
     )
@@ -430,16 +430,16 @@ def test_hp_scania_split_with_balloon(fixtures):
             f"Scania: {key} mismatch at {balance_date}"
         )
 
-    # Assert identity: current_net + non_current_net ≈ principal + final_balance
-    # Allow $1 tolerance for cumulative rounding drift in display-rounded systems
+    # Assert identity: current_net + non_current_net == principal_balance - final_balance
     final_balance = _round_display(schedule[-1]["balance"])
     identity_lhs = split["current_net"] + split["non_current_net"]
-    identity_rhs = principal_balance + final_balance
+    identity_rhs = principal_balance - final_balance
     identity_lhs_display = _round_display(identity_lhs)
     identity_rhs_display = _round_display(identity_rhs)
 
     delta = abs(identity_lhs_display - identity_rhs_display)
-    assert delta <= Decimal("1.00"), (
+    print(f"IDENTITY DELTA Scania @ {balance_date}: {delta}")
+    assert delta <= Decimal("0.01"), (
         f"Scania: identity failed at {balance_date}: "
         f"{identity_lhs_display} != {identity_rhs_display} (delta {delta})"
     )
