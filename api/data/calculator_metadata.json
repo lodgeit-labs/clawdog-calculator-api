@@ -68,6 +68,16 @@
       "description": "Carrying amount and depreciation charge for a single individually-depreciated asset on the accounting basis (AASB 116), prime cost or diminishing value, at a date or over a date range. This is not a tax deduction under ITAA 1997 Division 40 and must not be carried into a tax return. Pooled assets are refused.",
       "resolution_order": ["depreciation"],
       "election_groups": []
+    },
+    {
+      "module_uri": "urn:sbrm:module:hp",
+      "label": "Hire purchase (AU)",
+      "jurisdiction": "AU",
+      "statutes": [],
+      "period_family": "urn:sbrm:period:hp:unscoped",
+      "description": "Amortisation schedule for a hire purchase, chattel mortgage or equipment loan on the nominal monthly period basis, in arrears or in advance, with an optional balloon. Carries unrounded internal balances and rounds to cents at output only. Reports the residual against the stated rate rather than forcing it to zero; the lender's total amount repayable governs. This is accounting, not a statutory tax calculation.",
+      "resolution_order": ["hp"],
+      "election_groups": []
     }
   ],
   "calculators": [
@@ -268,6 +278,15 @@
       "statutes": [{"act": "AASB 116", "provisions": []}],
       "selection": {"kind": "fact"},
       "description": "Depreciation charge over an inclusive date range with opening and closing carrying amounts, prime cost or diminishing value, accounting basis (AASB 116). A zero-day range returns 0.00. Individually-depreciated assets only; pooled assets are refused with pool_asset_out_of_t6_scope. Not a tax figure."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:hp:schedule",
+      "label": "Hire purchase: amortisation schedule",
+      "module": "urn:sbrm:module:hp",
+      "benefit_type": null,
+      "statutes": [],
+      "selection": {"kind": "fact"},
+      "description": "Amortisation schedule for a hire purchase, chattel mortgage or equipment loan: nominal monthly period basis, in arrears or in advance, monthly frequency, with an optional balloon that replaces or adds to the instalment on its row. Internal balances are unrounded; output rounds to cents. The residual is reported against the stated rate and never forced to zero. Monthly frequency only; other frequencies are refused."
     }
   ]
 }

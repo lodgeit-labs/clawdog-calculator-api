@@ -332,6 +332,16 @@ def test_every_registered_calculator_response_carries_manifest_block(
                     "term_years": 7,
                     "benchmark_rate": "0.0862",
                 }
+            elif calc_uri == "urn:sbrm:calculator:hp:schedule":
+                # Module hp is a dedicated-route accounting calculator whose
+                # response carries its own manifest shape (calculator /
+                # engine_version / accrual_basis) and NO rate_table_uris: it
+                # consumes no rate tables, so it is outside the rate-table
+                # advisory-boundary contract this gate enforces. Skip it here;
+                # its manifest + advisory are covered by
+                # tests/test_hp_schedule_engine.py.
+                skipped_no_bundle.append(calc_uri)
+                continue
             else:
                 # Wave A/B/C FBT: exercise via the generic route.
                 path = (

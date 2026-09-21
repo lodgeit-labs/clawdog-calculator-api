@@ -37,6 +37,9 @@ _DEDICATED_ROUTE_URN_ALLOWLIST = {
     # REST route /calculators/div7a/at/{period_uri} with native FastAPI
     # response shape; does NOT dispatch through the generic route.
     "urn:sbrm:calculator:div7a:at",
+    # Module hp (clawdog/hp-schedule-engine): dedicated REST route
+    # /v1/calculators/hp/schedule; period-unscoped, native response shape.
+    "urn:sbrm:calculator:hp:schedule",
 }
 
 

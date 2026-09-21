@@ -1783,6 +1783,293 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HpAdvisory": {
+        "properties": {
+          "figure_type": {
+            "title": "Figure Type",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "figure_type",
+          "notes"
+        ],
+        "title": "HpAdvisory",
+        "type": "object"
+      },
+      "HpBalloonInput": {
+        "description": "A balloon payment on a specific instalment row.\n\n``mode`` is required whenever a balloon is present; there is no default.",
+        "properties": {
+          "amount": {
+            "description": "Balloon amount as a decimal string.",
+            "title": "Amount",
+            "type": "string"
+          },
+          "instalment_number": {
+            "description": "1-based instalment row the balloon lands on.",
+            "minimum": 1.0,
+            "title": "Instalment Number",
+            "type": "integer"
+          },
+          "mode": {
+            "description": "replace: the balloon replaces the regular instalment on its row. add: the balloon is paid in addition to the regular instalment on its row. Required; no default.",
+            "enum": [
+              "replace",
+              "add"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "instalment_number",
+          "mode"
+        ],
+        "title": "HpBalloonInput",
+        "type": "object"
+      },
+      "HpManifest": {
+        "properties": {
+          "accrual_basis": {
+            "title": "Accrual Basis",
+            "type": "string"
+          },
+          "calculator": {
+            "title": "Calculator",
+            "type": "string"
+          },
+          "engine_version": {
+            "title": "Engine Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "calculator",
+          "engine_version",
+          "accrual_basis"
+        ],
+        "title": "HpManifest",
+        "type": "object"
+      },
+      "HpScheduleInput": {
+        "description": "Input contract for urn:sbrm:calculator:hp:schedule.",
+        "properties": {
+          "amount_financed": {
+            "description": "Amount financed as a decimal string.",
+            "title": "Amount Financed",
+            "type": "string"
+          },
+          "annual_rate_pct": {
+            "description": "Nominal annual interest rate percentage as a decimal string.",
+            "title": "Annual Rate Pct",
+            "type": "string"
+          },
+          "balloon": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HpBalloonInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional balloon payment."
+          },
+          "begin_date": {
+            "description": "Contract start date, ISO (YYYY-MM-DD).",
+            "title": "Begin Date",
+            "type": "string"
+          },
+          "contract_form": {
+            "description": "Legal form. Affects GST and title treatment, not the amortisation. Required.",
+            "enum": [
+              "hire_purchase",
+              "chattel_mortgage",
+              "equipment_loan"
+            ],
+            "title": "Contract Form",
+            "type": "string"
+          },
+          "frequency": {
+            "description": "Instalment frequency. v1 supports 'monthly' only.",
+            "title": "Frequency",
+            "type": "string"
+          },
+          "fy_end_month": {
+            "default": 6,
+            "description": "Financial-year end month (default June).",
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Fy End Month",
+            "type": "integer"
+          },
+          "instalment": {
+            "description": "Regular instalment amount as a decimal string.",
+            "title": "Instalment",
+            "type": "string"
+          },
+          "term_regular_instalments": {
+            "description": "Number of regular instalments (excludes any balloon row).",
+            "minimum": 1.0,
+            "title": "Term Regular Instalments",
+            "type": "integer"
+          },
+          "timing": {
+            "description": "Payment timing within each period.",
+            "enum": [
+              "in_arrears",
+              "in_advance"
+            ],
+            "title": "Timing",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount_financed",
+          "annual_rate_pct",
+          "term_regular_instalments",
+          "instalment",
+          "timing",
+          "frequency",
+          "begin_date",
+          "contract_form"
+        ],
+        "title": "HpScheduleInput",
+        "type": "object"
+      },
+      "HpScheduleResponse": {
+        "description": "Output contract for urn:sbrm:calculator:hp:schedule.",
+        "properties": {
+          "advisory": {
+            "$ref": "#/components/schemas/HpAdvisory"
+          },
+          "final_balance": {
+            "title": "Final Balance",
+            "type": "string"
+          },
+          "fy_interest": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Fy Interest",
+            "type": "object"
+          },
+          "fy_position": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Fy Position",
+            "type": "object"
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/HpManifest"
+          },
+          "rate_precision_residual": {
+            "title": "Rate Precision Residual",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/HpScheduleRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/HpTotals"
+          }
+        },
+        "required": [
+          "rows",
+          "totals",
+          "final_balance",
+          "rate_precision_residual",
+          "fy_interest",
+          "fy_position",
+          "manifest",
+          "advisory"
+        ],
+        "title": "HpScheduleResponse",
+        "type": "object"
+      },
+      "HpScheduleRow": {
+        "description": "One amortisation row; money fields are decimal strings.",
+        "properties": {
+          "closing": {
+            "title": "Closing",
+            "type": "string"
+          },
+          "instalment": {
+            "title": "Instalment",
+            "type": "integer"
+          },
+          "interest": {
+            "title": "Interest",
+            "type": "string"
+          },
+          "opening": {
+            "title": "Opening",
+            "type": "string"
+          },
+          "payment": {
+            "title": "Payment",
+            "type": "string"
+          },
+          "payment_date": {
+            "title": "Payment Date",
+            "type": "string"
+          },
+          "period_end": {
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instalment",
+          "period_start",
+          "period_end",
+          "payment_date",
+          "opening",
+          "interest",
+          "payment",
+          "closing"
+        ],
+        "title": "HpScheduleRow",
+        "type": "object"
+      },
+      "HpTotals": {
+        "properties": {
+          "interest": {
+            "title": "Interest",
+            "type": "string"
+          },
+          "payments": {
+            "title": "Payments",
+            "type": "string"
+          }
+        },
+        "required": [
+          "interest",
+          "payments"
+        ],
+        "title": "HpTotals",
+        "type": "object"
+      },
       "ModuleListing": {
         "additionalProperties": false,
         "description": "One entry in the module-discovery listing (GET /v1/modules).\n\nFields are copied verbatim from the ``modules`` array of\n``api/data/calculator_metadata.json``; ``calculators`` is the list of\nthat module's calculator URNs in registry order (mut-2026-09-19).",
@@ -2329,6 +2616,48 @@
           }
         },
         "summary": "Invoke the Div 7A MYR endpoint for the given URN-encoded period.",
+        "tags": [
+          "calculators"
+        ]
+      }
+    },
+    "/v1/calculators/hp/schedule": {
+      "post": {
+        "description": "Dedicated route for urn:sbrm:calculator:hp:schedule (module hp). Period-unscoped accounting calculator backed by the pure-Decimal engine api/engines/hp/schedule.py. Monthly frequency only in v1; a non-monthly frequency is refused with HTTP 400 refusal_class unsupported_frequency. A balloon requires an explicit mode (replace | add); a missing mode is refused with HTTP 422. The residual is reported (rate_precision_residual), never forced to zero.",
+        "operationId": "invoke_hp_schedule_v1_calculators_hp_schedule_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HpScheduleInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HpScheduleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Invoke the hire purchase amortisation schedule calculator.",
         "tags": [
           "calculators"
         ]
