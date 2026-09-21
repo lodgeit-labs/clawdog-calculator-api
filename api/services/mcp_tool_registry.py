@@ -47,6 +47,7 @@ from api.schemas.depreciation import (
     DepreciationRangeInput,
 )
 from api.schemas.div7a import Div7aAtInput
+from api.schemas.hp import HpScheduleInput
 from api.schemas.invocation import (
     FBTBoardInput,
     FBTCarOperatingCostInput,
@@ -112,6 +113,9 @@ _CALC_INPUT_MODEL: dict[str, type[Any]] = {
     # mc02-2026-09-04 (Fable D5 mc02 ratified): depreciation range
     # endpoint sibling of /at/; RATIFIED mc11-2026-08-31 §2 Ask 1.
     "urn:sbrm:calculator:depreciation:range": DepreciationRangeInput,
+    # Module hp (clawdog/hp-schedule-engine): dedicated REST route
+    # /v1/calculators/hp/schedule; advertised uniformly via tools/list.
+    "urn:sbrm:calculator:hp:schedule": HpScheduleInput,
 }
 
 

@@ -20,6 +20,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi import Path as PathParam
 from pydantic import ValidationError
 
+from api.engines.hp.schedule import HpEngineError, compute_schedule
 from api.lib.advisory_boundary import wrap_response
 from api.lib.calculator_metadata import (
     load_metadata as _load_calculator_metadata,
@@ -50,6 +51,7 @@ from api.schemas.depreciation import (
     DepreciationRangeInput,
 )
 from api.schemas.div7a import Div7aAtInput
+from api.schemas.hp import HpScheduleInput, HpScheduleResponse
 from api.schemas.invocation import (
     CalculatorInvocationResponse,
     CalculatorListing,
@@ -125,6 +127,8 @@ _DEPRECIATION_RANGE_URI = "urn:sbrm:calculator:depreciation:range"
 # FastAPI (not Prolog HTTP), routed via PrologClient.div7a_at() using the
 # shared dispatch abstraction. Canonical URN + FY constants:
 _DIV7A_AT_URI = "urn:sbrm:calculator:div7a:at"
+_HP_SCHEDULE_URI = "urn:sbrm:calculator:hp:schedule"
+_HP_UNSCOPED = "urn:sbrm:period:hp:unscoped"
 _DIV7A_FY2025 = "urn:sbrm:period:div7a:fy2025"
 _DIV7A_FY2026 = "urn:sbrm:period:div7a:fy2026"
 
@@ -429,6 +433,19 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
         "supported_periods": [_DIV7A_FY2025, _DIV7A_FY2026],
         "input_schema_ref": "#/components/schemas/Div7aAtInput",
     },
+    # Module hp (clawdog/hp-schedule-engine). Dedicated REST route
+    # /v1/calculators/hp/schedule; period-unscoped accounting calculator
+    # backed by the pure-Decimal engine api/engines/hp/schedule.py. Not in
+    # _CALC_INPUT_MODEL_REST (that is the generic-route dispatch); it is on
+    # the dedicated-route allowlist in test_input_model_registry_parity.py.
+    _HP_SCHEDULE_URI: {
+        "engine_method": "schedule",
+        "engine_benefit_category": "hp_schedule",
+        "jurisdiction": "AU",
+        "label": "Hire purchase: amortisation schedule",
+        "supported_periods": [_HP_UNSCOPED],
+        "input_schema_ref": "#/components/schemas/HpScheduleInput",
+    },
 }
 
 
@@ -596,6 +613,48 @@ async def list_calculators(
             )
         )
     return out
+
+
+@router.post(
+    "/calculators/hp/schedule",
+    response_model=HpScheduleResponse,
+    summary="Invoke the hire purchase amortisation schedule calculator.",
+    description=(
+        "Dedicated route for urn:sbrm:calculator:hp:schedule (module hp). "
+        "Period-unscoped accounting calculator backed by the pure-Decimal "
+        "engine api/engines/hp/schedule.py. Monthly frequency only in v1; a "
+        "non-monthly frequency is refused with HTTP 400 refusal_class "
+        "unsupported_frequency. A balloon requires an explicit mode "
+        "(replace | add); a missing mode is refused with HTTP 422. The "
+        "residual is reported (rate_precision_residual), never forced to zero."
+    ),
+)
+async def invoke_hp_schedule(body: HpScheduleInput) -> HpScheduleResponse:
+    balloon = body.balloon.model_dump() if body.balloon is not None else None
+    try:
+        result = compute_schedule(
+            amount_financed=body.amount_financed,
+            annual_rate_pct=body.annual_rate_pct,
+            term_regular_instalments=body.term_regular_instalments,
+            instalment=body.instalment,
+            timing=body.timing,
+            frequency=body.frequency,
+            begin_date=body.begin_date,
+            contract_form=body.contract_form,
+            balloon=balloon,
+            fy_end_month=body.fy_end_month,
+        )
+    except HpEngineError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={
+                "error": exc.refusal_class,
+                "refusal_class": exc.refusal_class,
+                "field": exc.field,
+                "detail": exc.message,
+            },
+        ) from exc
+    return HpScheduleResponse(**result)
 
 
 @router.post(

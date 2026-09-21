@@ -64,8 +64,8 @@ def test_tools_list_envelope_shape(mcp_client: TestClient) -> None:
     assert "error" not in body
 
 
-def test_tools_list_surfaces_twenty_two_calculators(mcp_client: TestClient) -> None:
-    """The 22 calculators registered today surface as 22 MCP tools.
+def test_tools_list_surfaces_twenty_three_calculators(mcp_client: TestClient) -> None:
+    """The 23 calculators registered today surface as 23 MCP tools.
 
     Per Lesson #31, we assert exactly the count of registered calculators
     rather than ">= 1" or similar generalised assertion. If a twenty-third
@@ -82,14 +82,16 @@ def test_tools_list_surfaces_twenty_two_calculators(mcp_client: TestClient) -> N
     - mut-2026-08-24-mc20 Phase D (n=21): + div7a-at (constellation third calc engine).
     - mc02-2026-09-04 (n=22): + depreciation-range (Fable D5 sibling of
       /at/; RATIFIED mc11-2026-08-31 §2 Ask 1).
+    - 2026-09-21 (n=23): + hp-schedule (module hp, pure-Decimal amortisation;
+      clawdog/hp-schedule-engine).
     """
     body = _jsonrpc_call(mcp_client, "tools/list")
     tools = body["result"]["tools"]
     assert isinstance(tools, list)
-    assert len(tools) == 22, (
-        f"expected 22 calculators registered (FBT car-OC + depreciation-at + "
-        f"8 Wave A + 4 Wave B + 6 Wave C + Div7A + depreciation-range); "
-        f"got {len(tools)}; tools={tools}"
+    assert len(tools) == 23, (
+        f"expected 23 calculators registered (FBT car-OC + depreciation-at + "
+        f"8 Wave A + 4 Wave B + 6 Wave C + Div7A + depreciation-range + "
+        f"hp-schedule); got {len(tools)}; tools={tools}"
     )
 
     names = {tool["name"] for tool in tools}
@@ -121,16 +123,19 @@ def test_tools_list_surfaces_twenty_two_calculators(mcp_client: TestClient) -> N
         "div7a-at",
         # mc02-2026-09-04 Fable D5
         "depreciation-range",
+        # 2026-09-21 module hp
+        "hp-schedule",
     }
     assert names == expected_names, f"tool name set mismatch: {names ^ expected_names}"
 
 
 # Backward-compat aliases for any external test discovery referencing prior names.
-test_tools_list_surfaces_two_calculators = test_tools_list_surfaces_twenty_two_calculators
-test_tools_list_surfaces_ten_calculators = test_tools_list_surfaces_twenty_two_calculators
-test_tools_list_surfaces_fourteen_calculators = test_tools_list_surfaces_twenty_two_calculators
-test_tools_list_surfaces_twenty_calculators = test_tools_list_surfaces_twenty_two_calculators
-test_tools_list_surfaces_twenty_one_calculators = test_tools_list_surfaces_twenty_two_calculators
+test_tools_list_surfaces_two_calculators = test_tools_list_surfaces_twenty_three_calculators
+test_tools_list_surfaces_ten_calculators = test_tools_list_surfaces_twenty_three_calculators
+test_tools_list_surfaces_fourteen_calculators = test_tools_list_surfaces_twenty_three_calculators
+test_tools_list_surfaces_twenty_calculators = test_tools_list_surfaces_twenty_three_calculators
+test_tools_list_surfaces_twenty_one_calculators = test_tools_list_surfaces_twenty_three_calculators
+test_tools_list_surfaces_twenty_two_calculators = test_tools_list_surfaces_twenty_three_calculators
 
 
 def test_tools_list_input_schemas_resolve(mcp_client: TestClient) -> None:
