@@ -598,6 +598,11 @@ def test_calculation_error_maps_to_502():
         detail={"field": "wdv_at", "numeric_mode": "serving"},
     )
     http_exc = map_calculation_error_to_http(exc)
+    # D54 (Fable [CALC] 2026-09-28): an UNRECOGNISED engine term still maps to
+    # 502, but the body now says `unrecognised_engine_error` and echoes the
+    # term verbatim under `engine_term` (rather than silently reusing the term
+    # as the top-level `error`).
     assert http_exc.status_code == 502
-    assert http_exc.detail["error"] == "engine_response_missing_field"
+    assert http_exc.detail["error"] == "unrecognised_engine_error"
+    assert http_exc.detail["engine_term"] == "engine_response_missing_field"
     assert "numeric_mode" not in http_exc.detail["detail"]
