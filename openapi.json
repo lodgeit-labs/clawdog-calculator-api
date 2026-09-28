@@ -43,7 +43,6 @@
           "cost": {
             "anyOf": [
               {
-                "exclusiveMinimum": 0.0,
                 "type": "number"
               },
               {
@@ -51,8 +50,10 @@
                 "type": "string"
               }
             ],
-            "description": "Initial cost basis. Positive Decimal; SR #3 fail-loud rejects zero or negative.",
-            "title": "Cost"
+            "description": "Initial cost basis. Positive Decimal; SR #3 fail-loud rejects zero or negative. Money: cent-quantised, JSON number or decimal string.",
+            "gt": 0,
+            "title": "Cost",
+            "x-money": true
           },
           "dv_rate_factor": {
             "anyOf": [
@@ -293,10 +294,19 @@
         "description": "Div 7A single-income-year MYR request payload.\n\nCanonical URN: ``urn:sbrm:calculator:div7a:at`` per constellation naming\nconvention (matches ``urn:sbrm:calculator:depreciation:at`` + ``urn:sbrm:calculator:fbt:*``).\n\nField discipline:\n  - ``amalgamated_base``: \u00a7109E amalgamated loan base amount at start of year (AUD)\n  - ``loan_term_years``: \u00a7109N complying-loan term (7 unsecured / 25 secured)\n  - ``loan_origination_date``: date the loan was made (ISO or dd/mm/yyyy)\n  - ``income_year_start_date``: 1 July of the FY to compute (ISO or dd/mm/yyyy)\n  - ``is_first_real_myr_year``: optional; derived from origination/year if omitted\n  - ``repayments``: list; may be empty (canon 620 \u00a71.1 single-annual or multi)",
         "properties": {
           "amalgamated_base": {
-            "description": "\u00a7109E amalgamated loan base amount (AUD). Must be positive: a non-positive loan balance is not a loan and cannot receive a compliance verdict.",
-            "exclusiveMinimum": 0.0,
+            "description": "\u00a7109E amalgamated loan base amount (AUD). Must be positive: a non-positive loan balance is not a loan and cannot receive a compliance verdict. Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Amalgamated Base",
-            "type": "number"
+            "x-money": true
           },
           "income_year_start_date": {
             "description": "Start of the income year to compute (ISO YYYY-MM-DD or AU dd/mm/yyyy). AU income year: 1 July \u2013 30 June.",
@@ -361,10 +371,19 @@
             "title": "Allocation Hint"
           },
           "amount": {
-            "description": "Repayment amount (AUD). Must be positive.",
-            "exclusiveMinimum": 0.0,
+            "description": "Repayment amount (AUD). Must be positive. Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Amount",
-            "type": "number"
+            "x-money": true
           },
           "date": {
             "description": "Repayment date (ISO YYYY-MM-DD or AU dd/mm/yyyy)",
@@ -409,8 +428,9 @@
                 "type": "null"
               }
             ],
-            "description": "Cost addition amount for event_type='cost_addition'.",
-            "title": "Cost Delta"
+            "description": "Cost addition amount for event_type='cost_addition'. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Cost Delta",
+            "x-money": true
           },
           "event_date": {
             "description": "Effective date of the event.",
@@ -454,8 +474,9 @@
                 "type": "null"
               }
             ],
-            "description": "Opening balance for event_type='opening_balance'.",
-            "title": "Opening Balance Amount"
+            "description": "Opening balance for event_type='opening_balance'. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Opening Balance Amount",
+            "x-money": true
           }
         },
         "required": [
@@ -500,16 +521,27 @@
           "over12EmployeeContributions": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Total employee contributions toward 12+ meals (AUD).",
-            "title": "Over12Employeecontributions"
+            "description": "Total employee contributions toward 12+ meals (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "title": "Over12Employeecontributions",
+            "x-money": true
           },
           "over12MealsPerChild": {
             "anyOf": [
@@ -550,15 +582,26 @@
           "acquisitionCost": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Original acquisition cost (AUD) for the chained-DV walk; chained-DV entry-point. Mutually exclusive with opening_depreciated_value. When supplied with acquisition_date (and without opening_depreciated_value), the engine dispatches to the OT #81 chained-DV walk predicate (mc08).",
-            "title": "Acquisitioncost"
+            "description": "Original acquisition cost (AUD) for the chained-DV walk; chained-DV entry-point. Mutually exclusive with opening_depreciated_value. When supplied with acquisition_date (and without opening_depreciated_value), the engine dispatches to the OT #81 chained-DV walk predicate (mc08). Money: cent-quantised, JSON number or decimal string.",
+            "title": "Acquisitioncost",
+            "x-money": true
           },
           "acquisitionDate": {
             "anyOf": [
@@ -573,11 +616,19 @@
             "title": "Acquisitiondate"
           },
           "businessUsePercentage": {
-            "description": "Business-use % of total operating costs. Clamped to [0, 100] by the engine.",
-            "maximum": 100.0,
-            "minimum": 0.0,
+            "description": "Business-use % of total operating costs. Clamped to [0, 100] by the engine. Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Businessusepercentage",
-            "type": "number"
+            "x-money": true
           },
           "daysHeldInFBTYear": {
             "anyOf": [
@@ -596,22 +647,42 @@
           "deemedTotal": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Optional explicit deemed_total (AUD) override.",
-            "title": "Deemedtotal"
+            "description": "Optional explicit deemed_total (AUD) override. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Deemedtotal",
+            "x-money": true
           },
           "employeeContribution": {
             "default": 0,
-            "description": "Post-tax employee contribution toward the benefit (AUD).",
-            "minimum": 0.0,
+            "description": "Post-tax employee contribution toward the benefit (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Employeecontribution",
-            "type": "number"
+            "x-money": true
           },
           "fbtType": {
             "anyOf": [
@@ -643,67 +714,122 @@
           "fuelRepairsServicing": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Fuel + repairs + servicing for the period (AUD).",
-            "title": "Fuelrepairsservicing"
+            "description": "Fuel + repairs + servicing for the period (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "title": "Fuelrepairsservicing",
+            "x-money": true
           },
           "leasePayments": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Lease payments for the period (AUD); null/absent if not leased.",
-            "title": "Leasepayments"
+            "description": "Lease payments for the period (AUD); null/absent if not leased. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Leasepayments",
+            "x-money": true
           },
           "noPrivateUseReduction": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "No-private-use reduction (AUD).",
-            "title": "Noprivateusereduction"
+            "description": "No-private-use reduction (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "title": "Noprivateusereduction",
+            "x-money": true
           },
           "openingDepreciatedValue": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Opening depreciated value at start of FBT year (AUD). Mutually exclusive with acquisition_cost per engine Lesson #14 strict-validation (OT #81 Rung 2 mc07).",
-            "title": "Openingdepreciatedvalue"
+            "description": "Opening depreciated value at start of FBT year (AUD). Mutually exclusive with acquisition_cost per engine Lesson #14 strict-validation (OT #81 Rung 2 mc07). Money: cent-quantised, JSON number or decimal string.",
+            "title": "Openingdepreciatedvalue",
+            "x-money": true
           },
           "registrationInsurance": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Registration + insurance for the period (AUD).",
-            "title": "Registrationinsurance"
+            "description": "Registration + insurance for the period (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "title": "Registrationinsurance",
+            "x-money": true
           }
         },
         "required": [
@@ -720,16 +846,27 @@
           "employeeContribution": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Employee contribution (AUD); clamped at gross subtotal.",
-            "title": "Employeecontribution"
+            "description": "Employee contribution (AUD); clamped at gross subtotal. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Employeecontribution",
+            "x-money": true
           },
           "fbtType": {
             "anyOf": [
@@ -744,16 +881,34 @@
             "title": "Fbttype"
           },
           "spacesProvided": {
-            "description": "Number of car parking spaces provided.",
-            "minimum": 0.0,
+            "description": "Number of car parking spaces provided. Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Spacesprovided",
-            "type": "number"
+            "x-money": true
           },
           "valuationMethodRate": {
-            "description": "Per-space daily rate (AUD).",
-            "minimum": 0.0,
+            "description": "Per-space daily rate (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Valuationmethodrate",
-            "type": "number"
+            "x-money": true
           }
         },
         "required": [
@@ -783,16 +938,27 @@
           "employeeContribution": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Employee contribution (AUD); clamped at gross subtotal.",
-            "title": "Employeecontribution"
+            "description": "Employee contribution (AUD); clamped at gross subtotal. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Employeecontribution",
+            "x-money": true
           },
           "fbtType": {
             "anyOf": [
@@ -807,10 +973,19 @@
             "title": "Fbttype"
           },
           "valuationMethodRate": {
-            "description": "Per-benefit rate (AUD).",
-            "minimum": 0.0,
+            "description": "Per-benefit rate (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Valuationmethodrate",
-            "type": "number"
+            "x-money": true
           }
         },
         "required": [
@@ -835,16 +1010,27 @@
           "employeeContribution": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Employee contribution (AUD); clamped at gross subtotal.",
-            "title": "Employeecontribution"
+            "description": "Employee contribution (AUD); clamped at gross subtotal. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Employeecontribution",
+            "x-money": true
           },
           "fbtType": {
             "anyOf": [
@@ -859,10 +1045,19 @@
             "title": "Fbttype"
           },
           "valuationMethodRate": {
-            "description": "Per-space daily rate (AUD).",
-            "minimum": 0.0,
+            "description": "Per-space daily rate (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Valuationmethodrate",
-            "type": "number"
+            "x-money": true
           }
         },
         "required": [
@@ -879,22 +1074,42 @@
           "accessories": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Accessories added to base value (AUD).",
-            "title": "Accessories"
+            "description": "Accessories added to base value (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "title": "Accessories",
+            "x-money": true
           },
           "baseValue": {
-            "description": "Statutory base value of the car (AUD).",
-            "minimum": 0.0,
+            "description": "Statutory base value of the car (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Basevalue",
-            "type": "number"
+            "x-money": true
           },
           "daysAvailable": {
             "description": "Days the car was available for private use [0..366].",
@@ -906,16 +1121,27 @@
           "employeeContribution": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Employee contribution (AUD); clamped DOWN so TV cannot go negative.",
-            "title": "Employeecontribution"
+            "description": "Employee contribution (AUD); clamped DOWN so TV cannot go negative. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Employeecontribution",
+            "x-money": true
           },
           "fbtType": {
             "anyOf": [
@@ -946,23 +1172,43 @@
         "description": "Input for Phase 2b Debt Waiver Fringe Benefit (engine: ``calculate_fbt_debt_waiver``).\n\nFBTAA s.16. Engine arithmetic at FBT_Engine.pl L3433. Type 2 only per\nFBTAA; ``fbt_type`` echoed as 'Type 2'.",
         "properties": {
           "amountWaived": {
-            "description": "Principal debt amount waived (AUD).",
-            "minimum": 0.0,
+            "description": "Principal debt amount waived (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Amountwaived",
-            "type": "number"
+            "x-money": true
           },
           "interestNoLongerCharged": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Foregone interest no longer charged following the waiver (AUD); defaults engine-side to 0.",
-            "title": "Interestnolongercharged"
+            "description": "Foregone interest no longer charged following the waiver (AUD); defaults engine-side to 0. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Interestnolongercharged",
+            "x-money": true
           }
         },
         "required": [
@@ -977,16 +1223,34 @@
         "properties": {
           "employeeContribution": {
             "default": 0,
-            "description": "Employee contribution toward the expense (AUD); clamped at gross.",
-            "minimum": 0.0,
+            "description": "Employee contribution toward the expense (AUD); clamped at gross. Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Employeecontribution",
-            "type": "number"
+            "x-money": true
           },
           "expenseValue": {
-            "description": "Gross expense amount paid/reimbursed by the employer (AUD).",
-            "minimum": 0.0,
+            "description": "Gross expense amount paid/reimbursed by the employer (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Expensevalue",
-            "type": "number"
+            "x-money": true
           },
           "fbtType": {
             "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
@@ -1000,22 +1264,41 @@
           "inhouseBenefitClaimed": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62).",
-            "title": "Inhousebenefitclaimed"
+            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
+            "title": "Inhousebenefitclaimed",
+            "x-money": true
           },
           "otherwiseDeductiblePercentage": {
-            "description": "Otherwise-deductible percentage [0..100] per FBTAA s.24.",
-            "maximum": 100.0,
-            "minimum": 0.0,
+            "description": "Otherwise-deductible percentage [0..100] per FBTAA s.24. Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Otherwisedeductiblepercentage",
-            "type": "number"
+            "x-money": true
           }
         },
         "required": [
@@ -1032,16 +1315,34 @@
         "properties": {
           "employeeContribution": {
             "default": 0,
-            "description": "Employee contribution toward the expense (AUD); clamped at gross.",
-            "minimum": 0.0,
+            "description": "Employee contribution toward the expense (AUD); clamped at gross. Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Employeecontribution",
-            "type": "number"
+            "x-money": true
           },
           "expenseValue": {
-            "description": "Gross expense amount paid/reimbursed by the employer (AUD).",
-            "minimum": 0.0,
+            "description": "Gross expense amount paid/reimbursed by the employer (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Expensevalue",
-            "type": "number"
+            "x-money": true
           },
           "fbtType": {
             "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
@@ -1055,22 +1356,41 @@
           "inhouseBenefitClaimed": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62).",
-            "title": "Inhousebenefitclaimed"
+            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
+            "title": "Inhousebenefitclaimed",
+            "x-money": true
           },
           "otherwiseDeductiblePercentage": {
-            "description": "Otherwise-deductible percentage [0..100] per FBTAA s.24.",
-            "maximum": 100.0,
-            "minimum": 0.0,
+            "description": "Otherwise-deductible percentage [0..100] per FBTAA s.24. Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Otherwisedeductiblepercentage",
-            "type": "number"
+            "x-money": true
           }
         },
         "required": [
@@ -1095,10 +1415,19 @@
             "type": "string"
           },
           "housingBenefitValue": {
-            "description": "Statutory annual value of the housing right at start of FBT year (AUD).",
-            "minimum": 0.0,
+            "description": "Statutory annual value of the housing right at start of FBT year (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Housingbenefitvalue",
-            "type": "number"
+            "x-money": true
           },
           "indexationFactor": {
             "anyOf": [
@@ -1117,16 +1446,27 @@
           "recipientRent": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Rent paid by recipient to employer (AUD); reduces taxable value.",
-            "title": "Recipientrent"
+            "description": "Rent paid by recipient to employer (AUD); reduces taxable value. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Recipientrent",
+            "x-money": true
           }
         },
         "required": [
@@ -1141,44 +1481,84 @@
         "description": "Input for Phase 2g LAFHA Fringe Benefit (engine: ``calculate_fbt_lafha``).\n\nFBTAA s.31(2). Engine arithmetic at FBT_Engine.pl L2943. Always Type 2 per\nATO TR 96/9. ``exempt_food_component`` is the pre-computed scalar (TD 2025/2\ncomposition lookup is sheet/UI-layer concern).",
         "properties": {
           "accommodationPerWeek": {
-            "description": "Accommodation allowance paid per week (AUD).",
-            "minimum": 0.0,
+            "description": "Accommodation allowance paid per week (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Accommodationperweek",
-            "type": "number"
+            "x-money": true
           },
           "exemptAccommodationComponent": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Total exempt accommodation component per s.31(2)(a) (AUD; not weekly).",
-            "title": "Exemptaccommodationcomponent"
+            "description": "Total exempt accommodation component per s.31(2)(a) (AUD; not weekly). Money: cent-quantised, JSON number or decimal string.",
+            "title": "Exemptaccommodationcomponent",
+            "x-money": true
           },
           "exemptFoodComponent": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Total exempt food component per s.31(2)(b) (AUD; not weekly). Caller computes via TD 2025/2 composition lookup; engine consumes scalar.",
-            "title": "Exemptfoodcomponent"
+            "description": "Total exempt food component per s.31(2)(b) (AUD; not weekly). Caller computes via TD 2025/2 composition lookup; engine consumes scalar. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Exemptfoodcomponent",
+            "x-money": true
           },
           "mealsPerWeek": {
-            "description": "Food/drink allowance paid per week (AUD).",
-            "minimum": 0.0,
+            "description": "Food/drink allowance paid per week (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Mealsperweek",
-            "type": "number"
+            "x-money": true
           },
           "weeksLivedAway": {
             "description": "Number of weeks the employee lived away from home.",
@@ -1202,15 +1582,26 @@
           "fbtBenchmarkInterestAmount": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Benchmark FBT interest amount (AUD) per FBTAA Schedule 1. If omitted, derived from ``original_loan_amount`` \u00d7 benchmark rate.",
-            "title": "Fbtbenchmarkinterestamount"
+            "description": "Benchmark FBT interest amount (AUD) per FBTAA Schedule 1. If omitted, derived from ``original_loan_amount`` \u00d7 benchmark rate. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Fbtbenchmarkinterestamount",
+            "x-money": true
           },
           "fbtType": {
             "anyOf": [
@@ -1225,23 +1616,43 @@
             "title": "Fbttype"
           },
           "interestChargedByEmployer": {
-            "description": "Actual interest amount the employer charged the employee (AUD).",
-            "minimum": 0.0,
+            "description": "Actual interest amount the employer charged the employee (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Interestchargedbyemployer",
-            "type": "number"
+            "x-money": true
           },
           "originalLoanAmount": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Original loan principal (AUD); only consulted when ``fbt_benchmark_interest_amount`` is absent.",
-            "title": "Originalloanamount"
+            "description": "Original loan principal (AUD); only consulted when ``fbt_benchmark_interest_amount`` is absent. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Originalloanamount",
+            "x-money": true
           },
           "otherwiseDeductiblePercentage": {
             "description": "Otherwise-deductible percentage [0..100] per FBTAA s.19.",
@@ -1265,34 +1676,72 @@
           "eligibleMeals": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Meals in an eligible in-house dining facility (s.54 FBTAA); AUD.",
-            "title": "Eligiblemeals"
+            "description": "Meals in an eligible in-house dining facility (s.54 FBTAA); AUD. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Eligiblemeals",
+            "x-money": true
           },
           "employees": {
-            "description": "GST-inclusive meal entertainment expenditure on employees + other staff (AUD).",
-            "minimum": 0.0,
+            "description": "GST-inclusive meal entertainment expenditure on employees + other staff (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Employees",
-            "type": "number"
+            "x-money": true
           },
           "employeesAssociates": {
-            "description": "Meal entertainment expenditure on associates of employees (AUD).",
-            "minimum": 0.0,
+            "description": "Meal entertainment expenditure on associates of employees (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Employeesassociates",
-            "type": "number"
+            "x-money": true
           },
           "employeesNonassociates": {
-            "description": "Meal entertainment expenditure on clients + other non-associates (AUD).",
-            "minimum": 0.0,
+            "description": "Meal entertainment expenditure on clients + other non-associates (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Employeesnonassociates",
-            "type": "number"
+            "x-money": true
           },
           "fbtType": {
             "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
@@ -1306,72 +1755,127 @@
           "overnightMeals": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Otherwise-deductible business-travel meals (s.32-20 ITAA 1997); AUD.",
-            "title": "Overnightmeals"
+            "description": "Otherwise-deductible business-travel meals (s.32-20 ITAA 1997); AUD. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Overnightmeals",
+            "x-money": true
           },
           "recreationExpenses": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Recreation entertainment excluded from base (AUD).",
-            "title": "Recreationexpenses"
+            "description": "Recreation entertainment excluded from base (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "title": "Recreationexpenses",
+            "x-money": true
           },
           "seminarMeals": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Exempt seminar meals (s.32-30 ITAA 1997); AUD.",
-            "title": "Seminarmeals"
+            "description": "Exempt seminar meals (s.32-30 ITAA 1997); AUD. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Seminarmeals",
+            "x-money": true
           },
           "staffAmenities": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Exempt employer-provided staff amenities (s.41 minor-benefits); AUD.",
-            "title": "Staffamenities"
+            "description": "Exempt employer-provided staff amenities (s.41 minor-benefits); AUD. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Staffamenities",
+            "x-money": true
           },
           "teaItems": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Exempt morning/afternoon tea (s.41 minor-benefits); AUD.",
-            "title": "Teaitems"
+            "description": "Exempt morning/afternoon tea (s.41 minor-benefits); AUD. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Teaitems",
+            "x-money": true
           }
         },
         "required": [
@@ -1390,34 +1894,72 @@
           "eligibleMeals": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Meals in an eligible in-house dining facility (s.54 FBTAA); AUD.",
-            "title": "Eligiblemeals"
+            "description": "Meals in an eligible in-house dining facility (s.54 FBTAA); AUD. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Eligiblemeals",
+            "x-money": true
           },
           "employees": {
-            "description": "GST-inclusive meal entertainment expenditure on employees + other staff (AUD).",
-            "minimum": 0.0,
+            "description": "GST-inclusive meal entertainment expenditure on employees + other staff (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Employees",
-            "type": "number"
+            "x-money": true
           },
           "employeesAssociates": {
-            "description": "Meal entertainment expenditure on associates of employees (AUD).",
-            "minimum": 0.0,
+            "description": "Meal entertainment expenditure on associates of employees (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Employeesassociates",
-            "type": "number"
+            "x-money": true
           },
           "employeesNonassociates": {
-            "description": "Meal entertainment expenditure on clients + other non-associates (AUD).",
-            "minimum": 0.0,
+            "description": "Meal entertainment expenditure on clients + other non-associates (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Employeesnonassociates",
-            "type": "number"
+            "x-money": true
           },
           "fbtType": {
             "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
@@ -1431,30 +1973,52 @@
           "overnightMeals": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Otherwise-deductible business-travel meals (s.32-20 ITAA 1997); AUD.",
-            "title": "Overnightmeals"
+            "description": "Otherwise-deductible business-travel meals (s.32-20 ITAA 1997); AUD. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Overnightmeals",
+            "x-money": true
           },
           "recreationExpenses": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Recreation entertainment excluded from base (AUD).",
-            "title": "Recreationexpenses"
+            "description": "Recreation entertainment excluded from base (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "title": "Recreationexpenses",
+            "x-money": true
           },
           "registerPercentage": {
             "description": "Register percentage established under the 12-week sample register per s.37CC (0..100). Engine clamps at 100 if exceeded.",
@@ -1466,44 +2030,77 @@
           "seminarMeals": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Exempt seminar meals (s.32-30 ITAA 1997); AUD.",
-            "title": "Seminarmeals"
+            "description": "Exempt seminar meals (s.32-30 ITAA 1997); AUD. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Seminarmeals",
+            "x-money": true
           },
           "staffAmenities": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Exempt employer-provided staff amenities (s.41 minor-benefits); AUD.",
-            "title": "Staffamenities"
+            "description": "Exempt employer-provided staff amenities (s.41 minor-benefits); AUD. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Staffamenities",
+            "x-money": true
           },
           "teaItems": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
             "default": 0,
-            "description": "Exempt morning/afternoon tea (s.41 minor-benefits); AUD.",
-            "title": "Teaitems"
+            "description": "Exempt morning/afternoon tea (s.41 minor-benefits); AUD. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Teaitems",
+            "x-money": true
           }
         },
         "required": [
@@ -1522,10 +2119,19 @@
         "properties": {
           "employeeContribution": {
             "default": 0,
-            "description": "Employee contribution toward the property (AUD).",
-            "minimum": 0.0,
+            "description": "Employee contribution toward the property (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Employeecontribution",
-            "type": "number"
+            "x-money": true
           },
           "fbtType": {
             "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
@@ -1537,23 +2143,43 @@
             "type": "string"
           },
           "gstInclusiveValue": {
-            "description": "GST-inclusive value of the property benefit (AUD).",
-            "minimum": 0.0,
+            "description": "GST-inclusive value of the property benefit (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Gstinclusivevalue",
-            "type": "number"
+            "x-money": true
           },
           "inhouseBenefitClaimed": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62).",
-            "title": "Inhousebenefitclaimed"
+            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
+            "title": "Inhousebenefitclaimed",
+            "x-money": true
           },
           "otherwiseDeductiblePercentage": {
             "description": "Otherwise-deductible percentage [0..100] per FBTAA s.44.",
@@ -1577,10 +2203,19 @@
         "properties": {
           "employeeContribution": {
             "default": 0,
-            "description": "Employee contribution toward the property (AUD).",
-            "minimum": 0.0,
+            "description": "Employee contribution toward the property (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Employeecontribution",
-            "type": "number"
+            "x-money": true
           },
           "fbtType": {
             "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
@@ -1592,23 +2227,43 @@
             "type": "string"
           },
           "gstInclusiveValue": {
-            "description": "GST-inclusive value of the property benefit (AUD).",
-            "minimum": 0.0,
+            "description": "GST-inclusive value of the property benefit (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Gstinclusivevalue",
-            "type": "number"
+            "x-money": true
           },
           "inhouseBenefitClaimed": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62).",
-            "title": "Inhousebenefitclaimed"
+            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
+            "title": "Inhousebenefitclaimed",
+            "x-money": true
           },
           "otherwiseDeductiblePercentage": {
             "description": "Otherwise-deductible percentage [0..100] per FBTAA s.44.",
@@ -1632,10 +2287,19 @@
         "properties": {
           "employeeContribution": {
             "default": 0,
-            "description": "Employee contribution toward the residual benefit (AUD).",
-            "minimum": 0.0,
+            "description": "Employee contribution toward the residual benefit (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Employeecontribution",
-            "type": "number"
+            "x-money": true
           },
           "fbtType": {
             "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
@@ -1649,15 +2313,26 @@
           "inhouseBenefitClaimed": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62).",
-            "title": "Inhousebenefitclaimed"
+            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
+            "title": "Inhousebenefitclaimed",
+            "x-money": true
           },
           "otherwiseDeductiblePercentage": {
             "description": "Otherwise-deductible percentage [0..100] per FBTAA s.52.",
@@ -1667,10 +2342,19 @@
             "type": "number"
           },
           "residualValue": {
-            "description": "Residual value of the benefit (AUD). Statute-native input for FBTAA Division 12 (s.50 defines 'residual value'). This is the single monetary input the engine predicate reads.",
-            "minimum": 0.0,
+            "description": "Residual value of the benefit (AUD). Statute-native input for FBTAA Division 12 (s.50 defines 'residual value'). This is the single monetary input the engine predicate reads. Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Residualvalue",
-            "type": "number"
+            "x-money": true
           }
         },
         "required": [
@@ -1687,10 +2371,19 @@
         "properties": {
           "employeeContribution": {
             "default": 0,
-            "description": "Employee contribution toward the residual benefit (AUD).",
-            "minimum": 0.0,
+            "description": "Employee contribution toward the residual benefit (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Employeecontribution",
-            "type": "number"
+            "x-money": true
           },
           "fbtType": {
             "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
@@ -1704,15 +2397,26 @@
           "inhouseBenefitClaimed": {
             "anyOf": [
               {
-                "minimum": 0.0,
-                "type": "number"
+                "ge": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62).",
-            "title": "Inhousebenefitclaimed"
+            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
+            "title": "Inhousebenefitclaimed",
+            "x-money": true
           },
           "otherwiseDeductiblePercentage": {
             "description": "Otherwise-deductible percentage [0..100] per FBTAA s.52.",
@@ -1722,10 +2426,19 @@
             "type": "number"
           },
           "residualValue": {
-            "description": "Residual value of the benefit (AUD). Statute-native input for FBTAA Division 12 (s.50 defines 'residual value'). This is the single monetary input the engine predicate reads.",
-            "minimum": 0.0,
+            "description": "Residual value of the benefit (AUD). Statute-native input for FBTAA Division 12 (s.50 defines 'residual value'). This is the single monetary input the engine predicate reads. Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Residualvalue",
-            "type": "number"
+            "x-money": true
           }
         },
         "required": [
@@ -1750,16 +2463,34 @@
             "type": "string"
           },
           "recreation": {
-            "description": "Total recreation entertainment expenditure (AUD).",
-            "minimum": 0.0,
+            "description": "Total recreation entertainment expenditure (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Recreation",
-            "type": "number"
+            "x-money": true
           },
           "salaryPackagedMealEfle": {
-            "description": "Total expenditure on salary-packaged meal entertainment + EFLE for tax-exempt body employees (AUD).",
-            "minimum": 0.0,
+            "description": "Total expenditure on salary-packaged meal entertainment + EFLE for tax-exempt body employees (AUD). Money: cent-quantised, JSON number or decimal string.",
+            "oneOf": [
+              {
+                "multipleOf": 0.01,
+                "type": "number"
+              },
+              {
+                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              }
+            ],
             "title": "Salarypackagedmealefle",
-            "type": "number"
+            "x-money": true
           }
         },
         "required": [
@@ -1808,9 +2539,10 @@
         "description": "A balloon payment on a specific instalment row.\n\n``mode`` is required whenever a balloon is present; there is no default.",
         "properties": {
           "amount": {
-            "description": "Balloon amount as a decimal string.",
+            "description": "Balloon amount as a decimal string. Money: cent-quantised, JSON number or decimal string.",
             "title": "Amount",
-            "type": "string"
+            "type": "string",
+            "x-money": true
           },
           "instalment_number": {
             "description": "1-based instalment row the balloon lands on.",
@@ -1863,9 +2595,10 @@
         "description": "Input contract for urn:sbrm:calculator:hp:schedule.",
         "properties": {
           "amount_financed": {
-            "description": "Amount financed as a decimal string.",
+            "description": "Amount financed as a decimal string. Money: cent-quantised, JSON number or decimal string.",
             "title": "Amount Financed",
-            "type": "string"
+            "type": "string",
+            "x-money": true
           },
           "annual_rate_pct": {
             "description": "Nominal annual interest rate percentage as a decimal string.",
@@ -1912,9 +2645,10 @@
             "type": "integer"
           },
           "instalment": {
-            "description": "Regular instalment amount as a decimal string.",
+            "description": "Regular instalment amount as a decimal string. Money: cent-quantised, JSON number or decimal string.",
             "title": "Instalment",
-            "type": "string"
+            "type": "string",
+            "x-money": true
           },
           "term_regular_instalments": {
             "description": "Number of regular instalments (excludes any balloon row).",

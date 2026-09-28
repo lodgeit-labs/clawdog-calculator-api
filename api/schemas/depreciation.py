@@ -34,7 +34,11 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+
+from api.schemas.money import _to_cent_quantised_decimal
+
+_MONEY_DESC = "Money: cent-quantised, JSON number or decimal string."
 
 # ---------------------------------------------------------------------------
 # D8a defence-in-depth: basis-conditional field validation at the gateway.
@@ -191,12 +195,14 @@ class AssetCreatedInput(BaseModel):
 
     cost: Annotated[
         Decimal,
+        BeforeValidator(_to_cent_quantised_decimal),
         Field(
             gt=0,
             description=(
                 "Initial cost basis. Positive Decimal; SR #3 fail-loud "
-                "rejects zero or negative."
+                "rejects zero or negative. " + _MONEY_DESC
             ),
+            json_schema_extra={"x-money": True},
         ),
     ]
 
@@ -339,9 +345,14 @@ class EventInput(BaseModel):
     # requiredness per event_type.
     cost_delta: Annotated[
         Decimal | None,
+        BeforeValidator(_to_cent_quantised_decimal),
         Field(
             default=None,
-            description="Cost addition amount for event_type='cost_addition'.",
+            description=(
+                "Cost addition amount for event_type='cost_addition'. "
+                + _MONEY_DESC
+            ),
+            json_schema_extra={"x-money": True},
         ),
     ] = None
 
@@ -359,11 +370,14 @@ class EventInput(BaseModel):
 
     opening_balance_amount: Annotated[
         Decimal | None,
+        BeforeValidator(_to_cent_quantised_decimal),
         Field(
             default=None,
             description=(
-                "Opening balance for event_type='opening_balance'."
+                "Opening balance for event_type='opening_balance'. "
+                + _MONEY_DESC
             ),
+            json_schema_extra={"x-money": True},
         ),
     ] = None
 

@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from api.schemas.money import reject_sub_cent_string
 
 
 class HpBalloonInput(BaseModel):
@@ -17,7 +19,13 @@ class HpBalloonInput(BaseModel):
     ``mode`` is required whenever a balloon is present; there is no default.
     """
 
-    amount: str = Field(description="Balloon amount as a decimal string.")
+    amount: str = Field(
+        description=(
+            "Balloon amount as a decimal string. "
+            "Money: cent-quantised, JSON number or decimal string."
+        ),
+        json_schema_extra={"x-money": True},
+    )
     instalment_number: int = Field(
         ge=1, description="1-based instalment row the balloon lands on."
     )
@@ -29,18 +37,35 @@ class HpBalloonInput(BaseModel):
         )
     )
 
+    @field_validator("amount", mode="after")
+    @classmethod
+    def _amount_cent_scale(cls, v: str) -> str:
+        return reject_sub_cent_string(v)
+
 
 class HpScheduleInput(BaseModel):
     """Input contract for urn:sbrm:calculator:hp:schedule."""
 
-    amount_financed: str = Field(description="Amount financed as a decimal string.")
+    amount_financed: str = Field(
+        description=(
+            "Amount financed as a decimal string. "
+            "Money: cent-quantised, JSON number or decimal string."
+        ),
+        json_schema_extra={"x-money": True},
+    )
     annual_rate_pct: str = Field(
         description="Nominal annual interest rate percentage as a decimal string."
     )
     term_regular_instalments: int = Field(
         ge=1, description="Number of regular instalments (excludes any balloon row)."
     )
-    instalment: str = Field(description="Regular instalment amount as a decimal string.")
+    instalment: str = Field(
+        description=(
+            "Regular instalment amount as a decimal string. "
+            "Money: cent-quantised, JSON number or decimal string."
+        ),
+        json_schema_extra={"x-money": True},
+    )
     timing: Literal["in_arrears", "in_advance"] = Field(
         description="Payment timing within each period."
     )
@@ -62,6 +87,11 @@ class HpScheduleInput(BaseModel):
     fy_end_month: int = Field(
         default=6, ge=1, le=12, description="Financial-year end month (default June)."
     )
+
+    @field_validator("amount_financed", "instalment", mode="after")
+    @classmethod
+    def _money_cent_scale(cls, v: str) -> str:
+        return reject_sub_cent_string(v)
 
 
 class HpScheduleRow(BaseModel):
