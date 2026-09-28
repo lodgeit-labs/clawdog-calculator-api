@@ -150,6 +150,48 @@ _FIELD_NAMING_ENGINE_TERMS = frozenset({
     "non_cent_boundary",        # refusal_payload.field names the offending money field
 })
 
+# D54 amendment (Fable [CALC] 2026-09-28): resolve an engine's snake_case field
+# name to its request-model alias (camelCase). A resolvable alias means the
+# field IS a caller-supplied request input (non_cent_boundary on it → 422 the
+# caller can fix); an unresolvable field is engine-internal (e.g.
+# gross_taxable_value) and the caller never sent it (→ 400 money_not_cent_
+# quantised). Built lazily from the FBT input models so it never drifts behind
+# the schema, and cached. Import is lazy to avoid a mapper↔schemas import cycle.
+_ENGINE_FIELD_TO_REQUEST_ALIAS_CACHE: dict[str, str] | None = None
+
+
+def _build_engine_field_alias_map() -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    try:
+        from api.schemas import invocation as _inv
+    except Exception:  # pragma: no cover - defensive; schemas always importable
+        return mapping
+    for name in dir(_inv):
+        obj = getattr(_inv, name)
+        model_fields = getattr(obj, "model_fields", None)
+        if not isinstance(model_fields, Mapping):
+            continue
+        for field_name, field_info in model_fields.items():
+            alias = getattr(field_info, "alias", None)
+            if alias:
+                # The engine speaks the snake_case field name; map it to the
+                # camelCase request alias the caller used.
+                mapping[field_name] = alias
+    return mapping
+
+
+class _AliasResolver:
+    """Lazy, cached snake_case-field → request-alias resolver (dict-like .get)."""
+
+    def get(self, engine_field: str) -> str | None:
+        global _ENGINE_FIELD_TO_REQUEST_ALIAS_CACHE
+        if _ENGINE_FIELD_TO_REQUEST_ALIAS_CACHE is None:
+            _ENGINE_FIELD_TO_REQUEST_ALIAS_CACHE = _build_engine_field_alias_map()
+        return _ENGINE_FIELD_TO_REQUEST_ALIAS_CACHE.get(engine_field)
+
+
+_ENGINE_FIELD_TO_REQUEST_ALIAS = _AliasResolver()
+
 
 def _engine_term_and_payload(parsed: Any) -> tuple[str | None, Mapping | None]:
     """Extract the engine's error term + refusal_payload from a parsed body.
@@ -227,6 +269,39 @@ def _classify_engine_error_term(
     plain_engine = (engine_label or engine or "engine")
     if plain_engine.endswith("_unavailable"):
         plain_engine = plain_engine[: -len("_unavailable")]
+
+    # non_cent_boundary is special: the engine may refuse on a REQUEST field
+    # (the caller supplied a non-cent value — their fault, 422) or on an
+    # ENGINE-INTERNAL output it could not serialise at cent scale (e.g.
+    # debt-waiver's gross_taxable_value — not a request field, so 400 with a
+    # typed money_not_cent_quantised refusal rather than blaming a field the
+    # caller never sent). Resolve the engine field to its request-model alias;
+    # a resolvable alias means it IS a request field.
+    if term == "non_cent_boundary":
+        engine_field = str((payload or {}).get("field") or "")
+        alias = _ENGINE_FIELD_TO_REQUEST_ALIAS.get(engine_field)
+        if alias is not None:
+            return HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=[{
+                    "loc": [alias],
+                    "msg": str((payload or {}).get("reason") or
+                               f"{alias} must be cent-quantised"),
+                    "type": term,
+                }],
+            )
+        return HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "refusal_class": "money_not_cent_quantised",
+                "engine_field": engine_field,
+                "engine": plain_engine,
+                "message": (
+                    "Money inputs must be cent-quantised; the engine could not "
+                    f"emit {engine_field} at cent scale."
+                ),
+            },
+        )
 
     if term in _FIELD_NAMING_ENGINE_TERMS:
         fields = _fields_named_by_payload(term, payload)

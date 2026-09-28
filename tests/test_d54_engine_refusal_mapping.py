@@ -59,7 +59,8 @@ def test_fbt_non_cent_boundary_maps_to_422_not_502():
         "detail": "D12 serialiser rejected a money value not on a cent boundary.",
         "error": "non_cent_boundary",
         "refusal_payload": {
-            "field": "gross_taxable_value",
+            # A REQUEST field (resolves to alias employeeContribution) → 422.
+            "field": "employee_contribution",
             "reason": "engine_fault_serialiser",
             "supplied": "33.335",
         },
@@ -78,7 +79,7 @@ def test_fbt_non_cent_boundary_maps_to_422_not_502():
     assert isinstance(detail, list) and detail
     item = detail[0]
     assert item["type"] == "non_cent_boundary"
-    assert "gross_taxable_value" in item["loc"]
+    assert "employeeContribution" in item["loc"]
 
 
 def test_calculation_error_non_cent_boundary_via_200_body_maps_to_422():
@@ -86,13 +87,13 @@ def test_calculation_error_non_cent_boundary_via_200_body_maps_to_422():
     (`PrologCalculationError`): a term that names a field → 422, not 502."""
     exc = PrologCalculationError(
         error="non_cent_boundary",
-        detail={"field": "gross_taxable_value", "supplied": "33.335"},
+        detail={"field": "employee_contribution", "supplied": "33.335"},
     )
     http_exc = map_calculation_error_to_http(exc)
     assert http_exc.status_code == 422
     assert http_exc.status_code != 502
     assert http_exc.detail[0]["type"] == "non_cent_boundary"
-    assert "gross_taxable_value" in http_exc.detail[0]["loc"]
+    assert "employeeContribution" in http_exc.detail[0]["loc"]
 
 
 # --- (d3) Div7A myr_year_beyond_loan_term → 400 refusal_class, engine plain --
@@ -138,3 +139,59 @@ def test_unknown_engine_term_stays_502_but_named_unrecognised():
     assert http_exc.status_code == 502
     assert http_exc.detail["error"] == "unrecognised_engine_error"
     assert http_exc.detail["engine_term"] == "totally_novel_engine_condition_xyz"
+
+
+# --- D54 amendment (Fable [CALC] 2026-09-28): non_cent_boundary field split --
+
+def _fbt_non_cent_500(engine_field: str) -> PrologEngineUnavailable:
+    """A non_cent_boundary refusal as the FBT serialiser emits it: an engine
+    HTTP 500 whose body is a JSON string naming the offending field."""
+    inner = json.dumps({
+        "detail": "D12 serialiser rejected a money value not on a cent boundary.",
+        "error": "non_cent_boundary",
+        "refusal_payload": {
+            "field": engine_field,
+            "reason": "engine_fault_serialiser",
+            "supplied": "1280.245",
+        },
+    })
+    return PrologEngineUnavailable(
+        error_code="engine_http_error",
+        detail={"status_code": 500, "body": inner},
+        engine="fbt",
+        url="http://fbt-engine.test/v1/calculators/fbt/x",
+    )
+
+
+def test_debt_waiver_non_cent_on_engine_internal_field_maps_to_400():
+    """debt-waiver refuses on `gross_taxable_value` — an engine-internal
+    output the caller never sent. It is NOT a request-model alias, so D54
+    maps it to a typed 400 `money_not_cent_quantised`, never 502."""
+    http_exc = map_engine_error_to_http(
+        _fbt_non_cent_500("gross_taxable_value"),
+        engine_label="fbt_engine_unavailable",
+    )
+    assert http_exc.status_code == 400
+    assert http_exc.status_code != 502
+    detail = http_exc.detail
+    assert detail["refusal_class"] == "money_not_cent_quantised"
+    assert detail["engine_field"] == "gross_taxable_value"
+    assert not detail["engine"].endswith("_unavailable")
+    assert "cent-quantised" in detail["message"]
+    assert "gross_taxable_value" in detail["message"]
+
+
+def test_board_non_cent_on_request_field_maps_to_422_named_alias():
+    """board refuses on the caller-supplied `over_12_employee_contributions`
+    field. It resolves to the request-model alias `over12EmployeeContributions`,
+    so D54 maps it to 422 with that alias in `loc`, never 502."""
+    http_exc = map_engine_error_to_http(
+        _fbt_non_cent_500("over_12_employee_contributions"),
+        engine_label="fbt_engine_unavailable",
+    )
+    assert http_exc.status_code == 422
+    assert http_exc.status_code != 502
+    detail = http_exc.detail
+    assert isinstance(detail, list) and detail
+    assert detail[0]["type"] == "non_cent_boundary"
+    assert detail[0]["loc"] == ["over12EmployeeContributions"]
