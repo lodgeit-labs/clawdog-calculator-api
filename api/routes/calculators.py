@@ -798,13 +798,24 @@ async def invoke_calculator(
         # exactly the wire defect Fable observed at cell 25 pre-D17.
         # Wire-reproduced hermetically. Use `include_context=False` so
         # the response body is always JSON.
+        errors = exc.errors(
+            include_url=False,
+            include_context=False,
+            include_input=False,
+        )
+        # D56 (Fable [CALC] 2026-09-28): the Money BeforeValidator cannot see
+        # the field alias, so its message uses a "value" placeholder. Rewrite
+        # it to name the alias (the last loc segment) so the 422 reads
+        # "<alias> must be cent-quantised (...)".
+        for err in errors:
+            if err.get("type") == "money_not_cent_quantised" and err.get("loc"):
+                alias = str(err["loc"][-1])
+                msg = err.get("msg", "")
+                if msg.startswith("value "):
+                    err["msg"] = alias + msg[len("value"):]
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=exc.errors(
-                include_url=False,
-                include_context=False,
-                include_input=False,
-            ),
+            detail=errors,
         ) from exc
 
     # Fable D5 mc02 + Andrew mc06-2026-09-03 07:40 UTC internal-dispatch

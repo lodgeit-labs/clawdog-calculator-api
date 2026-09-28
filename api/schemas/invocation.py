@@ -22,6 +22,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic_core import InitErrorDetails, PydanticCustomError
 from pydantic_core import ValidationError as CoreValidationError
 
+from api.schemas.money import Money, money_field
+
 
 def _MutuallyExclusiveInputs(
     fields: tuple[str, ...],
@@ -104,11 +106,11 @@ class FBTCarOperatingCostInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    business_use_percentage: float = Field(
+    business_use_percentage: Money = money_field(
         ..., ge=0, le=100, alias="businessUsePercentage",
         description="Business-use % of total operating costs. Clamped to [0, 100] by the engine.",
     )
-    employee_contribution: float = Field(
+    employee_contribution: Money = money_field(
         0, ge=0, alias="employeeContribution",
         description="Post-tax employee contribution toward the benefit (AUD).",
     )
@@ -130,19 +132,19 @@ class FBTCarOperatingCostInput(BaseModel):
         ..., alias="formOfFinance",
         description="One of: owned | hire_purchase | leased | unspecified.",
     )
-    lease_payments: float | None = Field(
+    lease_payments: Money | None = money_field(
         None, ge=0, alias="leasePayments",
         description="Lease payments for the period (AUD); null/absent if not leased.",
     )
-    fuel_repairs_servicing: float | None = Field(
+    fuel_repairs_servicing: Money | None = money_field(
         None, ge=0, alias="fuelRepairsServicing",
         description="Fuel + repairs + servicing for the period (AUD).",
     )
-    registration_insurance: float | None = Field(
+    registration_insurance: Money | None = money_field(
         None, ge=0, alias="registrationInsurance",
         description="Registration + insurance for the period (AUD).",
     )
-    no_private_use_reduction: float | None = Field(
+    no_private_use_reduction: Money | None = money_field(
         None, ge=0, alias="noPrivateUseReduction",
         description="No-private-use reduction (AUD).",
     )
@@ -153,7 +155,7 @@ class FBTCarOperatingCostInput(BaseModel):
         None, alias="acquisitionDate",
         description="ISO date string (e.g. 2024-04-01); drives deemed-depreciation tier dispatch.",
     )
-    opening_depreciated_value: float | None = Field(
+    opening_depreciated_value: Money | None = money_field(
         None, ge=0, alias="openingDepreciatedValue",
         description="Opening depreciated value at start of FBT year (AUD). "
         "Mutually exclusive with acquisition_cost per engine Lesson #14 "
@@ -172,7 +174,7 @@ class FBTCarOperatingCostInput(BaseModel):
     # Strict mutual-exclusion vs opening_depreciated_value is enforced engine-side
     # in validate_chained_dv_inputs/2 per Lesson #14; surfaces as a Prolog throw
     # bubbled to FastAPI as a structured error.
-    acquisition_cost: float | None = Field(
+    acquisition_cost: Money | None = money_field(
         None, ge=0, alias="acquisitionCost",
         description="Original acquisition cost (AUD) for the chained-DV walk; "
         "chained-DV entry-point. Mutually exclusive with opening_depreciated_value. "
@@ -189,7 +191,7 @@ class FBTCarOperatingCostInput(BaseModel):
     )
     # Legacy/override path — retained for parity with the engine's optional
     # explicit deemed_total override; not used in PR-D Case 5.
-    deemed_total: float | None = Field(
+    deemed_total: Money | None = money_field(
         None, ge=0, alias="deemedTotal",
         description="Optional explicit deemed_total (AUD) override.",
     )
@@ -460,14 +462,14 @@ class FBTLoanInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    fbt_benchmark_interest_amount: float | None = Field(
+    fbt_benchmark_interest_amount: Money | None = money_field(
         None, ge=0, alias="fbtBenchmarkInterestAmount",
         description=(
             "Benchmark FBT interest amount (AUD) per FBTAA Schedule 1. If "
             "omitted, derived from ``original_loan_amount`` × benchmark rate."
         ),
     )
-    interest_charged_by_employer: float = Field(
+    interest_charged_by_employer: Money = money_field(
         ..., ge=0, alias="interestChargedByEmployer",
         description="Actual interest amount the employer charged the employee (AUD).",
     )
@@ -475,7 +477,7 @@ class FBTLoanInput(BaseModel):
         ..., ge=0, le=100, alias="otherwiseDeductiblePercentage",
         description="Otherwise-deductible percentage [0..100] per FBTAA s.19.",
     )
-    original_loan_amount: float | None = Field(
+    original_loan_amount: Money | None = money_field(
         None, ge=0, alias="originalLoanAmount",
         description=(
             "Original loan principal (AUD); only consulted when "
@@ -497,11 +499,11 @@ class FBTDebtWaiverInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    amount_waived: float = Field(
+    amount_waived: Money = money_field(
         ..., ge=0, alias="amountWaived",
         description="Principal debt amount waived (AUD).",
     )
-    interest_no_longer_charged: float | None = Field(
+    interest_no_longer_charged: Money | None = money_field(
         None, ge=0, alias="interestNoLongerCharged",
         description=(
             "Foregone interest no longer charged following the waiver (AUD); "
@@ -548,19 +550,19 @@ class _ExpensePaymentBaseInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    expense_value: float = Field(
+    expense_value: Money = money_field(
         ..., ge=0, alias="expenseValue",
         description="Gross expense amount paid/reimbursed by the employer (AUD).",
     )
-    otherwise_deductible_percentage: float = Field(
+    otherwise_deductible_percentage: Money = money_field(
         ..., ge=0, le=100, alias="otherwiseDeductiblePercentage",
         description="Otherwise-deductible percentage [0..100] per FBTAA s.24.",
     )
-    employee_contribution: float = Field(
+    employee_contribution: Money = money_field(
         0, ge=0, alias="employeeContribution",
         description="Employee contribution toward the expense (AUD); clamped at gross.",
     )
-    inhouse_benefit_claimed: float | None = Field(
+    inhouse_benefit_claimed: Money | None = money_field(
         None, ge=0, alias="inhouseBenefitClaimed",
         description=(
             "In-house benefit reduction claimed (AUD); only consulted on the "
@@ -590,7 +592,7 @@ class _PropertyBaseInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    gst_inclusive_value: float = Field(
+    gst_inclusive_value: Money = money_field(
         ..., ge=0, alias="gstInclusiveValue",
         description="GST-inclusive value of the property benefit (AUD).",
     )
@@ -598,11 +600,11 @@ class _PropertyBaseInput(BaseModel):
         ..., ge=0, le=100, alias="otherwiseDeductiblePercentage",
         description="Otherwise-deductible percentage [0..100] per FBTAA s.44.",
     )
-    employee_contribution: float = Field(
+    employee_contribution: Money = money_field(
         0, ge=0, alias="employeeContribution",
         description="Employee contribution toward the property (AUD).",
     )
-    inhouse_benefit_claimed: float | None = Field(
+    inhouse_benefit_claimed: Money | None = money_field(
         None, ge=0, alias="inhouseBenefitClaimed",
         description=(
             "In-house benefit reduction claimed (AUD); only consulted on the "
@@ -660,7 +662,7 @@ class _ResidualBaseInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    residual_value: float = Field(
+    residual_value: Money = money_field(
         ..., ge=0, alias="residualValue",
         description=(
             "Residual value of the benefit (AUD). Statute-native input for "
@@ -672,11 +674,11 @@ class _ResidualBaseInput(BaseModel):
         ..., ge=0, le=100, alias="otherwiseDeductiblePercentage",
         description="Otherwise-deductible percentage [0..100] per FBTAA s.52.",
     )
-    employee_contribution: float = Field(
+    employee_contribution: Money = money_field(
         0, ge=0, alias="employeeContribution",
         description="Employee contribution toward the residual benefit (AUD).",
     )
-    inhouse_benefit_claimed: float | None = Field(
+    inhouse_benefit_claimed: Money | None = money_field(
         None, ge=0, alias="inhouseBenefitClaimed",
         description=(
             "In-house benefit reduction claimed (AUD); only consulted on the "
@@ -744,7 +746,7 @@ class FBTBoardInput(BaseModel):
         0, ge=0, alias="over12MealsPerChild",
         description="Meals provided per 12+ employee/associate during the FBT year.",
     )
-    over_12_employee_contributions: float | None = Field(
+    over_12_employee_contributions: Money | None = money_field(
         0, ge=0, alias="over12EmployeeContributions",
         description="Total employee contributions toward 12+ meals (AUD).",
     )
@@ -762,7 +764,7 @@ class FBTHousingInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    housing_benefit_value: float = Field(
+    housing_benefit_value: Money = money_field(
         ..., ge=0, alias="housingBenefitValue",
         description="Statutory annual value of the housing right at start of FBT year (AUD).",
     )
@@ -774,7 +776,7 @@ class FBTHousingInput(BaseModel):
             "reset to 1.0 per C# clamp (under-indexes WA's 1.100)."
         ),
     )
-    recipient_rent: float | None = Field(
+    recipient_rent: Money | None = money_field(
         0, ge=0, alias="recipientRent",
         description="Rent paid by recipient to employer (AUD); reduces taxable value.",
     )
@@ -798,21 +800,21 @@ class FBTLafhaInput(BaseModel):
         ..., ge=0, alias="weeksLivedAway",
         description="Number of weeks the employee lived away from home.",
     )
-    accommodation_per_week: float = Field(
+    accommodation_per_week: Money = money_field(
         ..., ge=0, alias="accommodationPerWeek",
         description="Accommodation allowance paid per week (AUD).",
     )
-    meals_per_week: float = Field(
+    meals_per_week: Money = money_field(
         ..., ge=0, alias="mealsPerWeek",
         description="Food/drink allowance paid per week (AUD).",
     )
-    exempt_accommodation_component: float | None = Field(
+    exempt_accommodation_component: Money | None = money_field(
         0, ge=0, alias="exemptAccommodationComponent",
         description=(
             "Total exempt accommodation component per s.31(2)(a) (AUD; not weekly)."
         ),
     )
-    exempt_food_component: float | None = Field(
+    exempt_food_component: Money | None = money_field(
         0, ge=0, alias="exemptFoodComponent",
         description=(
             "Total exempt food component per s.31(2)(b) (AUD; not weekly). "
@@ -832,14 +834,14 @@ class FBTTebeInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    salary_packaged_meal_efle: float = Field(
+    salary_packaged_meal_efle: Money = money_field(
         ..., ge=0, alias="salaryPackagedMealEfle",
         description=(
             "Total expenditure on salary-packaged meal entertainment + EFLE "
             "for tax-exempt body employees (AUD)."
         ),
     )
-    recreation: float = Field(
+    recreation: Money = money_field(
         ..., ge=0, alias="recreation",
         description="Total recreation entertainment expenditure (AUD).",
     )
@@ -881,15 +883,15 @@ class FBTCarParkingActualInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    spaces_provided: float = Field(
+    spaces_provided: Money = money_field(
         ..., ge=0, alias="spacesProvided",
         description="Number of car parking spaces provided.",
     )
-    valuation_method_rate: float = Field(
+    valuation_method_rate: Money = money_field(
         ..., ge=0, alias="valuationMethodRate",
         description="Per-space daily rate (AUD).",
     )
-    employee_contribution: float | None = Field(
+    employee_contribution: Money | None = money_field(
         0, ge=0, alias="employeeContribution",
         description="Employee contribution (AUD); clamped at gross subtotal.",
     )
@@ -912,11 +914,11 @@ class FBTCarParkingStatutory228Input(BaseModel):
         ..., ge=0, le=366, alias="daysCarParkingAvailable",
         description="Days the car parking benefit was available [0..366]; engine clamps at 366.",
     )
-    valuation_method_rate: float = Field(
+    valuation_method_rate: Money = money_field(
         ..., ge=0, alias="valuationMethodRate",
         description="Per-space daily rate (AUD).",
     )
-    employee_contribution: float | None = Field(
+    employee_contribution: Money | None = money_field(
         0, ge=0, alias="employeeContribution",
         description="Employee contribution (AUD); clamped at gross subtotal.",
     )
@@ -940,7 +942,7 @@ class FBTCarParkingRegister12WkInput(BaseModel):
         ..., ge=0, alias="benefitsInPeriod",
         description="Number of car parking benefits in the 12-week register period.",
     )
-    valuation_method_rate: float = Field(
+    valuation_method_rate: Money = money_field(
         ..., ge=0, alias="valuationMethodRate",
         description="Per-benefit rate (AUD).",
     )
@@ -948,7 +950,7 @@ class FBTCarParkingRegister12WkInput(BaseModel):
         ..., ge=0, le=366, alias="daysSpaceAvailable",
         description="Days the car parking space was available [0..366]; engine clamps at 366.",
     )
-    employee_contribution: float | None = Field(
+    employee_contribution: Money | None = money_field(
         0, ge=0, alias="employeeContribution",
         description="Employee contribution (AUD); clamped at gross subtotal.",
     )
@@ -969,39 +971,39 @@ class _MealEntertainmentBaseInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    employees: float = Field(
+    employees: Money = money_field(
         ..., ge=0, alias="employees",
         description="GST-inclusive meal entertainment expenditure on employees + other staff (AUD).",
     )
-    employees_associates: float = Field(
+    employees_associates: Money = money_field(
         ..., ge=0, alias="employeesAssociates",
         description="Meal entertainment expenditure on associates of employees (AUD).",
     )
-    employees_nonassociates: float = Field(
+    employees_nonassociates: Money = money_field(
         ..., ge=0, alias="employeesNonassociates",
         description="Meal entertainment expenditure on clients + other non-associates (AUD).",
     )
-    staff_amenities: float | None = Field(
+    staff_amenities: Money | None = money_field(
         0, ge=0, alias="staffAmenities",
         description="Exempt employer-provided staff amenities (s.41 minor-benefits); AUD.",
     )
-    tea_items: float | None = Field(
+    tea_items: Money | None = money_field(
         0, ge=0, alias="teaItems",
         description="Exempt morning/afternoon tea (s.41 minor-benefits); AUD.",
     )
-    overnight_meals: float | None = Field(
+    overnight_meals: Money | None = money_field(
         0, ge=0, alias="overnightMeals",
         description="Otherwise-deductible business-travel meals (s.32-20 ITAA 1997); AUD.",
     )
-    recreation_expenses: float | None = Field(
+    recreation_expenses: Money | None = money_field(
         0, ge=0, alias="recreationExpenses",
         description="Recreation entertainment excluded from base (AUD).",
     )
-    eligible_meals: float | None = Field(
+    eligible_meals: Money | None = money_field(
         0, ge=0, alias="eligibleMeals",
         description="Meals in an eligible in-house dining facility (s.54 FBTAA); AUD.",
     )
-    seminar_meals: float | None = Field(
+    seminar_meals: Money | None = money_field(
         0, ge=0, alias="seminarMeals",
         description="Exempt seminar meals (s.32-30 ITAA 1997); AUD.",
     )
@@ -1045,7 +1047,7 @@ class FBTCarStatutoryFormulaInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    base_value: float = Field(
+    base_value: Money = money_field(
         ..., ge=0, alias="baseValue",
         description="Statutory base value of the car (AUD).",
     )
@@ -1053,11 +1055,11 @@ class FBTCarStatutoryFormulaInput(BaseModel):
         ..., ge=0, le=366, alias="daysAvailable",
         description="Days the car was available for private use [0..366].",
     )
-    accessories: float | None = Field(
+    accessories: Money | None = money_field(
         0, ge=0, alias="accessories",
         description="Accessories added to base value (AUD).",
     )
-    employee_contribution: float | None = Field(
+    employee_contribution: Money | None = money_field(
         0, ge=0, alias="employeeContribution",
         description="Employee contribution (AUD); clamped DOWN so TV cannot go negative.",
     )

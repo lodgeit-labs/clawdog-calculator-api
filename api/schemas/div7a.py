@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from api.schemas.money import Money, money_field
+
 
 class Div7aRepaymentIn(BaseModel):
     """A single repayment event."""
@@ -24,7 +26,7 @@ class Div7aRepaymentIn(BaseModel):
     # allocation semantics of canon 620 daily-balance accrual. Not
     # explicitly Fable-ruled but the same class of arithmetic-through-
     # nonsense-value defect. Revertable if Fable rules scope-only.
-    amount: float = Field(
+    amount: Money = money_field(
         ...,
         gt=0,
         description="Repayment amount (AUD). Must be positive.",
@@ -77,7 +79,7 @@ class Div7aAtInput(BaseModel):
     # Div7A_Engine authored in a wire-fresh re-read session (Option C
     # discipline sibling of the D7 engine PR). This gateway constraint
     # is defence-in-depth; the engine constraint is defence-in-truth.
-    amalgamated_base: float = Field(
+    amalgamated_base: Money = money_field(
         ...,
         gt=0,
         description=(
