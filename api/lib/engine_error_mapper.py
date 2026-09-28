@@ -132,6 +132,132 @@ _GATEWAY_FAULT_4XX_AS_502 = frozenset({404, 405})
 _GATEWAY_AUTH_FAILURE_4XX = frozenset({401, 403})
 _RATE_LIMITED_4XX = frozenset({429})
 
+# --- D54: classify a deterministic engine error TERM before flattening -------
+# Fable [CALC] 2026-09-28: "an engine error body is classified by its error
+# term before anything becomes 502." A term that names input fields is the
+# caller's fault (422, FastAPI validation shape); a body carrying
+# `refusal_class` is a typed refusal (400, envelope preserved); anything
+# unrecognised stays 502 but is labelled `unrecognised_engine_error` with the
+# term echoed verbatim.
+#
+# Terms that NAME INPUT FIELDS. Discovered by grepping the FBT + depreciation
+# + div7a engine error vocabularies (wire-verified: `non_cent_boundary`
+# reproduced across 12 FBT calculators 2026-09-28; `conflicting_inputs`
+# reproduced on car-operating-cost). Each maps to the field key(s) it names
+# in its `refusal_payload`.
+_FIELD_NAMING_ENGINE_TERMS = frozenset({
+    "conflicting_inputs",       # refusal_payload names two mutually-exclusive fields
+    "non_cent_boundary",        # refusal_payload.field names the offending money field
+})
+
+
+def _engine_term_and_payload(parsed: Any) -> tuple[str | None, Mapping | None]:
+    """Extract the engine's error term + refusal_payload from a parsed body.
+
+    Handles both shapes the engines emit:
+      * flat:   {"error"|"refusal_class": <term>, "refusal_payload": {...}}
+      * nested: the FBT serialiser wraps its refusal in a 500 whose body is a
+        JSON string; the caller has already parsed the outer envelope, so we
+        also look one level into a stringified inner `body`.
+    """
+    if not isinstance(parsed, Mapping):
+        return None, None
+    term = parsed.get("error") or parsed.get("refusal_class")
+    payload = parsed.get("refusal_payload")
+    if term is None:
+        # Engine-transport 5xx shape: the refusal is a JSON string under a
+        # `body` key, either at the top level ({"status_code": 500,
+        # "body": "<json>"}) or nested under `detail`
+        # ({"detail": {"status_code": 500, "body": "<json>"}}).
+        candidates = [parsed]
+        inner = parsed.get("detail")
+        if isinstance(inner, Mapping):
+            candidates.append(inner)
+        for cand in candidates:
+            body = cand.get("body") if isinstance(cand, Mapping) else None
+            if isinstance(body, str):
+                reparsed = _parse_engine_body(body)
+                if isinstance(reparsed, Mapping):
+                    term = reparsed.get("error") or reparsed.get("refusal_class")
+                    payload = reparsed.get("refusal_payload")
+                    if term is not None:
+                        break
+    return term, (payload if isinstance(payload, Mapping) else None)
+
+
+def _fields_named_by_payload(term: str, payload: Mapping | None) -> list[str]:
+    """Field names an engine term points at, for the 422 `loc` list."""
+    if not payload:
+        return []
+    fields: list[str] = []
+    # conflicting_inputs(A, B): payload may carry `fields`, or A/B keys.
+    if isinstance(payload.get("fields"), list):
+        fields = [str(f) for f in payload["fields"]]
+    elif payload.get("field") is not None:
+        fields = [str(payload["field"])]
+    else:
+        # e.g. conflicting_inputs payload {"a": "acquisition_cost", "b": "..."}
+        for k in ("a", "b", "first", "second"):
+            v = payload.get(k)
+            if isinstance(v, str):
+                fields.append(v)
+    return fields
+
+
+def _classify_engine_error_term(
+    parsed: Any,
+    *,
+    engine: str,
+    engine_label: str | None,
+) -> HTTPException | None:
+    """D54 classification: return a typed 4xx HTTPException for a known engine
+    error term, or ``None`` to fall through to the caller's existing 502 path.
+
+    * term names input fields  → 422 FastAPI validation shape
+    * body carries refusal_class → 400, envelope preserved
+    * unrecognised             → None (caller emits 502 unrecognised_engine_error)
+    """
+    term, payload = _engine_term_and_payload(parsed)
+    if term is None:
+        return None
+
+    # Non-transport engine label: the *_unavailable suffix is reserved for
+    # transport failures (map_engine_error_to_http). A classified 4xx names
+    # the engine plainly.
+    plain_engine = (engine_label or engine or "engine")
+    if plain_engine.endswith("_unavailable"):
+        plain_engine = plain_engine[: -len("_unavailable")]
+
+    if term in _FIELD_NAMING_ENGINE_TERMS:
+        fields = _fields_named_by_payload(term, payload)
+        msg = (payload or {}).get("reason") or (
+            f"engine rejected input via {term}"
+            + (f": {payload.get('field')}" if payload and payload.get("field") else "")
+        )
+        detail = [{
+            "loc": list(fields),
+            "msg": str(msg),
+            "type": term,
+        }]
+        return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
+
+    # A typed refusal carrying refusal_class → 400, envelope preserved, label
+    # made non-_unavailable (generalises the depreciation "rider 3" behaviour).
+    if isinstance(parsed, Mapping) and (
+        parsed.get("refusal_class") or (payload is not None and "refusal_class" in str(parsed))
+    ):
+        sanitised = _sanitise_engine_body(parsed)
+        return HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "engine_bad_request",
+                "engine": plain_engine,
+                "status_code": 400,
+                "engine_detail": sanitised,
+            },
+        )
+    return None
+
 
 def _sanitise_engine_body(body: Any) -> Any:
     """Strip internal engine fields from any dict-shaped engine body.
@@ -298,11 +424,19 @@ def map_engine_error_to_http(
             else:
                 engine_detail = _sanitise_engine_body(body_text)
 
+            # D54 (b): the `_unavailable` suffix is reserved for transport
+            # failures. A caller-fault 4xx names the engine plainly, so a
+            # historic label like "div7a_engine_unavailable" becomes
+            # "div7a_engine" on a 400/422.
+            plain_engine = engine_label or exc.engine
+            if plain_engine.endswith("_unavailable"):
+                plain_engine = plain_engine[: -len("_unavailable")]
+
             return HTTPException(
                 status_code=status_code,
                 detail={
                     "error": error_slug,
-                    "engine": engine_label or exc.engine,
+                    "engine": plain_engine,
                     "status_code": status_code,
                     "engine_detail": engine_detail,
                 },
@@ -429,13 +563,26 @@ def map_engine_error_to_http(
                 },
             )
 
-        # --- 1f: engine 5xx → 502. Sanitise before echoing.
+        # --- 1f: engine 5xx. D54: a 5xx whose body carries a deterministic
+        # engine error TERM (e.g. the FBT serialiser's `non_cent_boundary`
+        # refusal, which the engine emits as a 500) is NOT a transport
+        # failure — it is a deterministic refusal the caller can act on.
+        # Classify by term first; only unrecognised 5xx bodies stay 502.
+        classified = _classify_engine_error_term(
+            dict(exc.detail), engine=exc.engine, engine_label=engine_label
+        )
+        if classified is not None:
+            return classified
+        # Unrecognised engine 5xx → 502 (as today) but say so explicitly and
+        # echo the term verbatim when we can find one.
+        term, _payload = _engine_term_and_payload(dict(exc.detail))
         return HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={
-                "error": engine_label or "engine_unavailable",
+                "error": "unrecognised_engine_error" if term else (engine_label or "engine_unavailable"),
                 "error_code": exc.error_code,
                 "engine": exc.engine,
+                "engine_term": term,
                 "detail": _sanitise_engine_body(dict(exc.detail)),
             },
         )
@@ -510,16 +657,53 @@ def map_engine_error_to_http(
 
 def map_calculation_error_to_http(
     exc: PrologCalculationError,
+    *,
+    engine_label: str | None = None,
 ) -> HTTPException:
     """Turn a ``PrologCalculationError`` into a gateway ``HTTPException``.
 
-    Structured engine-side errors that fall outside the transport-layer path;
-    surfaced as 502 (the engine returned a 200 with an error-shaped body,
-    which is the engine's contract violation from the caller's viewpoint).
+    Structured engine-side errors that reached us via a 200-with-error body.
+
+    D54 (Fable [CALC] 2026-09-28): classify by the engine error TERM before
+    flattening to 502.
+
+      * a term that names input fields (conflicting_inputs, non_cent_boundary,
+        …) → 422 in the FastAPI validation shape
+        (detail: [{loc: […fields…], msg, type}], type = the engine term);
+      * a body carrying `refusal_class` → 400, envelope preserved (the
+        depreciation "rider 3" behaviour, made general);
+      * anything unrecognised → 502 as before, but the body says
+        `unrecognised_engine_error` and echoes the term verbatim.
     """
+    # The engine's error-shaped body: reconstruct a Mapping the classifier can
+    # read. `exc.error` is the term; `exc.detail` may itself be the payload or
+    # a dict carrying refusal_class / refusal_payload.
+    parsed: dict[str, Any] = {"error": exc.error}
+    if isinstance(exc.detail, Mapping):
+        parsed = {**dict(exc.detail), "error": exc.detail.get("error", exc.error)}
+        # When the detail dict is itself the field-naming payload (e.g.
+        # {"field": "gross_taxable_value", ...}) and carries no explicit
+        # `refusal_payload`, treat the detail dict AS the payload so the
+        # classifier can read the named field(s).
+        if "refusal_payload" not in exc.detail:
+            parsed["refusal_payload"] = dict(exc.detail)
+    else:
+        parsed["refusal_payload"] = exc.detail
+
+    classified = _classify_engine_error_term(
+        parsed, engine="engine", engine_label=engine_label
+    )
+    if classified is not None:
+        return classified
+
+    # Unrecognised: 502 as before, but say so and echo the term verbatim.
     return HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
-        detail={"error": exc.error, "detail": _sanitise_engine_body(exc.detail)},
+        detail={
+            "error": "unrecognised_engine_error",
+            "engine_term": exc.error,
+            "detail": _sanitise_engine_body(exc.detail),
+        },
     )
 
 

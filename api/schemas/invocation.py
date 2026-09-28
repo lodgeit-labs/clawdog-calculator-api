@@ -19,6 +19,41 @@ import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic_core import InitErrorDetails, PydanticCustomError
+from pydantic_core import ValidationError as CoreValidationError
+
+
+def _MutuallyExclusiveInputs(
+    fields: tuple[str, ...],
+    *,
+    message: str | None = None,
+) -> CoreValidationError:
+    """Build a pydantic ValidationError with one line item per field so the
+    resulting 422 names EVERY field in the mutually-exclusive set in its own
+    `loc` (D54, Fable [CALC] 2026-09-28).
+
+    Raising the returned error from a `model_validator(mode="after")` produces
+    `errors()` entries with `loc = (<field>,)` and
+    `type = "mutually_exclusive_inputs"` for each field. The same ``message``
+    (the full diagnostic) rides on every line item so it appears in
+    ``str(exc)`` and in the wire 422 body.
+    """
+    names = " and ".join(fields)
+    text = message or f"{names} are mutually exclusive; supply exactly one."
+    # PydanticCustomError treats '{' / '}' as template markers; escape any the
+    # diagnostic text carries so from_exception_data does not try to format it.
+    safe = text.replace("{", "{{").replace("}", "}}")
+    line_errors: list[InitErrorDetails] = [
+        {
+            "type": PydanticCustomError("mutually_exclusive_inputs", safe),
+            "loc": (field,),
+            "input": None,
+        }
+        for field in fields
+    ]
+    return CoreValidationError.from_exception_data(
+        "FBTCarOperatingCostInput", line_errors
+    )
 
 # --- URI shape validators (atom-vs-bridge boundary) ---------------------------
 #
@@ -259,8 +294,44 @@ class FBTCarOperatingCostInput(BaseModel):
         concordance per Fable 09:11 UTC ruling. This validator does NOT
         change any arithmetic; it changes what payloads reach the fold.
         """
+        # Mutual exclusion applies where the deemed-amounts dispatch actually
+        # fires — owned / hire_purchase. For leased / unspecified the two
+        # bases are inert (L#105 exemption), so both-present is harmless there.
         if self.form_of_finance not in ("owned", "hire_purchase"):
             return self
+
+        # D54 (Fable [CALC] 2026-09-28): the acquisitionCost +
+        # openingDepreciatedValue mutual exclusion is checked BEFORE the
+        # path-(c) deemedTotal early return. Asma's live-502 payload carried
+        # BOTH bases AND a deemedTotal on an `owned` car, so a path-(c) early
+        # return would have let it through to the engine (which refuses the
+        # pair via conflicting_inputs). The gateway mirrors that pre-dispatch,
+        # naming both fields in the 422 `loc`.
+        if (
+            self.acquisition_cost is not None
+            and self.opening_depreciated_value is not None
+        ):
+            raise _MutuallyExclusiveInputs(
+                ("acquisitionCost", "openingDepreciatedValue"),
+                message=(
+                    f"openingDepreciatedValue={self.opening_depreciated_value} "
+                    f"AND acquisitionCost={self.acquisition_cost} were both "
+                    f"supplied — the two deemed-amounts bases are mutually "
+                    f"exclusive. These imply different arithmetic: path (a) "
+                    f"computes deemed depreciation from the opening WDV the "
+                    f"caller holds; path (b) walks depreciation forward from "
+                    f"the original acquisition cost. The engine's D2 fold "
+                    f"refuses the ambiguity via a typed conflicting_inputs "
+                    f"throw. Supply exactly ONE of paths (a) "
+                    f"openingDepreciatedValue + daysHeldInFBTYear + "
+                    f"acquisitionDate, (b) acquisitionCost + acquisitionDate, "
+                    f"or (c) explicit deemedTotal override. If your "
+                    f"integration legitimately needs both a held-WDV and a "
+                    f"walk-from-cost path, this is the trigger to add an "
+                    f"explicit deemed_basis discriminator field — open a "
+                    f"change request rather than sending both."
+                ),
+            )
 
         # Path (c): explicit override present.
         if self.deemed_total is not None:
@@ -307,28 +378,8 @@ class FBTCarOperatingCostInput(BaseModel):
             self.acquisition_cost is not None
             and self.acquisition_date is not None
         )
-        if conflict_a and conflict_b:
-            raise ValueError(
-                f"form_of_finance={self.form_of_finance!r} was supplied with "
-                f"BOTH deemed-amounts input paths simultaneously:\n"
-                f"  (a) single-year-primitive triad — "
-                f"openingDepreciatedValue={self.opening_depreciated_value} + "
-                f"daysHeldInFBTYear={self.days_held_in_fbt_year} + "
-                f"acquisitionDate={self.acquisition_date!r}.\n"
-                f"  (b) chained-DV walk triad — "
-                f"acquisitionCost={self.acquisition_cost} + "
-                f"acquisitionDate={self.acquisition_date!r}.\n"
-                f"These imply different arithmetic — path (a) computes "
-                f"deemed depreciation from the opening WDV the caller "
-                f"holds; path (b) walks depreciation forward from the "
-                f"original acquisition cost. The engine's D2 fold refuses "
-                f"the ambiguity via a typed conflicting_inputs throw. Supply "
-                f"exactly ONE of paths (a), (b), or (c) explicit deemedTotal "
-                f"override. If your integration legitimately needs both a "
-                f"held-WDV and a walk-from-cost path, this is the trigger "
-                f"to add an explicit deemed_basis discriminator field — open "
-                f"a change request rather than sending both."
-            )
+        # (The acquisitionCost + openingDepreciatedValue mutual-exclusion is
+        # handled by the D54 early guard at the top of this validator.)
 
         # Path (a): single-year-primitive triad.
         path_a_present = conflict_a
