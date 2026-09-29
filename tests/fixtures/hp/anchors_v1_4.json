@@ -1,0 +1,1852 @@
+{
+ "version": "1.4",
+ "date": "2026-09-29",
+ "source": "LodgeiT 'Hire Purchase Detailed' printed reports, org 962, rendered 26 Nov 2025; OCR by Fable 2026-09-29, every row compared against api/engines/hp/schedule.py (gateway main, hp-schedule-1.1.0): 240/240 rows byte-identical",
+ "rounding_policy": "lodgeit-rounding-1.0",
+ "contracts": [
+  {
+   "id": "hp/290",
+   "label": "DD $3346.99 - 60xPmts START 26.07.24 - END 26.07.29 Cat 299D3XEBLA 850-80017017",
+   "pdf_sha256": "c90967e258633869221435abfff31f859cbfdd479835a9f04150cddfd1373a53",
+   "request": {
+    "amount_financed": "180630.00",
+    "annual_rate_pct": "4.25",
+    "term_regular_instalments": 60,
+    "instalment": "3346.99",
+    "timing": "in_arrears",
+    "begin_date": "2024-07-26",
+    "frequency": "monthly",
+    "contract_form": "hire_purchase"
+   },
+   "expected": {
+    "rows": [
+     {
+      "instalment": 1,
+      "opening": "180630.00",
+      "interest": "639.73",
+      "payment": "3346.99",
+      "closing": "177922.74"
+     },
+     {
+      "instalment": 2,
+      "opening": "177922.74",
+      "interest": "630.14",
+      "payment": "3346.99",
+      "closing": "175205.89"
+     },
+     {
+      "instalment": 3,
+      "opening": "175205.89",
+      "interest": "620.52",
+      "payment": "3346.99",
+      "closing": "172479.43"
+     },
+     {
+      "instalment": 4,
+      "opening": "172479.43",
+      "interest": "610.86",
+      "payment": "3346.99",
+      "closing": "169743.30"
+     },
+     {
+      "instalment": 5,
+      "opening": "169743.30",
+      "interest": "601.17",
+      "payment": "3346.99",
+      "closing": "166997.48"
+     },
+     {
+      "instalment": 6,
+      "opening": "166997.48",
+      "interest": "591.45",
+      "payment": "3346.99",
+      "closing": "164241.94"
+     },
+     {
+      "instalment": 7,
+      "opening": "164241.94",
+      "interest": "581.69",
+      "payment": "3346.99",
+      "closing": "161476.64"
+     },
+     {
+      "instalment": 8,
+      "opening": "161476.64",
+      "interest": "571.90",
+      "payment": "3346.99",
+      "closing": "158701.55"
+     },
+     {
+      "instalment": 9,
+      "opening": "158701.55",
+      "interest": "562.07",
+      "payment": "3346.99",
+      "closing": "155916.63"
+     },
+     {
+      "instalment": 10,
+      "opening": "155916.63",
+      "interest": "552.20",
+      "payment": "3346.99",
+      "closing": "153121.84"
+     },
+     {
+      "instalment": 11,
+      "opening": "153121.84",
+      "interest": "542.31",
+      "payment": "3346.99",
+      "closing": "150317.16"
+     },
+     {
+      "instalment": 12,
+      "opening": "150317.16",
+      "interest": "532.37",
+      "payment": "3346.99",
+      "closing": "147502.54"
+     },
+     {
+      "instalment": 13,
+      "opening": "147502.54",
+      "interest": "522.40",
+      "payment": "3346.99",
+      "closing": "144677.96"
+     },
+     {
+      "instalment": 14,
+      "opening": "144677.96",
+      "interest": "512.40",
+      "payment": "3346.99",
+      "closing": "141843.37"
+     },
+     {
+      "instalment": 15,
+      "opening": "141843.37",
+      "interest": "502.36",
+      "payment": "3346.99",
+      "closing": "138998.74"
+     },
+     {
+      "instalment": 16,
+      "opening": "138998.74",
+      "interest": "492.29",
+      "payment": "3346.99",
+      "closing": "136144.04"
+     },
+     {
+      "instalment": 17,
+      "opening": "136144.04",
+      "interest": "482.18",
+      "payment": "3346.99",
+      "closing": "133279.22"
+     },
+     {
+      "instalment": 18,
+      "opening": "133279.22",
+      "interest": "472.03",
+      "payment": "3346.99",
+      "closing": "130404.27"
+     },
+     {
+      "instalment": 19,
+      "opening": "130404.27",
+      "interest": "461.85",
+      "payment": "3346.99",
+      "closing": "127519.12"
+     },
+     {
+      "instalment": 20,
+      "opening": "127519.12",
+      "interest": "451.63",
+      "payment": "3346.99",
+      "closing": "124623.76"
+     },
+     {
+      "instalment": 21,
+      "opening": "124623.76",
+      "interest": "441.38",
+      "payment": "3346.99",
+      "closing": "121718.15"
+     },
+     {
+      "instalment": 22,
+      "opening": "121718.15",
+      "interest": "431.09",
+      "payment": "3346.99",
+      "closing": "118802.24"
+     },
+     {
+      "instalment": 23,
+      "opening": "118802.24",
+      "interest": "420.76",
+      "payment": "3346.99",
+      "closing": "115876.01"
+     },
+     {
+      "instalment": 24,
+      "opening": "115876.01",
+      "interest": "410.39",
+      "payment": "3346.99",
+      "closing": "112939.42"
+     },
+     {
+      "instalment": 25,
+      "opening": "112939.42",
+      "interest": "399.99",
+      "payment": "3346.99",
+      "closing": "109992.42"
+     },
+     {
+      "instalment": 26,
+      "opening": "109992.42",
+      "interest": "389.56",
+      "payment": "3346.99",
+      "closing": "107034.99"
+     },
+     {
+      "instalment": 27,
+      "opening": "107034.99",
+      "interest": "379.08",
+      "payment": "3346.99",
+      "closing": "104067.08"
+     },
+     {
+      "instalment": 28,
+      "opening": "104067.08",
+      "interest": "368.57",
+      "payment": "3346.99",
+      "closing": "101088.66"
+     },
+     {
+      "instalment": 29,
+      "opening": "101088.66",
+      "interest": "358.02",
+      "payment": "3346.99",
+      "closing": "98099.69"
+     },
+     {
+      "instalment": 30,
+      "opening": "98099.69",
+      "interest": "347.44",
+      "payment": "3346.99",
+      "closing": "95100.14"
+     },
+     {
+      "instalment": 31,
+      "opening": "95100.14",
+      "interest": "336.81",
+      "payment": "3346.99",
+      "closing": "92089.96"
+     },
+     {
+      "instalment": 32,
+      "opening": "92089.96",
+      "interest": "326.15",
+      "payment": "3346.99",
+      "closing": "89069.12"
+     },
+     {
+      "instalment": 33,
+      "opening": "89069.12",
+      "interest": "315.45",
+      "payment": "3346.99",
+      "closing": "86037.59"
+     },
+     {
+      "instalment": 34,
+      "opening": "86037.59",
+      "interest": "304.72",
+      "payment": "3346.99",
+      "closing": "82995.31"
+     },
+     {
+      "instalment": 35,
+      "opening": "82995.31",
+      "interest": "293.94",
+      "payment": "3346.99",
+      "closing": "79942.27"
+     },
+     {
+      "instalment": 36,
+      "opening": "79942.27",
+      "interest": "283.13",
+      "payment": "3346.99",
+      "closing": "76878.40"
+     },
+     {
+      "instalment": 37,
+      "opening": "76878.40",
+      "interest": "272.28",
+      "payment": "3346.99",
+      "closing": "73803.69"
+     },
+     {
+      "instalment": 38,
+      "opening": "73803.69",
+      "interest": "261.39",
+      "payment": "3346.99",
+      "closing": "70718.09"
+     },
+     {
+      "instalment": 39,
+      "opening": "70718.09",
+      "interest": "250.46",
+      "payment": "3346.99",
+      "closing": "67621.56"
+     },
+     {
+      "instalment": 40,
+      "opening": "67621.56",
+      "interest": "239.49",
+      "payment": "3346.99",
+      "closing": "64514.06"
+     },
+     {
+      "instalment": 41,
+      "opening": "64514.06",
+      "interest": "228.49",
+      "payment": "3346.99",
+      "closing": "61395.56"
+     },
+     {
+      "instalment": 42,
+      "opening": "61395.56",
+      "interest": "217.44",
+      "payment": "3346.99",
+      "closing": "58266.01"
+     },
+     {
+      "instalment": 43,
+      "opening": "58266.01",
+      "interest": "206.36",
+      "payment": "3346.99",
+      "closing": "55125.38"
+     },
+     {
+      "instalment": 44,
+      "opening": "55125.38",
+      "interest": "195.24",
+      "payment": "3346.99",
+      "closing": "51973.63"
+     },
+     {
+      "instalment": 45,
+      "opening": "51973.63",
+      "interest": "184.07",
+      "payment": "3346.99",
+      "closing": "48810.71"
+     },
+     {
+      "instalment": 46,
+      "opening": "48810.71",
+      "interest": "172.87",
+      "payment": "3346.99",
+      "closing": "45636.59"
+     },
+     {
+      "instalment": 47,
+      "opening": "45636.59",
+      "interest": "161.63",
+      "payment": "3346.99",
+      "closing": "42451.23"
+     },
+     {
+      "instalment": 48,
+      "opening": "42451.23",
+      "interest": "150.35",
+      "payment": "3346.99",
+      "closing": "39254.59"
+     },
+     {
+      "instalment": 49,
+      "opening": "39254.59",
+      "interest": "139.03",
+      "payment": "3346.99",
+      "closing": "36046.63"
+     },
+     {
+      "instalment": 50,
+      "opening": "36046.63",
+      "interest": "127.67",
+      "payment": "3346.99",
+      "closing": "32827.30"
+     },
+     {
+      "instalment": 51,
+      "opening": "32827.30",
+      "interest": "116.26",
+      "payment": "3346.99",
+      "closing": "29596.57"
+     },
+     {
+      "instalment": 52,
+      "opening": "29596.57",
+      "interest": "104.82",
+      "payment": "3346.99",
+      "closing": "26354.41"
+     },
+     {
+      "instalment": 53,
+      "opening": "26354.41",
+      "interest": "93.34",
+      "payment": "3346.99",
+      "closing": "23100.75"
+     },
+     {
+      "instalment": 54,
+      "opening": "23100.75",
+      "interest": "81.82",
+      "payment": "3346.99",
+      "closing": "19835.58"
+     },
+     {
+      "instalment": 55,
+      "opening": "19835.58",
+      "interest": "70.25",
+      "payment": "3346.99",
+      "closing": "16558.84"
+     },
+     {
+      "instalment": 56,
+      "opening": "16558.84",
+      "interest": "58.65",
+      "payment": "3346.99",
+      "closing": "13270.50"
+     },
+     {
+      "instalment": 57,
+      "opening": "13270.50",
+      "interest": "47.00",
+      "payment": "3346.99",
+      "closing": "9970.51"
+     },
+     {
+      "instalment": 58,
+      "opening": "9970.51",
+      "interest": "35.31",
+      "payment": "3346.99",
+      "closing": "6658.83"
+     },
+     {
+      "instalment": 59,
+      "opening": "6658.83",
+      "interest": "23.58",
+      "payment": "3346.99",
+      "closing": "3335.42"
+     },
+     {
+      "instalment": 60,
+      "opening": "3335.42",
+      "interest": "11.81",
+      "payment": "3346.99",
+      "closing": "0.24"
+     }
+    ],
+    "totals": {
+     "interest": "20189.64",
+     "payments": "200819.40",
+     "rounding_residual": "0.00"
+    },
+    "final_balance": "0.24",
+    "rate_precision_residual": "0.24",
+    "fy_interest": {
+     "2025": "7036.41",
+     "2026": "5600.76",
+     "2027": "4102.86",
+     "2028": "2540.07",
+     "2029": "909.54"
+    }
+   },
+   "lodgeit_printed": {
+    "total_interest": "20189.64",
+    "total_payments": "200819.40",
+    "note": "printed total interest is the rounded-exact total; the difference against totals.interest equals totals.rounding_residual"
+   },
+   "provenance": "rows = LodgeiT printed rows [wire-Fable 2026-09-29, OCR + visual check]; totals foot to rows per lodgeit-rounding-1.0 rule 5"
+  },
+  {
+   "id": "hp/264",
+   "label": "DD $2957.95 - 2022 TL30.60 Telehandler 60x Instal 16.02.23 081TH538",
+   "pdf_sha256": "a5420cddd57d98864caeae33b8984e725d97bf53b5642101f974f6873e958530",
+   "request": {
+    "amount_financed": "148000.00",
+    "annual_rate_pct": "7.39",
+    "term_regular_instalments": 60,
+    "instalment": "2957.95",
+    "timing": "in_arrears",
+    "begin_date": "2023-02-16",
+    "frequency": "monthly",
+    "contract_form": "hire_purchase"
+   },
+   "expected": {
+    "rows": [
+     {
+      "instalment": 1,
+      "opening": "148000.00",
+      "interest": "911.43",
+      "payment": "2957.95",
+      "closing": "145953.48"
+     },
+     {
+      "instalment": 2,
+      "opening": "145953.48",
+      "interest": "898.83",
+      "payment": "2957.95",
+      "closing": "143894.36"
+     },
+     {
+      "instalment": 3,
+      "opening": "143894.36",
+      "interest": "886.15",
+      "payment": "2957.95",
+      "closing": "141822.56"
+     },
+     {
+      "instalment": 4,
+      "opening": "141822.56",
+      "interest": "873.39",
+      "payment": "2957.95",
+      "closing": "139738.00"
+     },
+     {
+      "instalment": 5,
+      "opening": "139738.00",
+      "interest": "860.55",
+      "payment": "2957.95",
+      "closing": "137640.61"
+     },
+     {
+      "instalment": 6,
+      "opening": "137640.61",
+      "interest": "847.64",
+      "payment": "2957.95",
+      "closing": "135530.29"
+     },
+     {
+      "instalment": 7,
+      "opening": "135530.29",
+      "interest": "834.64",
+      "payment": "2957.95",
+      "closing": "133406.98"
+     },
+     {
+      "instalment": 8,
+      "opening": "133406.98",
+      "interest": "821.56",
+      "payment": "2957.95",
+      "closing": "131270.60"
+     },
+     {
+      "instalment": 9,
+      "opening": "131270.60",
+      "interest": "808.41",
+      "payment": "2957.95",
+      "closing": "129121.06"
+     },
+     {
+      "instalment": 10,
+      "opening": "129121.06",
+      "interest": "795.17",
+      "payment": "2957.95",
+      "closing": "126958.28"
+     },
+     {
+      "instalment": 11,
+      "opening": "126958.28",
+      "interest": "781.85",
+      "payment": "2957.95",
+      "closing": "124782.18"
+     },
+     {
+      "instalment": 12,
+      "opening": "124782.18",
+      "interest": "768.45",
+      "payment": "2957.95",
+      "closing": "122592.68"
+     },
+     {
+      "instalment": 13,
+      "opening": "122592.68",
+      "interest": "754.97",
+      "payment": "2957.95",
+      "closing": "120389.70"
+     },
+     {
+      "instalment": 14,
+      "opening": "120389.70",
+      "interest": "741.40",
+      "payment": "2957.95",
+      "closing": "118173.15"
+     },
+     {
+      "instalment": 15,
+      "opening": "118173.15",
+      "interest": "727.75",
+      "payment": "2957.95",
+      "closing": "115942.95"
+     },
+     {
+      "instalment": 16,
+      "opening": "115942.95",
+      "interest": "714.02",
+      "payment": "2957.95",
+      "closing": "113699.01"
+     },
+     {
+      "instalment": 17,
+      "opening": "113699.01",
+      "interest": "700.20",
+      "payment": "2957.95",
+      "closing": "111441.26"
+     },
+     {
+      "instalment": 18,
+      "opening": "111441.26",
+      "interest": "686.29",
+      "payment": "2957.95",
+      "closing": "109169.60"
+     },
+     {
+      "instalment": 19,
+      "opening": "109169.60",
+      "interest": "672.30",
+      "payment": "2957.95",
+      "closing": "106883.95"
+     },
+     {
+      "instalment": 20,
+      "opening": "106883.95",
+      "interest": "658.23",
+      "payment": "2957.95",
+      "closing": "104584.23"
+     },
+     {
+      "instalment": 21,
+      "opening": "104584.23",
+      "interest": "644.06",
+      "payment": "2957.95",
+      "closing": "102270.34"
+     },
+     {
+      "instalment": 22,
+      "opening": "102270.34",
+      "interest": "629.81",
+      "payment": "2957.95",
+      "closing": "99942.21"
+     },
+     {
+      "instalment": 23,
+      "opening": "99942.21",
+      "interest": "615.48",
+      "payment": "2957.95",
+      "closing": "97599.74"
+     },
+     {
+      "instalment": 24,
+      "opening": "97599.74",
+      "interest": "601.05",
+      "payment": "2957.95",
+      "closing": "95242.84"
+     },
+     {
+      "instalment": 25,
+      "opening": "95242.84",
+      "interest": "586.54",
+      "payment": "2957.95",
+      "closing": "92871.42"
+     },
+     {
+      "instalment": 26,
+      "opening": "92871.42",
+      "interest": "571.93",
+      "payment": "2957.95",
+      "closing": "90485.41"
+     },
+     {
+      "instalment": 27,
+      "opening": "90485.41",
+      "interest": "557.24",
+      "payment": "2957.95",
+      "closing": "88084.70"
+     },
+     {
+      "instalment": 28,
+      "opening": "88084.70",
+      "interest": "542.45",
+      "payment": "2957.95",
+      "closing": "85669.20"
+     },
+     {
+      "instalment": 29,
+      "opening": "85669.20",
+      "interest": "527.58",
+      "payment": "2957.95",
+      "closing": "83238.83"
+     },
+     {
+      "instalment": 30,
+      "opening": "83238.83",
+      "interest": "512.61",
+      "payment": "2957.95",
+      "closing": "80793.49"
+     },
+     {
+      "instalment": 31,
+      "opening": "80793.49",
+      "interest": "497.55",
+      "payment": "2957.95",
+      "closing": "78333.10"
+     },
+     {
+      "instalment": 32,
+      "opening": "78333.10",
+      "interest": "482.40",
+      "payment": "2957.95",
+      "closing": "75857.55"
+     },
+     {
+      "instalment": 33,
+      "opening": "75857.55",
+      "interest": "467.16",
+      "payment": "2957.95",
+      "closing": "73366.75"
+     },
+     {
+      "instalment": 34,
+      "opening": "73366.75",
+      "interest": "451.82",
+      "payment": "2957.95",
+      "closing": "70860.62"
+     },
+     {
+      "instalment": 35,
+      "opening": "70860.62",
+      "interest": "436.38",
+      "payment": "2957.95",
+      "closing": "68339.06"
+     },
+     {
+      "instalment": 36,
+      "opening": "68339.06",
+      "interest": "420.85",
+      "payment": "2957.95",
+      "closing": "65801.96"
+     },
+     {
+      "instalment": 37,
+      "opening": "65801.96",
+      "interest": "405.23",
+      "payment": "2957.95",
+      "closing": "63249.24"
+     },
+     {
+      "instalment": 38,
+      "opening": "63249.24",
+      "interest": "389.51",
+      "payment": "2957.95",
+      "closing": "60680.80"
+     },
+     {
+      "instalment": 39,
+      "opening": "60680.80",
+      "interest": "373.69",
+      "payment": "2957.95",
+      "closing": "58096.54"
+     },
+     {
+      "instalment": 40,
+      "opening": "58096.54",
+      "interest": "357.78",
+      "payment": "2957.95",
+      "closing": "55496.37"
+     },
+     {
+      "instalment": 41,
+      "opening": "55496.37",
+      "interest": "341.77",
+      "payment": "2957.95",
+      "closing": "52880.19"
+     },
+     {
+      "instalment": 42,
+      "opening": "52880.19",
+      "interest": "325.65",
+      "payment": "2957.95",
+      "closing": "50247.89"
+     },
+     {
+      "instalment": 43,
+      "opening": "50247.89",
+      "interest": "309.44",
+      "payment": "2957.95",
+      "closing": "47599.38"
+     },
+     {
+      "instalment": 44,
+      "opening": "47599.38",
+      "interest": "293.13",
+      "payment": "2957.95",
+      "closing": "44934.57"
+     },
+     {
+      "instalment": 45,
+      "opening": "44934.57",
+      "interest": "276.72",
+      "payment": "2957.95",
+      "closing": "42253.34"
+     },
+     {
+      "instalment": 46,
+      "opening": "42253.34",
+      "interest": "260.21",
+      "payment": "2957.95",
+      "closing": "39555.60"
+     },
+     {
+      "instalment": 47,
+      "opening": "39555.60",
+      "interest": "243.60",
+      "payment": "2957.95",
+      "closing": "36841.24"
+     },
+     {
+      "instalment": 48,
+      "opening": "36841.24",
+      "interest": "226.88",
+      "payment": "2957.95",
+      "closing": "34110.18"
+     },
+     {
+      "instalment": 49,
+      "opening": "34110.18",
+      "interest": "210.06",
+      "payment": "2957.95",
+      "closing": "31362.29"
+     },
+     {
+      "instalment": 50,
+      "opening": "31362.29",
+      "interest": "193.14",
+      "payment": "2957.95",
+      "closing": "28597.48"
+     },
+     {
+      "instalment": 51,
+      "opening": "28597.48",
+      "interest": "176.11",
+      "payment": "2957.95",
+      "closing": "25815.64"
+     },
+     {
+      "instalment": 52,
+      "opening": "25815.64",
+      "interest": "158.98",
+      "payment": "2957.95",
+      "closing": "23016.67"
+     },
+     {
+      "instalment": 53,
+      "opening": "23016.67",
+      "interest": "141.74",
+      "payment": "2957.95",
+      "closing": "20200.46"
+     },
+     {
+      "instalment": 54,
+      "opening": "20200.46",
+      "interest": "124.40",
+      "payment": "2957.95",
+      "closing": "17366.92"
+     },
+     {
+      "instalment": 55,
+      "opening": "17366.92",
+      "interest": "106.95",
+      "payment": "2957.95",
+      "closing": "14515.92"
+     },
+     {
+      "instalment": 56,
+      "opening": "14515.92",
+      "interest": "89.39",
+      "payment": "2957.95",
+      "closing": "11647.36"
+     },
+     {
+      "instalment": 57,
+      "opening": "11647.36",
+      "interest": "71.73",
+      "payment": "2957.95",
+      "closing": "8761.14"
+     },
+     {
+      "instalment": 58,
+      "opening": "8761.14",
+      "interest": "53.95",
+      "payment": "2957.95",
+      "closing": "5857.14"
+     },
+     {
+      "instalment": 59,
+      "opening": "5857.14",
+      "interest": "36.07",
+      "payment": "2957.95",
+      "closing": "2935.26"
+     },
+     {
+      "instalment": 60,
+      "opening": "2935.26",
+      "interest": "18.08",
+      "payment": "2957.95",
+      "closing": "-4.61"
+     }
+    ],
+    "totals": {
+     "interest": "29472.35",
+     "payments": "177477.00",
+     "rounding_residual": "0.04"
+    },
+    "final_balance": "-4.61",
+    "rate_precision_residual": "-4.61",
+    "fy_interest": {
+     "2023": "4430.35",
+     "2024": "9296.06",
+     "2025": "7292.96",
+     "2026": "5136.75",
+     "2027": "2815.66",
+     "2028": "500.57"
+    }
+   },
+   "lodgeit_printed": {
+    "total_interest": "29472.39",
+    "total_payments": "177477.00",
+    "note": "printed total interest is the rounded-exact total; the difference against totals.interest equals totals.rounding_residual"
+   },
+   "provenance": "rows = LodgeiT printed rows [wire-Fable 2026-09-29, OCR + visual check]; totals foot to rows per lodgeit-rounding-1.0 rule 5"
+  },
+  {
+   "id": "hp/272",
+   "label": "HERCULANO HARDOX Trailer",
+   "pdf_sha256": "da04243bb5892e15013b437b283f68b703b7bcb2180b405db4fb0d15c8ec7da5",
+   "request": {
+    "amount_financed": "106315.00",
+    "annual_rate_pct": "8.08",
+    "term_regular_instalments": 60,
+    "instalment": "2160.00",
+    "timing": "in_advance",
+    "begin_date": "2024-03-08",
+    "frequency": "monthly",
+    "contract_form": "hire_purchase"
+   },
+   "expected": {
+    "rows": [
+     {
+      "instalment": 1,
+      "opening": "106315.00",
+      "interest": "0.00",
+      "payment": "2160.00",
+      "closing": "104155.00"
+     },
+     {
+      "instalment": 2,
+      "opening": "104155.00",
+      "interest": "701.31",
+      "payment": "2160.00",
+      "closing": "102696.31"
+     },
+     {
+      "instalment": 3,
+      "opening": "102696.31",
+      "interest": "691.49",
+      "payment": "2160.00",
+      "closing": "101227.80"
+     },
+     {
+      "instalment": 4,
+      "opening": "101227.80",
+      "interest": "681.60",
+      "payment": "2160.00",
+      "closing": "99749.40"
+     },
+     {
+      "instalment": 5,
+      "opening": "99749.40",
+      "interest": "671.65",
+      "payment": "2160.00",
+      "closing": "98261.05"
+     },
+     {
+      "instalment": 6,
+      "opening": "98261.05",
+      "interest": "661.62",
+      "payment": "2160.00",
+      "closing": "96762.67"
+     },
+     {
+      "instalment": 7,
+      "opening": "96762.67",
+      "interest": "651.54",
+      "payment": "2160.00",
+      "closing": "95254.20"
+     },
+     {
+      "instalment": 8,
+      "opening": "95254.20",
+      "interest": "641.38",
+      "payment": "2160.00",
+      "closing": "93735.58"
+     },
+     {
+      "instalment": 9,
+      "opening": "93735.58",
+      "interest": "631.15",
+      "payment": "2160.00",
+      "closing": "92206.74"
+     },
+     {
+      "instalment": 10,
+      "opening": "92206.74",
+      "interest": "620.86",
+      "payment": "2160.00",
+      "closing": "90667.59"
+     },
+     {
+      "instalment": 11,
+      "opening": "90667.59",
+      "interest": "610.50",
+      "payment": "2160.00",
+      "closing": "89118.09"
+     },
+     {
+      "instalment": 12,
+      "opening": "89118.09",
+      "interest": "600.06",
+      "payment": "2160.00",
+      "closing": "87558.15"
+     },
+     {
+      "instalment": 13,
+      "opening": "87558.15",
+      "interest": "589.56",
+      "payment": "2160.00",
+      "closing": "85987.71"
+     },
+     {
+      "instalment": 14,
+      "opening": "85987.71",
+      "interest": "578.98",
+      "payment": "2160.00",
+      "closing": "84406.69"
+     },
+     {
+      "instalment": 15,
+      "opening": "84406.69",
+      "interest": "568.34",
+      "payment": "2160.00",
+      "closing": "82815.03"
+     },
+     {
+      "instalment": 16,
+      "opening": "82815.03",
+      "interest": "557.62",
+      "payment": "2160.00",
+      "closing": "81212.65"
+     },
+     {
+      "instalment": 17,
+      "opening": "81212.65",
+      "interest": "546.83",
+      "payment": "2160.00",
+      "closing": "79599.49"
+     },
+     {
+      "instalment": 18,
+      "opening": "79599.49",
+      "interest": "535.97",
+      "payment": "2160.00",
+      "closing": "77975.46"
+     },
+     {
+      "instalment": 19,
+      "opening": "77975.46",
+      "interest": "525.03",
+      "payment": "2160.00",
+      "closing": "76340.49"
+     },
+     {
+      "instalment": 20,
+      "opening": "76340.49",
+      "interest": "514.03",
+      "payment": "2160.00",
+      "closing": "74694.52"
+     },
+     {
+      "instalment": 21,
+      "opening": "74694.52",
+      "interest": "502.94",
+      "payment": "2160.00",
+      "closing": "73037.46"
+     },
+     {
+      "instalment": 22,
+      "opening": "73037.46",
+      "interest": "491.79",
+      "payment": "2160.00",
+      "closing": "71369.24"
+     },
+     {
+      "instalment": 23,
+      "opening": "71369.24",
+      "interest": "480.55",
+      "payment": "2160.00",
+      "closing": "69689.80"
+     },
+     {
+      "instalment": 24,
+      "opening": "69689.80",
+      "interest": "469.24",
+      "payment": "2160.00",
+      "closing": "67999.04"
+     },
+     {
+      "instalment": 25,
+      "opening": "67999.04",
+      "interest": "457.86",
+      "payment": "2160.00",
+      "closing": "66296.90"
+     },
+     {
+      "instalment": 26,
+      "opening": "66296.90",
+      "interest": "446.40",
+      "payment": "2160.00",
+      "closing": "64583.30"
+     },
+     {
+      "instalment": 27,
+      "opening": "64583.30",
+      "interest": "434.86",
+      "payment": "2160.00",
+      "closing": "62858.16"
+     },
+     {
+      "instalment": 28,
+      "opening": "62858.16",
+      "interest": "423.24",
+      "payment": "2160.00",
+      "closing": "61121.41"
+     },
+     {
+      "instalment": 29,
+      "opening": "61121.41",
+      "interest": "411.55",
+      "payment": "2160.00",
+      "closing": "59372.96"
+     },
+     {
+      "instalment": 30,
+      "opening": "59372.96",
+      "interest": "399.78",
+      "payment": "2160.00",
+      "closing": "57612.74"
+     },
+     {
+      "instalment": 31,
+      "opening": "57612.74",
+      "interest": "387.93",
+      "payment": "2160.00",
+      "closing": "55840.66"
+     },
+     {
+      "instalment": 32,
+      "opening": "55840.66",
+      "interest": "375.99",
+      "payment": "2160.00",
+      "closing": "54056.66"
+     },
+     {
+      "instalment": 33,
+      "opening": "54056.66",
+      "interest": "363.98",
+      "payment": "2160.00",
+      "closing": "52260.64"
+     },
+     {
+      "instalment": 34,
+      "opening": "52260.64",
+      "interest": "351.89",
+      "payment": "2160.00",
+      "closing": "50452.53"
+     },
+     {
+      "instalment": 35,
+      "opening": "50452.53",
+      "interest": "339.71",
+      "payment": "2160.00",
+      "closing": "48632.24"
+     },
+     {
+      "instalment": 36,
+      "opening": "48632.24",
+      "interest": "327.46",
+      "payment": "2160.00",
+      "closing": "46799.70"
+     },
+     {
+      "instalment": 37,
+      "opening": "46799.70",
+      "interest": "315.12",
+      "payment": "2160.00",
+      "closing": "44954.81"
+     },
+     {
+      "instalment": 38,
+      "opening": "44954.81",
+      "interest": "302.70",
+      "payment": "2160.00",
+      "closing": "43097.51"
+     },
+     {
+      "instalment": 39,
+      "opening": "43097.51",
+      "interest": "290.19",
+      "payment": "2160.00",
+      "closing": "41227.70"
+     },
+     {
+      "instalment": 40,
+      "opening": "41227.70",
+      "interest": "277.60",
+      "payment": "2160.00",
+      "closing": "39345.30"
+     },
+     {
+      "instalment": 41,
+      "opening": "39345.30",
+      "interest": "264.93",
+      "payment": "2160.00",
+      "closing": "37450.22"
+     },
+     {
+      "instalment": 42,
+      "opening": "37450.22",
+      "interest": "252.16",
+      "payment": "2160.00",
+      "closing": "35542.39"
+     },
+     {
+      "instalment": 43,
+      "opening": "35542.39",
+      "interest": "239.32",
+      "payment": "2160.00",
+      "closing": "33621.71"
+     },
+     {
+      "instalment": 44,
+      "opening": "33621.71",
+      "interest": "226.39",
+      "payment": "2160.00",
+      "closing": "31688.09"
+     },
+     {
+      "instalment": 45,
+      "opening": "31688.09",
+      "interest": "213.37",
+      "payment": "2160.00",
+      "closing": "29741.46"
+     },
+     {
+      "instalment": 46,
+      "opening": "29741.46",
+      "interest": "200.26",
+      "payment": "2160.00",
+      "closing": "27781.72"
+     },
+     {
+      "instalment": 47,
+      "opening": "27781.72",
+      "interest": "187.06",
+      "payment": "2160.00",
+      "closing": "25808.78"
+     },
+     {
+      "instalment": 48,
+      "opening": "25808.78",
+      "interest": "173.78",
+      "payment": "2160.00",
+      "closing": "23822.56"
+     },
+     {
+      "instalment": 49,
+      "opening": "23822.56",
+      "interest": "160.41",
+      "payment": "2160.00",
+      "closing": "21822.97"
+     },
+     {
+      "instalment": 50,
+      "opening": "21822.97",
+      "interest": "146.94",
+      "payment": "2160.00",
+      "closing": "19809.91"
+     },
+     {
+      "instalment": 51,
+      "opening": "19809.91",
+      "interest": "133.39",
+      "payment": "2160.00",
+      "closing": "17783.30"
+     },
+     {
+      "instalment": 52,
+      "opening": "17783.30",
+      "interest": "119.74",
+      "payment": "2160.00",
+      "closing": "15743.04"
+     },
+     {
+      "instalment": 53,
+      "opening": "15743.04",
+      "interest": "106.00",
+      "payment": "2160.00",
+      "closing": "13689.04"
+     },
+     {
+      "instalment": 54,
+      "opening": "13689.04",
+      "interest": "92.17",
+      "payment": "2160.00",
+      "closing": "11621.21"
+     },
+     {
+      "instalment": 55,
+      "opening": "11621.21",
+      "interest": "78.25",
+      "payment": "2160.00",
+      "closing": "9539.46"
+     },
+     {
+      "instalment": 56,
+      "opening": "9539.46",
+      "interest": "64.23",
+      "payment": "2160.00",
+      "closing": "7443.69"
+     },
+     {
+      "instalment": 57,
+      "opening": "7443.69",
+      "interest": "50.12",
+      "payment": "2160.00",
+      "closing": "5333.82"
+     },
+     {
+      "instalment": 58,
+      "opening": "5333.82",
+      "interest": "35.91",
+      "payment": "2160.00",
+      "closing": "3209.73"
+     },
+     {
+      "instalment": 59,
+      "opening": "3209.73",
+      "interest": "21.61",
+      "payment": "2160.00",
+      "closing": "1071.34"
+     },
+     {
+      "instalment": 60,
+      "opening": "1071.34",
+      "interest": "7.21",
+      "payment": "2160.00",
+      "closing": "-1081.44"
+     }
+    ],
+    "totals": {
+     "interest": "22203.55",
+     "payments": "129600.00",
+     "rounding_residual": "0.01"
+    },
+    "final_balance": "-1081.44",
+    "rate_precision_residual": "-1081.44",
+    "fy_interest": {
+     "2024": "2074.40",
+     "2025": "7383.26",
+     "2026": "5828.74",
+     "2027": "4143.90",
+     "2028": "2317.75",
+     "2029": "455.50"
+    }
+   },
+   "lodgeit_printed": {
+    "total_interest": "22203.56",
+    "total_payments": "129600.00",
+    "note": "printed total interest is the rounded-exact total; the difference against totals.interest equals totals.rounding_residual"
+   },
+   "provenance": "rows = LodgeiT printed rows [wire-Fable 2026-09-29, OCR + visual check]; totals foot to rows per lodgeit-rounding-1.0 rule 5"
+  },
+  {
+   "id": "hp/235",
+   "label": "950K Caterpillar Wheel Loader",
+   "pdf_sha256": "c8cc08a28b7cab559d509e2bd05f7553272f787ecdc4dea17d833e6949ec84d0",
+   "request": {
+    "amount_financed": "252450.00",
+    "annual_rate_pct": "3.99",
+    "term_regular_instalments": 59,
+    "instalment": "3893.76",
+    "timing": "in_arrears",
+    "begin_date": "2021-04-06",
+    "balloon": {
+     "amount": "53893.16",
+     "instalment_number": 60,
+     "mode": "replace"
+    },
+    "frequency": "monthly",
+    "contract_form": "hire_purchase"
+   },
+   "expected": {
+    "rows": [
+     {
+      "instalment": 1,
+      "opening": "252450.00",
+      "interest": "839.40",
+      "payment": "3893.76",
+      "closing": "249395.64"
+     },
+     {
+      "instalment": 2,
+      "opening": "249395.64",
+      "interest": "829.24",
+      "payment": "3893.76",
+      "closing": "246331.12"
+     },
+     {
+      "instalment": 3,
+      "opening": "246331.12",
+      "interest": "819.05",
+      "payment": "3893.76",
+      "closing": "243256.41"
+     },
+     {
+      "instalment": 4,
+      "opening": "243256.41",
+      "interest": "808.83",
+      "payment": "3893.76",
+      "closing": "240171.48"
+     },
+     {
+      "instalment": 5,
+      "opening": "240171.48",
+      "interest": "798.57",
+      "payment": "3893.76",
+      "closing": "237076.29"
+     },
+     {
+      "instalment": 6,
+      "opening": "237076.29",
+      "interest": "788.28",
+      "payment": "3893.76",
+      "closing": "233970.80"
+     },
+     {
+      "instalment": 7,
+      "opening": "233970.80",
+      "interest": "777.95",
+      "payment": "3893.76",
+      "closing": "230855.00"
+     },
+     {
+      "instalment": 8,
+      "opening": "230855.00",
+      "interest": "767.59",
+      "payment": "3893.76",
+      "closing": "227728.83"
+     },
+     {
+      "instalment": 9,
+      "opening": "227728.83",
+      "interest": "757.20",
+      "payment": "3893.76",
+      "closing": "224592.27"
+     },
+     {
+      "instalment": 10,
+      "opening": "224592.27",
+      "interest": "746.77",
+      "payment": "3893.76",
+      "closing": "221445.28"
+     },
+     {
+      "instalment": 11,
+      "opening": "221445.28",
+      "interest": "736.31",
+      "payment": "3893.76",
+      "closing": "218287.82"
+     },
+     {
+      "instalment": 12,
+      "opening": "218287.82",
+      "interest": "725.81",
+      "payment": "3893.76",
+      "closing": "215119.87"
+     },
+     {
+      "instalment": 13,
+      "opening": "215119.87",
+      "interest": "715.27",
+      "payment": "3893.76",
+      "closing": "211941.38"
+     },
+     {
+      "instalment": 14,
+      "opening": "211941.38",
+      "interest": "704.71",
+      "payment": "3893.76",
+      "closing": "208752.33"
+     },
+     {
+      "instalment": 15,
+      "opening": "208752.33",
+      "interest": "694.10",
+      "payment": "3893.76",
+      "closing": "205552.67"
+     },
+     {
+      "instalment": 16,
+      "opening": "205552.67",
+      "interest": "683.46",
+      "payment": "3893.76",
+      "closing": "202342.37"
+     },
+     {
+      "instalment": 17,
+      "opening": "202342.37",
+      "interest": "672.79",
+      "payment": "3893.76",
+      "closing": "199121.40"
+     },
+     {
+      "instalment": 18,
+      "opening": "199121.40",
+      "interest": "662.08",
+      "payment": "3893.76",
+      "closing": "195889.72"
+     },
+     {
+      "instalment": 19,
+      "opening": "195889.72",
+      "interest": "651.33",
+      "payment": "3893.76",
+      "closing": "192647.29"
+     },
+     {
+      "instalment": 20,
+      "opening": "192647.29",
+      "interest": "640.55",
+      "payment": "3893.76",
+      "closing": "189394.09"
+     },
+     {
+      "instalment": 21,
+      "opening": "189394.09",
+      "interest": "629.74",
+      "payment": "3893.76",
+      "closing": "186130.06"
+     },
+     {
+      "instalment": 22,
+      "opening": "186130.06",
+      "interest": "618.88",
+      "payment": "3893.76",
+      "closing": "182855.18"
+     },
+     {
+      "instalment": 23,
+      "opening": "182855.18",
+      "interest": "607.99",
+      "payment": "3893.76",
+      "closing": "179569.42"
+     },
+     {
+      "instalment": 24,
+      "opening": "179569.42",
+      "interest": "597.07",
+      "payment": "3893.76",
+      "closing": "176272.73"
+     },
+     {
+      "instalment": 25,
+      "opening": "176272.73",
+      "interest": "586.11",
+      "payment": "3893.76",
+      "closing": "172965.07"
+     },
+     {
+      "instalment": 26,
+      "opening": "172965.07",
+      "interest": "575.11",
+      "payment": "3893.76",
+      "closing": "169646.42"
+     },
+     {
+      "instalment": 27,
+      "opening": "169646.42",
+      "interest": "564.07",
+      "payment": "3893.76",
+      "closing": "166316.74"
+     },
+     {
+      "instalment": 28,
+      "opening": "166316.74",
+      "interest": "553.00",
+      "payment": "3893.76",
+      "closing": "162975.98"
+     },
+     {
+      "instalment": 29,
+      "opening": "162975.98",
+      "interest": "541.90",
+      "payment": "3893.76",
+      "closing": "159624.11"
+     },
+     {
+      "instalment": 30,
+      "opening": "159624.11",
+      "interest": "530.75",
+      "payment": "3893.76",
+      "closing": "156261.10"
+     },
+     {
+      "instalment": 31,
+      "opening": "156261.10",
+      "interest": "519.57",
+      "payment": "3893.76",
+      "closing": "152886.91"
+     },
+     {
+      "instalment": 32,
+      "opening": "152886.91",
+      "interest": "508.35",
+      "payment": "3893.76",
+      "closing": "149501.50"
+     },
+     {
+      "instalment": 33,
+      "opening": "149501.50",
+      "interest": "497.09",
+      "payment": "3893.76",
+      "closing": "146104.83"
+     },
+     {
+      "instalment": 34,
+      "opening": "146104.83",
+      "interest": "485.80",
+      "payment": "3893.76",
+      "closing": "142696.87"
+     },
+     {
+      "instalment": 35,
+      "opening": "142696.87",
+      "interest": "474.47",
+      "payment": "3893.76",
+      "closing": "139277.58"
+     },
+     {
+      "instalment": 36,
+      "opening": "139277.58",
+      "interest": "463.10",
+      "payment": "3893.76",
+      "closing": "135846.92"
+     },
+     {
+      "instalment": 37,
+      "opening": "135846.92",
+      "interest": "451.69",
+      "payment": "3893.76",
+      "closing": "132404.85"
+     },
+     {
+      "instalment": 38,
+      "opening": "132404.85",
+      "interest": "440.25",
+      "payment": "3893.76",
+      "closing": "128951.33"
+     },
+     {
+      "instalment": 39,
+      "opening": "128951.33",
+      "interest": "428.76",
+      "payment": "3893.76",
+      "closing": "125486.34"
+     },
+     {
+      "instalment": 40,
+      "opening": "125486.34",
+      "interest": "417.24",
+      "payment": "3893.76",
+      "closing": "122009.82"
+     },
+     {
+      "instalment": 41,
+      "opening": "122009.82",
+      "interest": "405.68",
+      "payment": "3893.76",
+      "closing": "118521.74"
+     },
+     {
+      "instalment": 42,
+      "opening": "118521.74",
+      "interest": "394.08",
+      "payment": "3893.76",
+      "closing": "115022.07"
+     },
+     {
+      "instalment": 43,
+      "opening": "115022.07",
+      "interest": "382.45",
+      "payment": "3893.76",
+      "closing": "111510.75"
+     },
+     {
+      "instalment": 44,
+      "opening": "111510.75",
+      "interest": "370.77",
+      "payment": "3893.76",
+      "closing": "107987.77"
+     },
+     {
+      "instalment": 45,
+      "opening": "107987.77",
+      "interest": "359.06",
+      "payment": "3893.76",
+      "closing": "104453.07"
+     },
+     {
+      "instalment": 46,
+      "opening": "104453.07",
+      "interest": "347.31",
+      "payment": "3893.76",
+      "closing": "100906.61"
+     },
+     {
+      "instalment": 47,
+      "opening": "100906.61",
+      "interest": "335.51",
+      "payment": "3893.76",
+      "closing": "97348.37"
+     },
+     {
+      "instalment": 48,
+      "opening": "97348.37",
+      "interest": "323.68",
+      "payment": "3893.76",
+      "closing": "93778.29"
+     },
+     {
+      "instalment": 49,
+      "opening": "93778.29",
+      "interest": "311.81",
+      "payment": "3893.76",
+      "closing": "90196.34"
+     },
+     {
+      "instalment": 50,
+      "opening": "90196.34",
+      "interest": "299.90",
+      "payment": "3893.76",
+      "closing": "86602.49"
+     },
+     {
+      "instalment": 51,
+      "opening": "86602.49",
+      "interest": "287.95",
+      "payment": "3893.76",
+      "closing": "82996.68"
+     },
+     {
+      "instalment": 52,
+      "opening": "82996.68",
+      "interest": "275.96",
+      "payment": "3893.76",
+      "closing": "79378.88"
+     },
+     {
+      "instalment": 53,
+      "opening": "79378.88",
+      "interest": "263.93",
+      "payment": "3893.76",
+      "closing": "75749.06"
+     },
+     {
+      "instalment": 54,
+      "opening": "75749.06",
+      "interest": "251.87",
+      "payment": "3893.76",
+      "closing": "72107.17"
+     },
+     {
+      "instalment": 55,
+      "opening": "72107.17",
+      "interest": "239.76",
+      "payment": "3893.76",
+      "closing": "68453.16"
+     },
+     {
+      "instalment": 56,
+      "opening": "68453.16",
+      "interest": "227.61",
+      "payment": "3893.76",
+      "closing": "64787.01"
+     },
+     {
+      "instalment": 57,
+      "opening": "64787.01",
+      "interest": "215.42",
+      "payment": "3893.76",
+      "closing": "61108.67"
+     },
+     {
+      "instalment": 58,
+      "opening": "61108.67",
+      "interest": "203.19",
+      "payment": "3893.76",
+      "closing": "57418.09"
+     },
+     {
+      "instalment": 59,
+      "opening": "57418.09",
+      "interest": "190.92",
+      "payment": "3893.76",
+      "closing": "53715.25"
+     },
+     {
+      "instalment": 60,
+      "opening": "53715.25",
+      "interest": "178.60",
+      "payment": "53893.16",
+      "closing": "0.69"
+     }
+    ],
+    "totals": {
+     "interest": "31175.69",
+     "payments": "283625.00",
+     "rounding_residual": "0.00"
+    },
+    "final_balance": "0.69",
+    "rate_precision_residual": "0.69",
+    "fy_interest": {
+     "2021": "2487.69",
+     "2022": "9021.39",
+     "2023": "7489.18",
+     "2024": "5894.73",
+     "2025": "4235.44",
+     "2026": "2047.26"
+    }
+   },
+   "lodgeit_printed": {
+    "total_interest": "31175.69",
+    "total_payments": "283625.00",
+    "note": "printed total interest is the rounded-exact total; the difference against totals.interest equals totals.rounding_residual"
+   },
+   "provenance": "rows = LodgeiT printed rows [wire-Fable 2026-09-29, OCR + visual check]; totals foot to rows per lodgeit-rounding-1.0 rule 5"
+  }
+ ]
+}
