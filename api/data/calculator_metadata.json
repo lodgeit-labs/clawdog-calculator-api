@@ -83,6 +83,7 @@
   "calculators": [
     {
       "calc_uri": "urn:sbrm:calculator:fbt:car-statutory-formula",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT car: statutory formula method",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "car",
@@ -92,6 +93,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:car-operating-cost",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT car: operating cost method",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "car",
@@ -101,6 +103,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:debt-waiver",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT debt waiver",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "debt-waiver",
@@ -110,6 +113,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:loan",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT loan",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "loan",
@@ -119,6 +123,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:expense-payment",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT expense payment (external)",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "expense-payment",
@@ -128,6 +133,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:expense-payment-in-house",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT expense payment (in-house)",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "expense-payment",
@@ -137,6 +143,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:housing",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT housing (non-remote)",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "housing",
@@ -146,6 +153,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:lafha",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT living-away-from-home allowance",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "lafha",
@@ -155,6 +163,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:board",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT board",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "board",
@@ -164,6 +173,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:meal-entertainment-50-50",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT meal entertainment: 50/50 split method",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "meal-entertainment",
@@ -173,6 +183,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:meal-entertainment-register-12wk",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT meal entertainment: 12-week register method",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "meal-entertainment",
@@ -182,6 +193,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:tebe",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT tax-exempt body entertainment",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "tebe",
@@ -191,6 +203,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:car-parking-actual",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT car parking: actual records",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "car-parking",
@@ -200,6 +213,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:car-parking-statutory-228",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT car parking: statutory formula (spaces) method",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "car-parking",
@@ -209,6 +223,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:car-parking-register-12wk",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT car parking: 12-week register method",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "car-parking",
@@ -218,6 +233,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:property",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT property (external)",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "property",
@@ -227,6 +243,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:property-in-house",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT property (in-house)",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "property",
@@ -236,6 +253,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:residual",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT residual (external)",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "residual",
@@ -245,6 +263,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:fbt:residual-in-house",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates and gross-up factors at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
       "label": "FBT residual (in-house)",
       "module": "urn:sbrm:module:fbt",
       "benefit_type": "residual",
@@ -254,6 +273,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:div7a:at",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, benchmark rate at 4 dp, ties away from zero. Rules 5–7 do not apply.",
       "label": "Division 7A minimum yearly repayment",
       "module": "urn:sbrm:module:div7a",
       "benefit_type": null,
@@ -263,6 +283,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:depreciation:at",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rules 3, 5 and 6 — money at 2 dp, ties away from zero; on /range/ closing_wdv = opening_wdv − range_dep exact to the cent and consecutive ranges telescope. Rule 7 does not apply.",
       "label": "Depreciation: carrying amount at a date",
       "module": "urn:sbrm:module:depreciation",
       "benefit_type": null,
@@ -272,6 +293,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:depreciation:range",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rules 3, 5 and 6 — money at 2 dp, ties away from zero; on /range/ closing_wdv = opening_wdv − range_dep exact to the cent and consecutive ranges telescope. Rule 7 does not apply.",
       "label": "Depreciation: charge over a date range",
       "module": "urn:sbrm:module:depreciation",
       "benefit_type": null,
@@ -281,6 +303,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:hp:schedule",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rules 3, 5 and 7 — unrounded internal balances, rows and totals at 2 dp, ties away from zero; totals.interest foots to the published rows and totals.rounding_residual carries the cent difference against the exact total; the end balance is reported as rate_precision_residual, never forced to zero.",
       "label": "Hire purchase: amortisation schedule",
       "module": "urn:sbrm:module:hp",
       "benefit_type": null,

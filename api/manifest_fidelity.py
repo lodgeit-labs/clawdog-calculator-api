@@ -116,7 +116,11 @@ def declared_content_hash(rate_table_path: Path) -> str | None:
     return m.group(1) if m else None
 
 
-def build_manifest(rate_table_uris: list[str], rate_table_root: Path) -> dict:
+def build_manifest(
+    rate_table_uris: list[str],
+    rate_table_root: Path,
+    rounding_policy: str | None = None,
+) -> dict:
     """Build the ``manifest`` block per CLAWDOG/109 §7.1.
 
     Args:
@@ -141,7 +145,13 @@ def build_manifest(rate_table_uris: list[str], rate_table_root: Path) -> dict:
         entries.append(
             RateTableHash(uri=uri, path=path, content_hash=h).as_manifest_entry()
         )
-    return {"rate_table_uris": entries}
+    manifest: dict = {"rate_table_uris": entries}
+    # D60 (Fable [CALC] 2026-09-29): copy the engine's top-level rounding_policy
+    # into the manifest when the engine emitted it; if absent, OMIT the key —
+    # the gateway never supplies a default (the engine is the sole source).
+    if rounding_policy is not None:
+        manifest["rounding_policy"] = rounding_policy
+    return manifest
 
 
 def _rate_id_from_uri(uri: str) -> str:

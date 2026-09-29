@@ -20,7 +20,8 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-ENGINE_VERSION = "hp-schedule-1.0.0"
+ENGINE_VERSION = "hp-schedule-1.1.0"
+ROUNDING_POLICY = "lodgeit-rounding-1.0"
 CALCULATOR_URN = "urn:sbrm:calculator:hp:schedule"
 ACCRUAL_BASIS = "nominal_monthly_period"
 
@@ -271,8 +272,14 @@ def compute_schedule(
             }
         )
 
-    total_interest = sum((r["_interest_raw"] for r in rows), Decimal("0"))
-    total_payments = sum((r["_payment_raw"] for r in rows), Decimal("0"))
+    # D60 rule 5 (Fable [CALC] 2026-09-29): totals FOOT to the published
+    # (rounded) rows. totals.interest is the sum of the rounded row interests,
+    # and totals.rounding_residual carries the cent difference between the
+    # exact total (rounded once) and that footed sum, sign preserved.
+    exact_total_interest = sum((r["_interest_raw"] for r in rows), Decimal("0"))
+    total_interest = sum((_round_cents(r["_interest_raw"]) for r in rows), Decimal("0"))
+    interest_rounding_residual = _round_cents(exact_total_interest) - total_interest
+    total_payments = sum((_round_cents(r["_payment_raw"]) for r in rows), Decimal("0"))
     final_balance = rows[-1]["_closing_raw"] if rows else principal
 
     fy_interest = _fy_interest_map(rows, fy_end_month)
@@ -293,8 +300,12 @@ def compute_schedule(
     result = {
         "rows": [_public_row(r) for r in rows],
         "totals": {
+            # totals.interest already foots to the rounded rows (sum of
+            # _q(row interest)); rounding_residual is the cent difference
+            # against the exact total, sign preserved, "0.00" when equal.
             "interest": _q(total_interest),
             "payments": _q(total_payments),
+            "rounding_residual": _q(interest_rounding_residual),
         },
         "final_balance": _q(final_balance),
         "rate_precision_residual": _q(final_balance),
@@ -304,6 +315,8 @@ def compute_schedule(
             "calculator": CALCULATOR_URN,
             "engine_version": ENGINE_VERSION,
             "accrual_basis": ACCRUAL_BASIS,
+            # D60: HP emits its rounding_policy directly (not gateway-attached).
+            "rounding_policy": ROUNDING_POLICY,
         },
         "advisory": {
             "figure_type": "amortisation_schedule",
@@ -342,7 +355,9 @@ def _fy_interest_map(rows: list[dict], fy_end_month: int) -> dict:
             fy_year = row_date.year + 1
         else:
             fy_year = row_date.year
-        buckets[fy_year] = buckets.get(fy_year, Decimal("0")) + row["_interest_raw"]
+        # D60 rule 5: accumulate the ROUNDED row interest so that
+        # Sum(fy_interest) == totals.interest == Sum(rounded rows).
+        buckets[fy_year] = buckets.get(fy_year, Decimal("0")) + _round_cents(row["_interest_raw"])
     return {str(year): _q(total) for year, total in sorted(buckets.items())}
 
 
