@@ -110,12 +110,18 @@ class HpScheduleRow(BaseModel):
 class HpTotals(BaseModel):
     interest: str
     payments: str
+    # D60 rule 5 (Fable [CALC] 2026-09-29): interest foots to the rounded rows;
+    # rounding_residual carries the signed cent difference against the exact
+    # total, "0.00" when equal.
+    rounding_residual: str
 
 
 class HpManifest(BaseModel):
     calculator: str
     engine_version: str
     accrual_basis: str
+    # D60: HP emits its rounding_policy directly (not gateway-attached).
+    rounding_policy: str
 
 
 class HpAdvisory(BaseModel):

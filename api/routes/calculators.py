@@ -901,7 +901,11 @@ async def invoke_calculator(
     )
     rate_table_root = _rate_table_root_for(period_uri_decoded, taxonomy)
     try:
-        manifest = build_manifest(rate_uris, rate_table_root)
+        manifest = build_manifest(
+            rate_uris,
+            rate_table_root,
+            rounding_policy=engine_response.get("rounding_policy"),
+        )
     except (FileNotFoundError, OSError) as exc:
         # Defence in depth: if the bundled rate-table tree is missing or
         # unreadable, surface a structured 502 (Lesson #34 — surface, do
@@ -1051,6 +1055,7 @@ async def invoke_calculator(
             "manifest": manifest,
         },
         jurisdiction=meta["jurisdiction"],
+        calculator_uri=calc_uri_decoded,
     )
 
     return CalculatorInvocationResponse.model_validate(response_payload)
@@ -1217,7 +1222,11 @@ async def invoke_div7a_at(
     ]
     rate_table_root = _rate_table_root_for(period_uri_decoded, taxonomy)
     try:
-        manifest = build_manifest(rate_uris, rate_table_root)
+        manifest = build_manifest(
+            rate_uris,
+            rate_table_root,
+            rounding_policy=engine_response.get("rounding_policy"),
+        )
     except (FileNotFoundError, OSError) as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -1235,6 +1244,7 @@ async def invoke_div7a_at(
     response_payload = wrap_response(
         {**engine_response, "manifest": manifest},
         jurisdiction=meta["jurisdiction"],
+        calculator_uri=_DIV7A_AT_URI,
     )
 
     return response_payload
@@ -1351,7 +1361,11 @@ async def invoke_depreciation_at(
     rate_uris: list[str] = engine_response.get("rate_uris_consumed") or []
     rate_table_root = _rate_table_root_for(period_uri_decoded, taxonomy)
     try:
-        manifest = build_manifest(rate_uris, rate_table_root)
+        manifest = build_manifest(
+            rate_uris,
+            rate_table_root,
+            rounding_policy=engine_response.get("rounding_policy"),
+        )
     except (FileNotFoundError, OSError) as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -1369,6 +1383,7 @@ async def invoke_depreciation_at(
     response_payload = wrap_response(
         {**engine_response, "manifest": manifest},
         jurisdiction=meta["jurisdiction"],
+        calculator_uri=_DEPRECIATION_AT_URI,
     )
 
     return response_payload
@@ -1498,7 +1513,11 @@ async def invoke_depreciation_range(
     rate_uris: list[str] = engine_response.get("rate_uris_consumed") or []
     rate_table_root = _rate_table_root_for(period_uri_decoded, taxonomy)
     try:
-        manifest = build_manifest(rate_uris, rate_table_root)
+        manifest = build_manifest(
+            rate_uris,
+            rate_table_root,
+            rounding_policy=engine_response.get("rounding_policy"),
+        )
     except (FileNotFoundError, OSError) as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -1516,6 +1535,7 @@ async def invoke_depreciation_range(
     response_payload = wrap_response(
         {**engine_response, "manifest": manifest},
         jurisdiction=meta["jurisdiction"],
+        calculator_uri=_DEPRECIATION_RANGE_URI,
     )
 
     return response_payload

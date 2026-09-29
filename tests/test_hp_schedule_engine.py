@@ -19,7 +19,7 @@ import pytest
 
 from api.engines.hp.schedule import HpEngineError, compute_schedule
 
-FIXTURES_PATH = Path(__file__).parent / "fixtures" / "hp" / "anchors_v1_2.json"
+FIXTURES_PATH = Path(__file__).parent / "fixtures" / "hp" / "anchors_v1_3.json"
 _TOL = Decimal("0.01")
 
 

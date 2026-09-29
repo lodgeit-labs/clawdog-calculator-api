@@ -258,10 +258,29 @@ STATUTORY_BASIS_UK = [
 ]
 
 
+def _append_rounding_advisory(block: dict[str, Any], calculator_uri: str | None) -> dict[str, Any]:
+    """D60 (Fable [CALC] 2026-09-29): append the per-calculator rounding
+    advisory sentence to the disclaimer when the calculator declares one in
+    ``calculator_metadata.json``. No-op when absent, so the gateway never
+    invents rounding language.
+    """
+    if not calculator_uri:
+        return block
+    from api.lib.calculator_metadata import rounding_advisory_for
+    sentence = rounding_advisory_for(calculator_uri)
+    if not sentence:
+        return block
+    out = dict(block)
+    disclaimer = out.get("disclaimer", "")
+    out["disclaimer"] = (disclaimer + " " + sentence).strip() if disclaimer else sentence
+    return out
+
+
 def advisory_block(
     jurisdiction: str = "AU",
     manifest_rate_table_uris: list | None = None,
     basis: str | None = None,
+    calculator_uri: str | None = None,
 ) -> dict[str, Any]:
     """Build the advisory block for a single calculator-invocation response.
 
@@ -294,22 +313,22 @@ def advisory_block(
 
     if j == "UK":
         # UK forward-looking placeholder unchanged.
-        return {
+        return _append_rounding_advisory({
             "disclaimer": ADVISORY_TEXT_UK,
             "registered_agent_required": True,
             "statutory_basis": STATUTORY_BASIS_UK,
             "jurisdiction": "UK",
-        }
+        }, calculator_uri)
 
     # AU — Fable D10 accounting-basis branch takes precedence over D6
     # manifest conditioning.
     if b == "accounting":
-        return {
+        return _append_rounding_advisory({
             "disclaimer": ADVISORY_TEXT_AU_ACCOUNTING,
             "registered_agent_required": False,
             "statutory_basis": STATUTORY_BASIS_AU_ACCOUNTING,
             "jurisdiction": "AU",
-        }
+        }, calculator_uri)
 
     # AU — non-accounting basis (tax, FBT, Div7A): Fable D6 manifest
     # conditioning.
@@ -328,16 +347,17 @@ def advisory_block(
         ADVISORY_TEXT_AU_EMPTY_MANIFEST if empty_manifest_declared
         else ADVISORY_TEXT_AU
     )
-    return {
+    return _append_rounding_advisory({
         "disclaimer": disclaimer,
         "registered_agent_required": True,
         "statutory_basis": STATUTORY_BASIS_AU,
         "jurisdiction": "AU",
-    }
+    }, calculator_uri)
 
 
 def wrap_response(
     payload: Mapping[str, Any], jurisdiction: str = "AU",
+    calculator_uri: str | None = None,
 ) -> dict[str, Any]:
     """Attach an ``advisory`` block to a calculator response payload.
 
@@ -371,6 +391,7 @@ def wrap_response(
             else None
         ),
         basis=basis if isinstance(basis, str) else None,
+        calculator_uri=calculator_uri,
     )
     return out
 

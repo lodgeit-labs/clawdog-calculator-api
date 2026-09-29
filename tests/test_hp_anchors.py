@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-FIXTURES_PATH = Path(__file__).parent / "fixtures" / "hp" / "anchors_v1_2.json"
+FIXTURES_PATH = Path(__file__).parent / "fixtures" / "hp" / "anchors_v1_3.json"
 
 def _add_months(date, months: int):
     """Add months to a date, clamping day to valid range."""
@@ -139,7 +139,9 @@ def _sum_fy_interest(schedule: list[dict], begin_date: str, fy_year: int) -> Dec
         row_date = _add_months(begin, row_num - 1)
 
         if fy_start <= row_date <= fy_end:
-            total += row_data["interest"]
+            # D60 rule 5 (v1_3): FY interest foots to the ROUNDED rows, so sum
+            # the per-row rounded interest (matches engine _fy_interest_map).
+            total += _round_display(row_data["interest"])
 
     return total
 
@@ -245,8 +247,11 @@ def test_hp_anchor_values(fixtures, contract_idx):
             f"{contract['name']}: row2_interest mismatch"
         )
 
-    total_interest = sum(r["interest"] for r in schedule)
-    total_interest_display = _round_display(total_interest)
+    # D60 rule 5 (v1_3): total_interest FOOTS to the rounded rows (sum of the
+    # per-row rounded interest), not the sum-then-round of the raw interest.
+    total_interest_display = sum(
+        (_round_display(r["interest"]) for r in schedule), Decimal("0")
+    )
     assert str(total_interest_display) == anchors["total_interest"], (
         f"{contract['name']}: total_interest mismatch"
     )
@@ -447,11 +452,16 @@ def test_hp_scania_split_with_balloon(fixtures):
 
 @pytest.mark.parametrize("contract_name,contract_idx", [("Scania", 1), ("Wacker", 2)])
 def test_hp_negative_per_row_rounding(fixtures, contract_name, contract_idx):
-    """Test that per-row interest rounding does NOT reproduce totals.
+    """D60 rule 5 (Fable [CALC] 2026-09-29): per-row interest rounding now FOOTS
+    to total_interest.
 
-    The negative result from the fixture: per-row interest rounding produces
-    different totals and final balances for Scania and Wacker when using the
-    stated rate (the test uses stated rate to match the anchor generation).
+    Previously this test asserted the opposite (per-row rounding diverged from
+    the unrounded total) — that divergence was the D60 defect. Under
+    lodgeit-rounding-1.0 rule 5 the published total is defined as the sum of the
+    rounded rows, so v1_3 total_interest equals the per-row-rounded sum; the
+    cent difference against the exact total is carried in rounding_residual.
+    The final balance is still a rate_precision_residual and is NOT forced to
+    match the exact/unrounded final.
     """
     contract = fixtures["contracts"][contract_idx]
 
@@ -502,15 +512,18 @@ def test_hp_negative_per_row_rounding(fixtures, contract_name, contract_idx):
     total_interest_rounded = sum(r["interest"] for r in schedule_rounded)
     final_balance_rounded = _round_display(schedule_rounded[-1]["balance"])
 
-    # Expected (unrounded internal) values
+    # Expected values: v1_3 total_interest is the footed (rounded-rows) sum.
     anchors = contract["anchors"]
     expected_total = Decimal(anchors["total_interest"])
     expected_final = Decimal(anchors["final_balance"])
 
-    # Assert they do NOT match
-    assert total_interest_rounded != expected_total, (
-        f"{contract_name}: per-row rounding unexpectedly matched total_interest"
+    # D60 rule 5: per-row-rounded interest FOOTS to the published total_interest.
+    assert total_interest_rounded == expected_total, (
+        f"{contract_name}: per-row rounded interest must foot to total_interest "
+        f"(got {total_interest_rounded}, expected {expected_total})"
     )
+    # The final balance remains a rate_precision_residual — not forced to the
+    # exact/unrounded final.
     assert final_balance_rounded != expected_final, (
         f"{contract_name}: per-row rounding unexpectedly matched final_balance"
     )

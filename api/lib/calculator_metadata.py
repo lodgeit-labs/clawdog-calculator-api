@@ -65,6 +65,25 @@ def calculators_by_uri(metadata: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return out
 
 
+_ROUNDING_ADVISORY_BY_URI: dict[str, str] | None = None
+
+
+def rounding_advisory_for(calc_uri: str) -> str | None:
+    """D60 (Fable [CALC] 2026-09-29): the per-calculator rounding advisory
+    sentence from ``calculator_metadata.json``, or ``None`` when the calculator
+    has none declared. Cached after first load.
+    """
+    global _ROUNDING_ADVISORY_BY_URI
+    if _ROUNDING_ADVISORY_BY_URI is None:
+        by_uri = calculators_by_uri(load_metadata())
+        _ROUNDING_ADVISORY_BY_URI = {
+            uri: entry["rounding_advisory"]
+            for uri, entry in by_uri.items()
+            if entry.get("rounding_advisory")
+        }
+    return _ROUNDING_ADVISORY_BY_URI.get(calc_uri)
+
+
 def modules(metadata: dict[str, Any]) -> list[dict[str, Any]]:
     """Return the metadata ``modules`` list (verbatim)."""
     return metadata["modules"]

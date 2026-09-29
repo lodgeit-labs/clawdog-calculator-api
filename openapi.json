@@ -2581,12 +2581,17 @@
           "engine_version": {
             "title": "Engine Version",
             "type": "string"
+          },
+          "rounding_policy": {
+            "title": "Rounding Policy",
+            "type": "string"
           }
         },
         "required": [
           "calculator",
           "engine_version",
-          "accrual_basis"
+          "accrual_basis",
+          "rounding_policy"
         ],
         "title": "HpManifest",
         "type": "object"
@@ -2795,11 +2800,16 @@
           "payments": {
             "title": "Payments",
             "type": "string"
+          },
+          "rounding_residual": {
+            "title": "Rounding Residual",
+            "type": "string"
           }
         },
         "required": [
           "interest",
-          "payments"
+          "payments",
+          "rounding_residual"
         ],
         "title": "HpTotals",
         "type": "object"
