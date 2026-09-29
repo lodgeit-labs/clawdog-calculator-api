@@ -31,6 +31,9 @@ from api.lib.calculator_metadata import (
 from api.lib.calculator_metadata import (
     modules as _metadata_modules,
 )
+from api.lib.calculator_metadata import (
+    rounding_advisory_for,
+)
 from api.lib.engine_error_mapper import (
     map_calculation_error_to_http,
     map_engine_error_to_http,
@@ -654,6 +657,19 @@ async def invoke_hp_schedule(body: HpScheduleInput) -> HpScheduleResponse:
                 "detail": exc.message,
             },
         ) from exc
+    # D60 (Fable [CALC] 2026-09-29/30): the hp:schedule advisory carries the
+    # per-calculator rounding sentence too. The HP route returns its own
+    # HpScheduleResponse (no wrap_response), so append the sentence to the
+    # engine's advisory notes. Degrade safely — never 500 over a missing note.
+    try:
+        sentence = rounding_advisory_for(_HP_SCHEDULE_URI)
+        if sentence:
+            notes = list(result.get("advisory", {}).get("notes", []))
+            if sentence not in notes:
+                notes.append(sentence)
+                result["advisory"]["notes"] = notes
+    except Exception:  # noqa: BLE001 - a missing note is a defect, not an outage
+        logger.exception("hp:schedule rounding_advisory append failed; degrading")
     return HpScheduleResponse(**result)
 
 
