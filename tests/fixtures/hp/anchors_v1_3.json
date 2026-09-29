@@ -48,7 +48,7 @@
           "2021": "262.83"
         },
         "rounding_residual": "0.00",
-        "provenance_note": "LodgeiT printed total was 7748.70; under lodgeit-rounding-1.0 rule 5 the published total foots to the rounded rows (7748.70) and totals.rounding_residual (0.00) carries the cent difference against the exact total [Fable 2026-09-29; engine hp-schedule-1.1.0]."
+        "provenance_note": "LodgeiT printed total was 7748.70; under lodgeit-rounding-1.0 rule 5 the published total foots to the rounded rows (7748.70) and totals.rounding_residual (0.00) carries the cent difference against the exact total [Fable 2026-09-29; engine hp-schedule-1.1.0]. Row-level check done 2026-09-29 on four sibling reports from the same generator (v1_4, 240/240 rows byte-identical)."
       },
       "split_2016-06-30": {
         "principal": "30178.14",
@@ -90,7 +90,7 @@
           "2027": "188.77"
         },
         "rounding_residual": "0.05",
-        "provenance_note": "LodgeiT printed total was 32531.96; under lodgeit-rounding-1.0 rule 5 the published total foots to the rounded rows (32531.91) and totals.rounding_residual (0.05) carries the cent difference against the exact total [Fable 2026-09-29; engine hp-schedule-1.1.0]."
+        "provenance_note": "LodgeiT printed total was 32531.96; under lodgeit-rounding-1.0 rule 5 the published total foots to the rounded rows (32531.91) and totals.rounding_residual (0.05) carries the cent difference against the exact total [Fable 2026-09-29; engine hp-schedule-1.1.0]. Row-level check done 2026-09-29 on four sibling reports from the same generator (v1_4, 240/240 rows byte-identical)."
       },
       "split_2025-06-30": {
         "principal": "105904.81",
@@ -159,7 +159,7 @@
           "2023": "2.98"
         },
         "rounding_residual": "-0.03",
-        "provenance_note": "LodgeiT printed total was 1781.40; under lodgeit-rounding-1.0 rule 5 the published total foots to the rounded rows (1781.43) and totals.rounding_residual (-0.03) carries the cent difference against the exact total [Fable 2026-09-29; engine hp-schedule-1.1.0]."
+        "provenance_note": "LodgeiT printed total was 1781.40; under lodgeit-rounding-1.0 rule 5 the published total foots to the rounded rows (1781.43) and totals.rounding_residual (-0.03) carries the cent difference against the exact total [Fable 2026-09-29; engine hp-schedule-1.1.0]. Row-level check done 2026-09-29 on four sibling reports from the same generator (v1_4, 240/240 rows byte-identical)."
       },
       "split_2021-06-30": {
         "principal": "8052.60",
