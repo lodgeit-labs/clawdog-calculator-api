@@ -103,8 +103,11 @@ SR #11 clean.
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from typing import Any
+
+_logger = logging.getLogger(__name__)
 
 # Canonical advisory text — paraphrase + statutory citation by section. The
 # wording is canonical to one byte; future iterations require a fresh helm-roll
@@ -263,17 +266,32 @@ def _append_rounding_advisory(block: dict[str, Any], calculator_uri: str | None)
     advisory sentence to the disclaimer when the calculator declares one in
     ``calculator_metadata.json``. No-op when absent, so the gateway never
     invents rounding language.
+
+    **Robustness (Fable [CALC] 2026-09-30):** this decoration must NEVER turn a
+    live route into a 500. A missing rounding sentence is a defect; a dead route
+    is an outage. Any failure looking up or appending the sentence is swallowed
+    and logged — the response degrades to the un-appended advisory block.
     """
     if not calculator_uri:
         return block
-    from api.lib.calculator_metadata import rounding_advisory_for
-    sentence = rounding_advisory_for(calculator_uri)
-    if not sentence:
+    try:
+        from api.lib.calculator_metadata import rounding_advisory_for
+        sentence = rounding_advisory_for(calculator_uri)
+        if not sentence:
+            return block
+        out = dict(block)
+        disclaimer = out.get("disclaimer", "")
+        out["disclaimer"] = (
+            (disclaimer + " " + sentence).strip() if disclaimer else sentence
+        )
+        return out
+    except Exception:  # noqa: BLE001 - degrade, never 500
+        _logger.exception(
+            "rounding_advisory append failed for calculator_uri=%s; "
+            "degrading to the un-appended advisory block",
+            calculator_uri,
+        )
         return block
-    out = dict(block)
-    disclaimer = out.get("disclaimer", "")
-    out["disclaimer"] = (disclaimer + " " + sentence).strip() if disclaimer else sentence
-    return out
 
 
 def advisory_block(

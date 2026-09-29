@@ -1114,6 +1114,13 @@ class Manifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     rate_table_uris: list[ManifestRateTableEntry]
+    # D60 (Fable [CALC] 2026-09-29): the engine may emit a top-level
+    # rounding_policy which build_manifest copies into manifest.rounding_policy.
+    # Declared here (Optional) so the response model accepts it — its ABSENCE
+    # from this typed model was the FBT-route 500 (extra_forbidden) shipped in
+    # revision 00054-lh7 / commit 482e7df. Omitted from the wire when the
+    # engine emits none.
+    rounding_policy: str | None = None
 
 
 class AdvisoryBlock(BaseModel):
