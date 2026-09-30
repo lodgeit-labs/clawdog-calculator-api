@@ -511,6 +511,14 @@ _CALC_INPUT_MODEL_REST: dict[str, type] = {
     _DEPRECIATION_AT_URI: DepreciationAtInput,
     _DEPRECIATION_RANGE_URI: DepreciationRangeInput,
     _DIV7A_AT_URI: Div7aAtInput,
+    # D53b (Fable [CALC] 2026-09-30): hp:schedule is served by the dedicated
+    # route /v1/calculators/hp/schedule, but the generic route only consults
+    # this dispatch table — so a generic-route call
+    # (/v1/calculators/urn:sbrm:calculator:hp:schedule/urn:sbrm:period:hp:unscoped)
+    # fell through to the "missing from _CALC_INPUT_MODEL_REST" HTTP 500 seen on
+    # canary 00067-dar. Register it (like depreciation/div7a above) and add an
+    # internal-dispatch branch below that delegates to invoke_hp_schedule.
+    _HP_SCHEDULE_URI: HpScheduleInput,
 }
 
 
@@ -865,6 +873,12 @@ async def invoke_calculator(
             period_uri=period_uri, body=validated_body, prolog=prolog,
             taxonomy=taxonomy,
         )
+    if calc_uri_decoded == _HP_SCHEDULE_URI:
+        # D53b (Fable [CALC] 2026-09-30): hp:schedule is period-unscoped and
+        # pure-Decimal; the dedicated handler takes only the validated body
+        # (no period_uri/prolog/taxonomy). Delegate so the generic route
+        # returns the same HpScheduleResponse the dedicated route does.
+        return await invoke_hp_schedule(body=validated_body)
 
     # The Prolog engine speaks snake_case OR camelCase on the wire; we normalise
     # to the engine's canonical snake_case shape via pydantic's `by_alias=False`.
