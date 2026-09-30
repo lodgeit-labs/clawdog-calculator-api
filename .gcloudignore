@@ -20,10 +20,18 @@ tests/
 htmlcov/
 .coverage
 
-# Docs
+# Docs (explicit excludes — a blanket *.md rule would also drop the
+# rate_tables/SBRM_RATE_TABLE/**/*.md files the Dockerfile COPYs into the
+# image at build time, which caused the FY2026 manifest_rate_table_unavailable
+# 502 on canaries 00065/00067. D53b (Fable [CALC] 2026-09-30).
 docs/
-*.md
-!README.md
+CHANGELOG*.md
+*_body.md
+memory/
+
+# Belt-and-braces: never exclude the vendored rate tables, whatever a broader
+# rule above might match. The Dockerfile copies this tree into /app/SBRM_RATE_TABLE.
+!rate_tables/**
 
 # Local dev / editor
 .venv/

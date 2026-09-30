@@ -37,9 +37,12 @@ _DEDICATED_ROUTE_URN_ALLOWLIST = {
     # REST route /calculators/div7a/at/{period_uri} with native FastAPI
     # response shape; does NOT dispatch through the generic route.
     "urn:sbrm:calculator:div7a:at",
-    # Module hp (clawdog/hp-schedule-engine): dedicated REST route
-    # /v1/calculators/hp/schedule; period-unscoped, native response shape.
-    "urn:sbrm:calculator:hp:schedule",
+    # NOTE (D53b, Fable [CALC] 2026-09-30): hp:schedule was here, but a
+    # generic-route call for it returned HTTP 500 ("missing from
+    # _CALC_INPUT_MODEL_REST") on canary 00067-dar. It is now registered in
+    # _CALC_INPUT_MODEL_REST with an internal-dispatch branch delegating to
+    # invoke_hp_schedule, exactly like depreciation:at / div7a:at, so it is
+    # NO LONGER a dedicated-route-only URN.
 }
 
 
@@ -92,6 +95,33 @@ def test_every_calc_registry_urn_has_a_pydantic_input_model() -> None:
         f"Calculator registry has URNs without a pydantic input model in "
         f"either _CALC_INPUT_MODEL_REST or the dedicated-route allowlist: "
         f"{unresolved}. Add an input model class + register it."
+    )
+
+
+def test_every_registry_urn_resolves_on_the_generic_rest_route() -> None:
+    """D53b (Fable [CALC] 2026-09-30): every calculator-registry URN MUST be
+    invokable through the generic POST /v1/calculators/{calc_uri}/{period_uri}
+    route without a 500. The generic route consults ONLY
+    ``_CALC_INPUT_MODEL_REST`` for body validation + dispatch; any registry URN
+    absent from it falls through to the HTTP 500
+    ``missing from _CALC_INPUT_MODEL_REST`` defect (observed for
+    ``urn:sbrm:calculator:hp:schedule`` on canary 00067-dar).
+
+    This is stricter than
+    ``test_every_calc_registry_urn_has_a_pydantic_input_model`` above, which
+    also accepts the dedicated-route allowlist. Here every URN must resolve in
+    the generic-route dispatch table itself. Fails on pre-D53b main (hp missing
+    from _CALC_INPUT_MODEL_REST); passes once hp:schedule is registered.
+    """
+    registry_urns = set(_CALCULATOR_REGISTRY.keys())
+    generic_route_urns = set(_CALC_INPUT_MODEL_REST.keys())
+    unresolved = registry_urns - generic_route_urns
+    assert not unresolved, (
+        f"Calculator-registry URNs missing from _CALC_INPUT_MODEL_REST (the "
+        f"generic-route dispatch table) — a generic-route call for each will "
+        f"return HTTP 500 'missing from _CALC_INPUT_MODEL_REST': {sorted(unresolved)}. "
+        f"Register each in api/routes/calculators.py::_CALC_INPUT_MODEL_REST "
+        f"(add an internal-dispatch branch for dedicated-route calculators)."
     )
 
 
