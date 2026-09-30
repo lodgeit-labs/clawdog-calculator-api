@@ -244,6 +244,27 @@ jobs:
       # ONLY when the canary smoke exited 0. On any earlier failure this step
       # is skipped and 100% of traffic stays on the previous healthy revision
       # — the canary revision is left deployed at 0% for inspection.
+      # Computed-value gate (mut-2026-09-11-mc00): asserts every FBT calculator
+      # returns a decimal-string trio with no bare float. Complements smoke-prod
+      # (discovery + error-shape).
+      #
+      # D53 amendment (Fable [CALC] 2026-09-30): this runs BEFORE the promote
+      # step and against the CANARY tag URL (same API_BASE_URL as smoke-prod),
+      # so both smoke gates exercise the 0%-traffic canary revision before any
+      # traffic moves. Promotion is gated on BOTH passing.
+      - name: Post-deploy smoke-fbt (FBT trio + no-bare-float, against the canary tag URL)
+        id: smoke_fbt
+        env:
+          API_BASE_URL: https://canary---fbt-calculator-api-qkp3j5bjnq-ts.a.run.app
+        run: |
+          echo "Smoking canary revision ${{ steps.deploy.outputs.canary_revision }} at $API_BASE_URL (FBT trio)"
+          make smoke-fbt
+
+      # D53 (Fable [CALC] 2026-09-30): promote traffic to the new revision
+      # ONLY when BOTH canary smoke gates (smoke-prod + smoke-fbt) exited 0.
+      # On any earlier failure this step is skipped and 100% of traffic stays
+      # on the previous healthy revision — the canary is left at 0% for
+      # inspection.
       - name: Promote traffic to canary (only if smoke passed)
         id: promote
         if: success()
@@ -260,14 +281,6 @@ jobs:
             --project "$GCP_PROJECT" \
             --format='value(status.traffic)'
 
-      # Computed-value gate (mut-2026-09-11-mc00): asserts every FBT calculator
-      # returns a decimal-string trio with no bare float. Complements smoke-prod
-      # (discovery + error-shape). Fires against the same freshly-deployed URL.
-      - name: Post-deploy smoke-fbt (FBT trio + no-bare-float)
-        id: smoke_fbt
-        run: |
-          make smoke-fbt
-
       # mc05-2026-05-30 widening per mc04 dogfood-discovered gap:
       # the original single rollback-hint step was gated on smoke.outcome
       # == 'failure' but when DEPLOY step #6 fails (mc03 attempts 1+2 IAM
@@ -276,7 +289,7 @@ jobs:
       #   #9 on smoke failure  : print rollback hint + previous revisions
       #   #9b on deploy failure: print build-id chain + describe URL
       - name: On canary smoke failure — fail with canary revision, traffic untouched
-        if: failure() && steps.smoke.outcome == 'failure'
+        if: failure() && (steps.smoke.outcome == 'failure' || steps.smoke_fbt.outcome == 'failure')
         run: |
           # D53: the canary smoke failed. Traffic was NEVER moved (the deploy
           # was --no-traffic and the promote step is gated on success), so
