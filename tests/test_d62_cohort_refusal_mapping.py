@@ -27,6 +27,45 @@ from api.lib.engine_error_mapper import (
 )
 from api.prolog_client import PrologCalculationError, PrologEngineUnavailable
 
+# --- (d62-b) LIVE production wrapped body → 400, never 502 --------------------
+# Captured VERBATIM 2026-09-30 by POSTing car-operating-cost with an
+# out-of-cohort acquisitionDate (2005-07-01) against production:
+#   https://fbt-calculator-api-8340695160.australia-southeast1.run.app
+# The engine wraps fbt_year_outside_cohort inside calculation_failed and carries
+# the real term (with the FY + the FY2022–FY2030 prose range) as text.
+_LIVE_WRAPPED_COHORT_BODY = (
+    '{"error":"unrecognised_engine_error","engine_term":"calculation_failed",'
+    '"detail":"days_in_year_lookup/3: Unknown error term: '
+    'fbt_year_outside_cohort(fy(fy2006),cohort_period('
+    "'urn:sbrm:period:fbt:fy2026'"
+    ')) (FBT year not in the days-in-year-by-fy cohort (FY2022\u2013FY2030 '
+    'currently; extend via Brain helm-roll of the days-in-year-by-fy compound '
+    'node).)"}'
+)
+
+
+def test_fbt_year_outside_cohort_live_wrapped_body_maps_to_400_not_502():
+    """D62-b: the production-captured calculation_failed body whose text carries
+    fbt_year_outside_cohort(...) MUST classify to 400, never 502."""
+    exc = PrologEngineUnavailable(
+        error_code="engine_http_error",
+        detail={"status_code": 500, "body": _LIVE_WRAPPED_COHORT_BODY},
+        engine="fbt-engine",
+        url="http://fbt-engine.test/v1/calculators/fbt/car-operating-cost",
+    )
+    http_exc = map_engine_error_to_http(exc)
+    assert http_exc.status_code == 400, http_exc.detail
+    assert http_exc.status_code != 502
+    detail = http_exc.detail
+    assert isinstance(detail, dict)
+    assert detail["refusal_class"] == "fbt_year_outside_cohort"
+    # FY parsed out of the wrapped term text (`fy(fy2006)`).
+    assert detail["requested_fy"] == "fy2006"
+    # Supported range parsed from the prose `FY2022–FY2030`.
+    assert detail["supported_cohort_years"] == ["fy2022", "fy2030"]
+    assert not str(detail["engine"]).endswith("_unavailable")
+
+
 # --- (d62-1) engine 500-wrapped refusal → 400, never 502 ---------------------
 
 def test_fbt_year_outside_cohort_maps_to_400_not_502():
