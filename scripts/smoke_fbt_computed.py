@@ -42,7 +42,6 @@ the repo's no-runtime-deps posture.
 
 import json
 import os
-import re
 import sys
 import urllib.error
 import urllib.request
@@ -93,10 +92,20 @@ BODIES = {
     "tebe": {"salaryPackagedMealEfle": 5000, "recreation": 2000, "fbtType": "Type 1"},
 }
 
-# Regex that matches a JSON number token that is NOT quoted and carries a
-# decimal point or exponent (i.e. a bare float). Integers are allowed (counts,
-# days). A value inside quotes ("60.0") is a string and does not match.
-BARE_FLOAT_RE = re.compile(r'(?<!")(?<![\d.])-?\d+\.\d+(?:[eE][+-]?\d+)?(?!")')
+# Bare-float detection is done at PARSE time, not by a raw-text regex.
+#
+# D53c (Fable [CALC] 2026-09-30): the previous raw-text regex false-positived
+# on the D60 rounding-policy token `lodgeit-rounding-1.0` — the `-1.0`
+# substring inside that string (in the advisory prose sentence, where it is not
+# quote-adjacent) matched the bare-float pattern, failing all 20 FBT URNs on
+# canary 00068-xas despite every monetary value being a correct decimal string.
+#
+# `json.loads(body, parse_float=<hook>)` invokes the hook for every JSON *number
+# literal that carries a decimal point or exponent* (a real float token) and for
+# nothing else — integers use parse_int, and text inside quotes is a string and
+# is never a number literal. So a float literal anywhere in the body is recorded;
+# a decimal-string like "1234.50" or a hyphenated token like
+# "lodgeit-rounding-1.0" is not. This is the authoritative bare-float signal.
 
 
 def http(method, url, body=None):
@@ -121,23 +130,28 @@ def is_decimal_string(v):
         return False
 
 
-def parsed_bare_floats(obj, path=""):
-    """Paths where a JSON float (Python float after parse) appears."""
-    hits = []
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            hits += parsed_bare_floats(v, f"{path}.{k}")
-    elif isinstance(obj, list):
-        for i, v in enumerate(obj):
-            hits += parsed_bare_floats(v, f"{path}[{i}]")
-    elif isinstance(obj, float):
-        hits.append(path or ".")
-    return hits
+def parse_float_literals(raw_text):
+    """Return the list of JSON float literals found while parsing ``raw_text``.
 
+    Parses with a ``parse_float`` hook that records every float-token the JSON
+    parser encounters (any number literal with a decimal point or exponent).
+    Returns the recorded literals as strings; an empty list means the body
+    carries no bare JSON float. Raises ``ValueError`` if the body is not JSON
+    (the caller already guards that path).
 
-def raw_bare_floats(raw_text):
-    """Bare-float substrings in the raw response text (regex belt-and-braces)."""
-    return BARE_FLOAT_RE.findall(raw_text)
+    A path is not recorded because ``json.loads``' ``parse_float`` hook does not
+    receive one; the literal value is enough to name the offender, and the
+    per-URN row already identifies which calculator leaked it.
+    """
+    found = []
+
+    def hook(literal):
+        # ``literal`` is the raw float token as text, e.g. "1234.5" or "-1.0".
+        found.append(literal)
+        return float(literal)
+
+    json.loads(raw_text, parse_float=hook)
+    return found
 
 
 def evaluate(urn, status, raw, call=""):
@@ -161,15 +175,12 @@ def evaluate(urn, status, raw, call=""):
         row[t] = b.get(t)
         if b.get(t) is None or not is_decimal_string(b.get(t)):
             trio_ok = False
-    parsed = parsed_bare_floats(b)
-    raw_hits = raw_bare_floats(raw)
+    float_literals = parse_float_literals(raw)
     if not trio_ok:
         row["detail"] = "trio missing/null/not-decimal-string"
-    elif parsed:
-        row["detail"] = f"bare float(s) at {parsed[:5]}"
-    elif raw_hits:
-        row["detail"] = f"raw-text bare float(s): {raw_hits[:5]}"
-    row["pass"] = trio_ok and not parsed and not raw_hits
+    elif float_literals:
+        row["detail"] = f"bare JSON float literal(s): {float_literals[:5]}"
+    row["pass"] = trio_ok and not float_literals
     return row
 
 
