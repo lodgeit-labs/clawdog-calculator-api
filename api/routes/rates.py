@@ -119,7 +119,7 @@ def list_rates(
     taxonomy: Annotated[
         str,
         Query(description=(
-            "Bare-atom taxonomy axis value per CLAWDOG/111 §2. "
+            "Bare-atom taxonomy axis value. "
             "Default: lodgeit_au_sbrm."
         )),
     ] = DEFAULT_TAXONOMY,
@@ -202,7 +202,7 @@ def get_rate(
     taxonomy: Annotated[
         str,
         Query(description=(
-            "Bare-atom taxonomy axis value per CLAWDOG/111 §2. "
+            "Bare-atom taxonomy axis value. "
             "Default: lodgeit_au_sbrm."
         )),
     ] = DEFAULT_TAXONOMY,

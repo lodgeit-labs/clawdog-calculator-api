@@ -194,7 +194,7 @@ def _mint_result_for_audience(audience: str) -> dict:
 
 @router.post(
     "/engine-auth",
-    summary="D22 mc20 admin probe: prove gateway can mint ID tokens for engine audiences.",
+    summary="Admin probe: prove the gateway can mint ID tokens for engine audiences.",
     description=(
         "Attempts to mint an ID token for each configured engine URL (or the "
         "audiences supplied in the body). Returns per-audience status naming "
@@ -203,16 +203,16 @@ def _mint_result_for_audience(audience: str) -> dict:
         "full (only prefix + length) to avoid leaking a bearer through "
         "response logs.\n\n"
         "**Gated by CLAWDOG_ENGINE_AUTH_PROBE_TOKEN env var + "
-        "X-Clawdog-Probe-Token request header** (per Fable 2026-09-07 04:41 "
-        "UTC note 1). When env var is unset OR header value doesn't match, "
-        "endpoint returns 404 (production posture). When both match, endpoint "
-        "performs the probe (canary posture).\n\n"
+        "X-Clawdog-Probe-Token request header.** When env var is unset OR "
+        "header value doesn't match, endpoint returns 404 (production "
+        "posture). When both match, endpoint performs the probe (canary "
+        "posture).\n\n"
         "**Deploy gate use:** curl this against a canary/tag revision URL "
         "BEFORE promoting the revision to production traffic. If any engine "
         "mint fails, the revision stays at 0% traffic and the failure log "
-        "guides the fix without impacting live callers. Fable's rule: "
-        "\"the fixed #40 must be proven to mint against a real metadata "
-        "server before it goes to production traffic.\""
+        "guides the fix without impacting live callers: the token-mint fix "
+        "must be proven against a real metadata server before it goes to "
+        "production traffic."
     ),
 )
 async def probe_engine_auth(

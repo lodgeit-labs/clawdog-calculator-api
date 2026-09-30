@@ -3,7 +3,7 @@
     "schemas": {
       "AssetCreatedInput": {
         "additionalProperties": false,
-        "description": "Asset ingestion input (mirrors engine's `AssetCreatedInput`).\n\nF10 amendment: `acquisition_date` is required (non-optional). Basis-\nconditional fields (`accounting_useful_life_years` + `accounting_method`\nwhen basis is accounting; `tax_asset_class` when basis is tax) are\nvalidated at the engine's schema layer (F13 UPHELD) rather than\nduplicated here; the gateway forwards the payload verbatim and lets the\nengine return the typed refusal on inconsistency.",
+        "description": "Asset ingestion input (mirrors the engine's `AssetCreatedInput`).\n\n`acquisition_date` is required (non-optional). Basis-conditional fields\n(`accounting_useful_life_years` + `accounting_method` when basis is\naccounting; `tax_asset_class` when basis is tax) are validated at the\nengine's schema layer rather than duplicated here; the gateway forwards\nthe payload verbatim and lets the engine return the typed refusal on\ninconsistency.",
         "properties": {
           "accounting_method": {
             "anyOf": [
@@ -18,8 +18,14 @@
                 "type": "null"
               }
             ],
-            "description": "Accounting depreciation method. Required when basis is 'accounting' or 'au_aasb116'. Values: 'prime_cost' (straight-line) or 'diminishing_value'.",
-            "title": "Accounting Method"
+            "description": "Required when basis is 'accounting' or 'au_aasb116'. Accounting depreciation method. Values: 'prime_cost' (straight-line) or 'diminishing_value'.",
+            "title": "Accounting Method",
+            "x-applies-when": {
+              "basis": [
+                "accounting",
+                "au_aasb116"
+              ]
+            }
           },
           "accounting_useful_life_years": {
             "anyOf": [
@@ -31,8 +37,14 @@
                 "type": "null"
               }
             ],
-            "description": "Accounting useful life in years. Required when basis is 'accounting' or 'au_aasb116'; must be omitted when basis is 'tax' or 'au_itaa97' (tax path resolves effective_life from the SBRM rate table).",
-            "title": "Accounting Useful Life Years"
+            "description": "Required when basis is 'accounting' or 'au_aasb116'; must be omitted when basis is 'tax' or 'au_itaa97'. Accounting useful life in years (the tax path resolves effective_life from the SBRM rate table).",
+            "title": "Accounting Useful Life Years",
+            "x-applies-when": {
+              "basis": [
+                "accounting",
+                "au_aasb116"
+              ]
+            }
           },
           "acquisition_date": {
             "description": "Asset acquisition date. Required per F10 amendment; determines fiscal-year placement + calculation_start record emission at fold entry.",
@@ -50,7 +62,7 @@
                 "type": "string"
               }
             ],
-            "description": "Initial cost basis. Positive Decimal; SR #3 fail-loud rejects zero or negative. Money: cent-quantised, JSON number or decimal string.",
+            "description": "Initial cost basis. Positive Decimal; fail-loud rejects zero or negative. Money: cent-quantised, JSON number or decimal string.",
             "gt": 0,
             "title": "Cost",
             "x-money": true
@@ -69,8 +81,13 @@
                 "type": "null"
               }
             ],
-            "description": "Diminishing-value rate factor as a multiplier of 1/life. ATO Div 40 default is 2 (200% method); prime-cost equivalent is 1. REQUIRED at the engine when accounting_method is 'diminishing_value'; conditional validation is enforced at the engine schema layer per F13 UPHELD (the gateway does not duplicate). MUST be omitted when accounting_method is 'prime_cost'. Unit convention: rate factor (e.g. 2.0 for the 200% method), NOT the resulting per-year rate.",
-            "title": "Dv Rate Factor"
+            "description": "Required at the engine when accounting_method is 'diminishing_value'; must be omitted when accounting_method is 'prime_cost'. Diminishing-value rate factor as a multiplier of 1/life. ATO Div 40 default is 2 (200% method); prime-cost equivalent is 1. Conditional validation is enforced at the engine schema layer (the gateway does not duplicate). Unit convention: rate factor (e.g. 2.0 for the 200% method), NOT the resulting per-year rate.",
+            "title": "Dv Rate Factor",
+            "x-applies-when": {
+              "accounting_method": [
+                "diminishing_value"
+              ]
+            }
           },
           "pool_type": {
             "anyOf": [
@@ -81,7 +98,7 @@
                 "type": "null"
               }
             ],
-            "description": "Pool membership discriminator. Any non-null value is refused by the engine's D2 fold with typed refusal_class 'pool_asset_out_of_t6_scope' (rider 3 passthrough: gateway returns HTTP 400 with refusal envelope preserved rather than flattening to 502). T6 first-cut scope is single asset only; pool machinery lands in the T6.1 pool-retrofit sprint. Documented exclusion in the manifest is now wire-demonstrable because the field reaches the engine's typed refusal path.",
+            "description": "Pool membership discriminator. Any non-null value is refused by the engine's fold with typed refusal_class 'pool_asset_out_of_t6_scope' (the gateway returns HTTP 400 with the refusal envelope preserved rather than flattening to 502). Current scope is single asset only; pool machinery is out of scope. The documented manifest exclusion is wire-demonstrable because the field reaches the engine's typed refusal path.",
             "title": "Pool Type"
           },
           "tax_asset_class": {
@@ -93,8 +110,14 @@
                 "type": "null"
               }
             ],
-            "description": "Tax asset class URI resolving to a rate-table effective-life entry. Required when basis is 'tax' or 'au_itaa97'; must be omitted when basis is 'accounting' or 'au_aasb116'.",
-            "title": "Tax Asset Class"
+            "description": "Required when basis is 'tax' or 'au_itaa97'; must be omitted when basis is 'accounting' or 'au_aasb116'. Tax asset class URI resolving to a rate-table effective-life entry.",
+            "title": "Tax Asset Class",
+            "x-applies-when": {
+              "basis": [
+                "tax",
+                "au_itaa97"
+              ]
+            }
           }
         },
         "required": [
@@ -183,7 +206,7 @@
       },
       "DepreciationAtInput": {
         "additionalProperties": false,
-        "description": "Request body for the gateway's depreciation `at` route.\n\nWire-shape mirrors the upstream depreciation-engine\n`/v1/calculators/depreciation/at/{period_uri}` endpoint (Fable F1 UPHELD\nmc11-2026-08-02 URN parity). Gateway-side amendments per Fable verdict\namendment 2 \u00a7A2.4 riders 1-2:\n\n  * Rider 1: `basis` narrowed to AU literals; UK is refused.\n  * Rider 2: `numeric_mode` is NOT a caller-visible field; the gateway\n    pins the engine to `numeric_mode=\"serving\"` internally.\n\nBasis-conditional field validation (which `asset` fields must be present\ngiven the `basis` value) is enforced at the engine's schema layer per\nF13 UPHELD; the gateway does not duplicate that validation.",
+        "description": "Request body for the gateway's depreciation `at` route.\n\nWire-shape mirrors the upstream depreciation-engine\n`/v1/calculators/depreciation/at/{period_uri}` endpoint (URN parity).\nGateway-side amendments:\n\n  * `basis` narrowed to AU literals; UK is refused.\n  * `numeric_mode` is NOT a caller-visible field; the gateway pins the\n    engine to `numeric_mode=\"serving\"` internally.\n\nBasis-conditional field validation (which `asset` fields must be present\ngiven the `basis` value) is enforced at the engine's schema layer; the\ngateway does not duplicate that validation.\n\nElection group depreciation (no statutory default); see GET /v1/modules.",
         "properties": {
           "asset": {
             "$ref": "#/components/schemas/AssetCreatedInput",
@@ -197,7 +220,7 @@
           },
           "basis": {
             "const": "accounting",
-            "description": "Depreciation basis discriminator. Fable D8c mc00-2026-09-04: Andrew ruled accounting-only at v1. Gateway narrows the engine's five-literal vocabulary to `'accounting'` (AASB 116 useful-life basis). Tax basis (ITAA97 Div 40) is architecturally reachable at the engine but is not exposed on this URN; it will land as a separate URN + registry entry + input schema class when a consumer wants it. UK framework 'uk_frs102_s17' likewise refused; UK becomes its own registry entry when a UK consumer arrives.",
+            "description": "Depreciation basis discriminator. Accounting-only at v1: the gateway narrows the engine's five-literal vocabulary to `'accounting'` (AASB 116 useful-life basis). Tax basis (ITAA97 Div 40) is architecturally reachable at the engine but is not exposed on this URN; it will land as a separate URN + registry entry + input schema class when a consumer wants it. UK framework 'uk_frs102_s17' likewise refused; UK becomes its own registry entry when a UK consumer arrives.",
             "title": "Basis",
             "type": "string"
           },
@@ -215,7 +238,7 @@
                 "type": "null"
               }
             ],
-            "description": "Optional day-count convention. **Fable D4 mc17 2026-09-03 12:20 UTC:** /at/ accepts an optional `day_count`, defaulting to `actual/actual` (the fold's basis-implicit convention for `basis: \"accounting\"`; AASB 116-faithful anniversary-scoped denominator). Not required because /at/ is live in the gateway registry (F19 wire-freeze on /at/); a required field breaks integrated callers and the smoke set for no gain. The applied convention is ECHOED in the response's `day_count` field so callers can byte-verify their expectation regardless of whether they supplied it. Values: `actual/actual` | `actual/365` | `monthly`.",
+            "description": "Optional day-count convention, defaulting to `actual/actual` (the fold's basis-implicit convention for `basis: \"accounting\"`; AASB 116-faithful anniversary-scoped denominator). Not required, so integrated callers and the smoke set are unaffected. The applied convention is ECHOED in the response's `day_count` field so callers can byte-verify their expectation regardless of whether they supplied it. Values: `actual/actual` | `actual/365` | `monthly`.",
             "title": "Day Count"
           },
           "events": {
@@ -233,11 +256,12 @@
           "at_date"
         ],
         "title": "DepreciationAtInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:depreciation:at"
       },
       "DepreciationRangeInput": {
         "additionalProperties": false,
-        "description": "Request body for the gateway's depreciation `range` route.\n\nWire-shape mirrors the upstream depreciation-engine\n`/v1/calculators/depreciation/range/{period_uri}` endpoint (Fable D5\nmc02 2026-09-04 sibling of `/at/`, NOT overload per RATIFIED \u00a72\nAsk 1).\n\nGateway-side amendments (same as /at/ per Fable riders 1-2):\n\n  * Rider 1: `basis` narrowed to AU literals; UK refused.\n  * Rider 2: `numeric_mode` NOT caller-visible; gateway pins\n    `serving` server-side.\n\n**day_count is REQUIRED (no default)** per RATIFIED \u00a72 Ask 4;\nunaffected by Fable D5. Values: `actual/actual` (recommended\ndefault for basis:accounting; AASB 116-faithful anniversary-\nscoped denominator; each period charges exactly cost/life) |\n`actual/365` (constant 365 denominator regardless of FY length;\nkept HONEST at the label per Andrew ratification and Fable mc17\nD4 ruling) | `monthly` (per-month round-and-sum for ledger\nreconciliation).\n\nEndpoint semantics per RATIFIED \u00a72 Ask 3:\n- INCLUSIVE of both endpoints (1 to 31 August is 31 days)\n- Zero-day range (`from_date == to_date`) returns `range_dep = 0.00`",
+        "description": "Request body for the gateway's depreciation `range` route.\n\nWire-shape mirrors the upstream depreciation-engine\n`/v1/calculators/depreciation/range/{period_uri}` endpoint (a sibling of\n`/at/`, NOT an overload).\n\nGateway-side amendments (same as /at/):\n\n  * `basis` narrowed to AU literals; UK refused.\n  * `numeric_mode` NOT caller-visible; gateway pins `serving`\n    server-side.\n\n**day_count is REQUIRED (no default).** Values: `actual/actual`\n(recommended default for basis:accounting; AASB 116-faithful\nanniversary-scoped denominator; each period charges exactly cost/life) |\n`actual/365` (constant 365 denominator regardless of FY length; kept\nhonest at the label) | `monthly` (per-month round-and-sum for ledger\nreconciliation).\n\nEndpoint semantics:\n- INCLUSIVE of both endpoints (1 to 31 August is 31 days)\n- Zero-day range (`from_date == to_date`) returns `range_dep = 0.00`\n\nElection group depreciation (no statutory default); see GET /v1/modules.",
         "properties": {
           "asset": {
             "$ref": "#/components/schemas/AssetCreatedInput",
@@ -245,12 +269,12 @@
           },
           "basis": {
             "const": "accounting",
-            "description": "Basis discriminator (same vocabulary as /at/). D8c mc00-2026-09-04 narrowed to Literal['accounting'] at both endpoints; see /at/'s basis field for the widening path.",
+            "description": "Basis discriminator (same vocabulary as /at/). Narrowed to Literal['accounting'] at both endpoints; see /at/'s basis field for the widening path.",
             "title": "Basis",
             "type": "string"
           },
           "day_count": {
-            "description": "REQUIRED (no default per RATIFIED \u00a72 Ask 4). Values: `actual/actual` (recommended default for basis:accounting; AASB 116-faithful; each period charges exactly cost/life; asset lands on zero at life-end); `actual/365` (constant 365 denominator regardless of FY length; leap-anniversary over-charge = the D4 defect anchor); `monthly` (per-month round-and-sum for ledger reconciliation).",
+            "description": "REQUIRED (no default). Values: `actual/actual` (recommended default for basis:accounting; AASB 116-faithful; each period charges exactly cost/life; asset lands on zero at life-end); `actual/365` (constant 365 denominator regardless of FY length; a leap-anniversary year over-charges relative to actual/actual); `monthly` (per-month round-and-sum for ledger reconciliation).",
             "enum": [
               "actual/actual",
               "actual/365",
@@ -268,7 +292,7 @@
             "type": "array"
           },
           "from_date": {
-            "description": "Range start date, INCLUSIVE. Per RATIFIED \u00a72 Ask 3: a request with `from_date=2023-08-01` and `to_date=2023-08-31` computes for 31 days (the whole of August). If `from_date > to_date` the request is rejected at schema-layer 422.",
+            "description": "Range start date, INCLUSIVE: a request with `from_date=2023-08-01` and `to_date=2023-08-31` computes for 31 days (the whole of August). If `from_date > to_date` the request is rejected at schema-layer 422.",
             "format": "date",
             "title": "From Date",
             "type": "string"
@@ -288,10 +312,11 @@
           "day_count"
         ],
         "title": "DepreciationRangeInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:depreciation:range"
       },
       "Div7aAtInput": {
-        "description": "Div 7A single-income-year MYR request payload.\n\nCanonical URN: ``urn:sbrm:calculator:div7a:at`` per constellation naming\nconvention (matches ``urn:sbrm:calculator:depreciation:at`` + ``urn:sbrm:calculator:fbt:*``).\n\nField discipline:\n  - ``amalgamated_base``: \u00a7109E amalgamated loan base amount at start of year (AUD)\n  - ``loan_term_years``: \u00a7109N complying-loan term (7 unsecured / 25 secured)\n  - ``loan_origination_date``: date the loan was made (ISO or dd/mm/yyyy)\n  - ``income_year_start_date``: 1 July of the FY to compute (ISO or dd/mm/yyyy)\n  - ``is_first_real_myr_year``: optional; derived from origination/year if omitted\n  - ``repayments``: list; may be empty (canon 620 \u00a71.1 single-annual or multi)",
+        "description": "Div 7A single-income-year MYR request payload.\n\nCanonical URN: ``urn:sbrm:calculator:div7a:at`` per the constellation\nnaming convention (matches ``urn:sbrm:calculator:depreciation:at`` +\n``urn:sbrm:calculator:fbt:*``).\n\nField discipline:\n  - ``amalgamated_base``: \u00a7109E amalgamated loan base amount at start of year (AUD)\n  - ``loan_term_years``: \u00a7109N complying-loan term (7 unsecured / 25 secured)\n  - ``loan_origination_date``: date the loan was made (ISO or dd/mm/yyyy)\n  - ``income_year_start_date``: 1 July of the FY to compute (ISO or dd/mm/yyyy)\n  - ``is_first_real_myr_year``: optional; derived from origination/year if omitted\n  - ``repayments``: list; may be empty (single-annual or multiple repayments)\n\nElection group div7a (no statutory default); see GET /v1/modules.",
         "properties": {
           "amalgamated_base": {
             "description": "\u00a7109E amalgamated loan base amount (AUD). Must be positive: a non-positive loan balance is not a loan and cannot receive a compliance verdict. Money: cent-quantised, JSON number or decimal string.",
@@ -322,7 +347,7 @@
                 "type": "null"
               }
             ],
-            "description": "Override for canon 610 \u00a71.2 first-year gotcha. If omitted, engine derives from origination_date vs income_year_start_date.",
+            "description": "Override for the Division 7A first-year rule. If omitted, the engine derives it from origination_date vs income_year_start_date.",
             "title": "Is First Real Myr Year"
           },
           "loan_origination_date": {
@@ -331,13 +356,13 @@
             "type": "string"
           },
           "loan_term_years": {
-            "description": "\u00a7109N loan term in years (7 unsecured / 25 secured). Must be positive; canon 610 \u00a71.2 remaining-term arithmetic is undefined at zero.",
+            "description": "\u00a7109N loan term in years (7 unsecured / 25 secured). Must be positive; the remaining-term arithmetic is undefined at zero.",
             "exclusiveMinimum": 0.0,
             "title": "Loan Term Years",
             "type": "integer"
           },
           "repayments": {
-            "description": "Repayment events; canon 620 daily-balance aggregation",
+            "description": "Repayment events; daily-balance aggregation.",
             "items": {
               "$ref": "#/components/schemas/Div7aRepaymentIn"
             },
@@ -352,7 +377,8 @@
           "income_year_start_date"
         ],
         "title": "Div7aAtInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:div7a:at"
       },
       "Div7aRepaymentIn": {
         "description": "A single repayment event.",
@@ -488,7 +514,7 @@
       },
       "FBTBoardInput": {
         "additionalProperties": false,
-        "description": "Input for Phase 2h Board Fringe Benefit (engine: ``calculate_fbt_board``).\n\nFBTAA s.36 (Compilation No. 95). Engine arithmetic at FBT_Engine.pl L2586.\nType 2 only. Sheet row 35 sheet-vs-statute divergence is parked under\nOT #94; the predicate is statute-faithful.",
+        "description": "Input for the Board Fringe Benefit (engine: ``calculate_fbt_board``).\n\nFBTAA s.36 (Compilation No. 95). Type 2 only. The predicate is\nstatute-faithful.\n\nElection group board (no statutory default); see GET /v1/modules.",
         "properties": {
           "membersOverTwelve": {
             "anyOf": [
@@ -573,11 +599,12 @@
           }
         },
         "title": "FBTBoardInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:board"
       },
       "FBTCarOperatingCostInput": {
         "additionalProperties": false,
-        "description": "Input for the FBT Car Operating Cost method (Phase 3a Cut A).\n\nField naming mirrors the upstream Prolog engine's request shape (snake_case\nvia FastAPI's alias mapping, accepting both snake_case and the camelCase\nused by the existing fbt_tester.py compatibility surface).",
+        "description": "Input for the FBT Car Operating Cost method.\n\nField naming mirrors the upstream Prolog engine's request shape (snake_case\nvia FastAPI's alias mapping, accepting both snake_case and the camelCase\nused by the existing fbt_tester.py compatibility surface).\n\nElection group car (statutory default: car-statutory-formula); see GET /v1/modules.",
         "properties": {
           "acquisitionCost": {
             "anyOf": [
@@ -599,9 +626,12 @@
                 "type": "null"
               }
             ],
-            "description": "Original acquisition cost (AUD) for the chained-DV walk; chained-DV entry-point. Mutually exclusive with opening_depreciated_value. When supplied with acquisition_date (and without opening_depreciated_value), the engine dispatches to the OT #81 chained-DV walk predicate (mc08). Money: cent-quantised, JSON number or decimal string.",
+            "description": "Mutually exclusive with openingDepreciatedValue. Original acquisition cost (AUD) for the chained-DV walk; chained-DV entry-point. When supplied with acquisition_date (and without openingDepreciatedValue), the engine dispatches to the chained-DV walk predicate. Money: cent-quantised, JSON number or decimal string.",
             "title": "Acquisitioncost",
-            "x-money": true
+            "x-money": true,
+            "x-mutually-exclusive": [
+              "openingDepreciatedValue"
+            ]
           },
           "acquisitionDate": {
             "anyOf": [
@@ -803,9 +833,12 @@
                 "type": "null"
               }
             ],
-            "description": "Opening depreciated value at start of FBT year (AUD). Mutually exclusive with acquisition_cost per engine Lesson #14 strict-validation (OT #81 Rung 2 mc07). Money: cent-quantised, JSON number or decimal string.",
+            "description": "Mutually exclusive with acquisitionCost. Opening depreciated value at start of FBT year (AUD). Money: cent-quantised, JSON number or decimal string.",
             "title": "Openingdepreciatedvalue",
-            "x-money": true
+            "x-money": true,
+            "x-mutually-exclusive": [
+              "acquisitionCost"
+            ]
           },
           "registrationInsurance": {
             "anyOf": [
@@ -837,11 +870,12 @@
           "formOfFinance"
         ],
         "title": "FBTCarOperatingCostInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:car-operating-cost"
       },
       "FBTCarParkingActualInput": {
         "additionalProperties": false,
-        "description": "Input for Phase 2j Car Parking Actual Method (engine: ``calculate_fbt_car_parking_actual``).\n\nFBTAA Division 10A simple-sum method. Engine arithmetic at FBT_Engine.pl L3237.",
+        "description": "Input for the Car Parking Actual Method (engine: ``calculate_fbt_car_parking_actual``).\n\nFBTAA Division 10A simple-sum method.\n\nElection group car-parking-count (statutory default: car-parking-actual); see GET /v1/modules.",
         "properties": {
           "employeeContribution": {
             "anyOf": [
@@ -916,11 +950,12 @@
           "valuationMethodRate"
         ],
         "title": "FBTCarParkingActualInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:car-parking-actual"
       },
       "FBTCarParkingRegister12WkInput": {
         "additionalProperties": false,
-        "description": "Input for Phase 2j Car Parking 12-Week Register (engine:\n``calculate_fbt_car_parking_register_12wk``).\n\nFBTAA s.39GB 12-Week Register method. Engine arithmetic at FBT_Engine.pl L3360.\nWRT T1 sheet row 63 sheet-vs-statute divergence parked under OT #96.",
+        "description": "Input for the Car Parking 12-Week Register (engine:\n``calculate_fbt_car_parking_register_12wk``).\n\nFBTAA s.39GB 12-Week Register method.\n\nElection group car-parking-count (statutory default: car-parking-actual); see GET /v1/modules.",
         "properties": {
           "benefitsInPeriod": {
             "description": "Number of car parking benefits in the 12-week register period.",
@@ -994,11 +1029,12 @@
           "daysSpaceAvailable"
         ],
         "title": "FBTCarParkingRegister12WkInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:car-parking-register-12wk"
       },
       "FBTCarParkingStatutory228Input": {
         "additionalProperties": false,
-        "description": "Input for Phase 2j Car Parking 228-Day Statutory Formula (engine:\n``calculate_fbt_car_parking_statutory_228``).\n\nFBTAA s.39FA Statutory Formula method. Engine arithmetic at FBT_Engine.pl L3288.",
+        "description": "Input for the Car Parking 228-Day Statutory Formula (engine:\n``calculate_fbt_car_parking_statutory_228``).\n\nFBTAA s.39FA Statutory Formula method.\n\nElection group car-parking-count (statutory default: car-parking-actual); see GET /v1/modules.",
         "properties": {
           "daysCarParkingAvailable": {
             "description": "Days the car parking benefit was available [0..366]; engine clamps at 366.",
@@ -1065,11 +1101,12 @@
           "valuationMethodRate"
         ],
         "title": "FBTCarParkingStatutory228Input",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:car-parking-statutory-228"
       },
       "FBTCarStatutoryFormulaInput": {
         "additionalProperties": false,
-        "description": "Input for Phase 2l Car Statutory Formula (engine: ``calculate_fbt_car_statutory_formula``).\n\nFBTAA s.9 Statutory Formula method (legacy v1; rate-table-fed). Engine\narithmetic at FBT_Engine.pl L927. Consumes the FY2026\n``statutory-fraction`` + ``days-in-year`` rate-table fact-nodes per\nStanding Rule #6 (the engine throws ``missing_rate(...)`` if absent).",
+        "description": "Input for the Car Statutory Formula method (engine: ``calculate_fbt_car_statutory_formula``).\n\nFBTAA s.9 Statutory Formula method (legacy v1; rate-table-fed). Consumes\nthe FY2026 ``statutory-fraction`` + ``days-in-year`` rate-table\nfact-nodes (the engine throws ``missing_rate(...)`` if absent).\n\nElection group car (statutory default: car-statutory-formula); see GET /v1/modules.",
         "properties": {
           "accessories": {
             "anyOf": [
@@ -1165,11 +1202,12 @@
           "daysAvailable"
         ],
         "title": "FBTCarStatutoryFormulaInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:car-statutory-formula"
       },
       "FBTDebtWaiverInput": {
         "additionalProperties": false,
-        "description": "Input for Phase 2b Debt Waiver Fringe Benefit (engine: ``calculate_fbt_debt_waiver``).\n\nFBTAA s.16. Engine arithmetic at FBT_Engine.pl L3433. Type 2 only per\nFBTAA; ``fbt_type`` echoed as 'Type 2'.",
+        "description": "Input for the Debt Waiver Fringe Benefit (engine: ``calculate_fbt_debt_waiver``).\n\nFBTAA s.16. Type 2 only per FBTAA; ``fbt_type`` echoed as 'Type 2'.\n\nElection group debt-waiver (no statutory default); see GET /v1/modules.",
         "properties": {
           "amountWaived": {
             "description": "Principal debt amount waived (AUD). Money: cent-quantised, JSON number or decimal string.",
@@ -1215,11 +1253,12 @@
           "amountWaived"
         ],
         "title": "FBTDebtWaiverInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:debt-waiver"
       },
       "FBTExpensePaymentInHouseInput": {
         "additionalProperties": false,
-        "description": "Phase 2c in-house Expense Payment (consumes ``in-house-benefit-cap``).",
+        "description": "In-house Expense Payment (consumes ``in-house-benefit-cap``).\n\nElection group expense-payment (no statutory default); see GET /v1/modules.",
         "properties": {
           "employeeContribution": {
             "default": 0,
@@ -1281,8 +1320,13 @@
                 "type": "null"
               }
             ],
-            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
+            "description": "Only consulted on the in-house variant. In-house benefit reduction claimed (AUD); clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
             "title": "Inhousebenefitclaimed",
+            "x-applies-when": {
+              "variant": [
+                "in-house"
+              ]
+            },
             "x-money": true
           },
           "otherwiseDeductiblePercentage": {
@@ -1307,11 +1351,12 @@
           "fbtType"
         ],
         "title": "FBTExpensePaymentInHouseInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:expense-payment-in-house"
       },
       "FBTExpensePaymentInput": {
         "additionalProperties": false,
-        "description": "Phase 2c std Expense Payment.",
+        "description": "Standard Expense Payment.\n\nElection group expense-payment (no statutory default); see GET /v1/modules.",
         "properties": {
           "employeeContribution": {
             "default": 0,
@@ -1373,8 +1418,13 @@
                 "type": "null"
               }
             ],
-            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
+            "description": "Only consulted on the in-house variant. In-house benefit reduction claimed (AUD); clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
             "title": "Inhousebenefitclaimed",
+            "x-applies-when": {
+              "variant": [
+                "in-house"
+              ]
+            },
             "x-money": true
           },
           "otherwiseDeductiblePercentage": {
@@ -1399,11 +1449,12 @@
           "fbtType"
         ],
         "title": "FBTExpensePaymentInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:expense-payment"
       },
       "FBTHousingInput": {
         "additionalProperties": false,
-        "description": "Input for Phase 2f Non-Remote Housing Fringe Benefit (engine: ``calculate_fbt_housing``).\n\nFBTAA s.26(1)(c) + s.26(2)(b). Engine arithmetic at FBT_Engine.pl L2761.\nIndexation factor is period-scoped per s.26(2)(b); FY2026 published State\nrates span 0.988 (TAS) to 1.100 (WA). C# range-clamp [0.001, 1.099] under-\nindexes WA \u2014 mirrored here for parity (banked forward concern OT #95\nsibling).",
+        "description": "Input for the Non-Remote Housing Fringe Benefit (engine: ``calculate_fbt_housing``).\n\nFBTAA s.26(1)(c) + s.26(2)(b). Indexation factor is period-scoped per\ns.26(2)(b); FY2026 published State rates span 0.988 (TAS) to 1.100 (WA).\nThe C# range-clamp [0.001, 1.099] under-indexes WA \u2014 mirrored here for\nparity.\n\nElection group housing (no statutory default); see GET /v1/modules.",
         "properties": {
           "fbtType": {
             "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
@@ -1474,11 +1525,12 @@
           "fbtType"
         ],
         "title": "FBTHousingInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:housing"
       },
       "FBTLafhaInput": {
         "additionalProperties": false,
-        "description": "Input for Phase 2g LAFHA Fringe Benefit (engine: ``calculate_fbt_lafha``).\n\nFBTAA s.31(2). Engine arithmetic at FBT_Engine.pl L2943. Always Type 2 per\nATO TR 96/9. ``exempt_food_component`` is the pre-computed scalar (TD 2025/2\ncomposition lookup is sheet/UI-layer concern).",
+        "description": "Input for the LAFHA Fringe Benefit (engine: ``calculate_fbt_lafha``).\n\nFBTAA s.31(2). Always Type 2 per ATO TR 96/9. ``exempt_food_component``\nis the pre-computed scalar (TD 2025/2 composition lookup is a sheet/UI-\nlayer concern).\n\nElection group lafha (no statutory default); see GET /v1/modules.",
         "properties": {
           "accommodationPerWeek": {
             "description": "Accommodation allowance paid per week (AUD). Money: cent-quantised, JSON number or decimal string.",
@@ -1573,11 +1625,12 @@
           "mealsPerWeek"
         ],
         "title": "FBTLafhaInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:lafha"
       },
       "FBTLoanInput": {
         "additionalProperties": false,
-        "description": "Input for Phase 2a Loan Fringe Benefit (engine: ``calculate_fbt_loan_benefit_type_2``).\n\nFBTAA Division 4 (ss.16\u201319). Engine arithmetic at FBT_Engine.pl L2434.\n``fbt_benchmark_interest_amount`` is the DOLLAR amount (not the 0.0862\nrate); the rate is applied upstream by the caller against\n``original_loan_amount`` if supplied.",
+        "description": "Input for the Loan Fringe Benefit (engine: ``calculate_fbt_loan_benefit_type_2``).\n\nFBTAA Division 4 (ss.16\u201319). ``fbt_benchmark_interest_amount`` is the\nDOLLAR amount (not the 0.0862 rate); the rate is applied upstream by the\ncaller against ``original_loan_amount`` if supplied.\n\nElection group loan (no statutory default); see GET /v1/modules.",
         "properties": {
           "fbtBenchmarkInterestAmount": {
             "anyOf": [
@@ -1650,9 +1703,12 @@
                 "type": "null"
               }
             ],
-            "description": "Original loan principal (AUD); only consulted when ``fbt_benchmark_interest_amount`` is absent. Money: cent-quantised, JSON number or decimal string.",
+            "description": "Only consulted when fbtBenchmarkInterestAmount is omitted. Original loan principal (AUD). Money: cent-quantised, JSON number or decimal string.",
             "title": "Originalloanamount",
-            "x-money": true
+            "x-money": true,
+            "x-requires-absence-of": [
+              "fbtBenchmarkInterestAmount"
+            ]
           },
           "otherwiseDeductiblePercentage": {
             "description": "Otherwise-deductible percentage [0..100] per FBTAA s.19.",
@@ -1667,11 +1723,12 @@
           "otherwiseDeductiblePercentage"
         ],
         "title": "FBTLoanInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:loan"
       },
       "FBTMealEntertainment5050Input": {
         "additionalProperties": false,
-        "description": "Phase 2k Meal Entertainment 50/50 Split (FBTAA s.37CA).\n\nEngine ``method=50_50``; the multiplier is hard-coded to 50 inside the\nengine when this method-atom dispatches.",
+        "description": "Meal Entertainment 50/50 Split (FBTAA s.37CA).\n\nEngine ``method=50_50``; the multiplier is hard-coded to 50 inside the\nengine when this method-atom dispatches.\n\nElection group meal-entertainment (no statutory default); see GET /v1/modules.",
         "properties": {
           "eligibleMeals": {
             "anyOf": [
@@ -1885,11 +1942,12 @@
           "fbtType"
         ],
         "title": "FBTMealEntertainment5050Input",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:meal-entertainment-50-50"
       },
       "FBTMealEntertainmentRegister12WkInput": {
         "additionalProperties": false,
-        "description": "Phase 2k Meal Entertainment 12-Week Register (FBTAA s.37CB).\n\nEngine ``method=register_12wk``; ``register_percentage`` is REQUIRED.",
+        "description": "Meal Entertainment 12-Week Register (FBTAA s.37CB).\n\nEngine ``method=register_12wk``; ``register_percentage`` is REQUIRED.\n\nElection group meal-entertainment (no statutory default); see GET /v1/modules.",
         "properties": {
           "eligibleMeals": {
             "anyOf": [
@@ -2111,11 +2169,12 @@
           "registerPercentage"
         ],
         "title": "FBTMealEntertainmentRegister12WkInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:meal-entertainment-register-12wk"
       },
       "FBTPropertyInHouseInput": {
         "additionalProperties": false,
-        "description": "Phase 2d in-house Property (consumes ``in-house-benefit-cap``).",
+        "description": "In-house Property (consumes ``in-house-benefit-cap``).\n\nElection group property (no statutory default); see GET /v1/modules.",
         "properties": {
           "employeeContribution": {
             "default": 0,
@@ -2177,8 +2236,13 @@
                 "type": "null"
               }
             ],
-            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
+            "description": "Only consulted on the in-house variant. In-house benefit reduction claimed (AUD); clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
             "title": "Inhousebenefitclaimed",
+            "x-applies-when": {
+              "variant": [
+                "in-house"
+              ]
+            },
             "x-money": true
           },
           "otherwiseDeductiblePercentage": {
@@ -2195,11 +2259,12 @@
           "fbtType"
         ],
         "title": "FBTPropertyInHouseInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:property-in-house"
       },
       "FBTPropertyInput": {
         "additionalProperties": false,
-        "description": "Phase 2d std Property.",
+        "description": "Standard Property.\n\nElection group property (no statutory default); see GET /v1/modules.",
         "properties": {
           "employeeContribution": {
             "default": 0,
@@ -2261,8 +2326,13 @@
                 "type": "null"
               }
             ],
-            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
+            "description": "Only consulted on the in-house variant. In-house benefit reduction claimed (AUD); clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
             "title": "Inhousebenefitclaimed",
+            "x-applies-when": {
+              "variant": [
+                "in-house"
+              ]
+            },
             "x-money": true
           },
           "otherwiseDeductiblePercentage": {
@@ -2279,11 +2349,12 @@
           "fbtType"
         ],
         "title": "FBTPropertyInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:property"
       },
       "FBTResidualInHouseInput": {
         "additionalProperties": false,
-        "description": "Phase 2e in-house Residual (consumes ``in-house-benefit-cap``).",
+        "description": "In-house Residual (consumes ``in-house-benefit-cap``).\n\nElection group residual (no statutory default); see GET /v1/modules.",
         "properties": {
           "employeeContribution": {
             "default": 0,
@@ -2330,8 +2401,13 @@
                 "type": "null"
               }
             ],
-            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
+            "description": "Only consulted on the in-house variant. In-house benefit reduction claimed (AUD); clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
             "title": "Inhousebenefitclaimed",
+            "x-applies-when": {
+              "variant": [
+                "in-house"
+              ]
+            },
             "x-money": true
           },
           "otherwiseDeductiblePercentage": {
@@ -2363,11 +2439,12 @@
           "fbtType"
         ],
         "title": "FBTResidualInHouseInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:residual-in-house"
       },
       "FBTResidualInput": {
         "additionalProperties": false,
-        "description": "Phase 2e std Residual.",
+        "description": "Standard Residual.\n\nElection group residual (no statutory default); see GET /v1/modules.",
         "properties": {
           "employeeContribution": {
             "default": 0,
@@ -2414,8 +2491,13 @@
                 "type": "null"
               }
             ],
-            "description": "In-house benefit reduction claimed (AUD); only consulted on the in-house variant; clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
+            "description": "Only consulted on the in-house variant. In-house benefit reduction claimed (AUD); clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
             "title": "Inhousebenefitclaimed",
+            "x-applies-when": {
+              "variant": [
+                "in-house"
+              ]
+            },
             "x-money": true
           },
           "otherwiseDeductiblePercentage": {
@@ -2447,11 +2529,12 @@
           "fbtType"
         ],
         "title": "FBTResidualInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:residual"
       },
       "FBTTebeInput": {
         "additionalProperties": false,
-        "description": "Input for Phase 2i Tax-Exempt Body Entertainment (engine: ``calculate_fbt_tebe``).\n\nFBTAA Subdivision B of Division 10 (ss.38\u201339). Engine arithmetic at\nFBT_Engine.pl L3089. s.39 is a thin expenditure-passthrough statute.\n50/50-split method is a sheet/UI-layer caller concern (the caller supplies\nthe post-50/50 totals; engine sums).",
+        "description": "Input for the Tax-Exempt Body Entertainment benefit (engine: ``calculate_fbt_tebe``).\n\nFBTAA Subdivision B of Division 10 (ss.38\u201339). s.39 is a thin\nexpenditure-passthrough statute. The 50/50-split method is a sheet/UI-\nlayer caller concern (the caller supplies the post-50/50 totals; the\nengine sums).\n\nElection group tebe (no statutory default); see GET /v1/modules.",
         "properties": {
           "fbtType": {
             "description": "REQUIRED. Must be 'Type 1' or 'Type 2'. Under FBTAA s.149A, Type 1 vs Type 2 turns on whether the provider (or a member of the same GST group) is entitled to an input tax credit under Division 111 of the A New Tax System (Goods and Services Tax) Act 1999 because of the provision of the benefit (s.149A(1)), or entitled to an input tax credit because of the acquisition or importation of the thing that the benefit consists of (s.149A(2)). This engine cannot infer the provider's GST position from the calculator inputs; the caller must state it. 'Type 1' \u2192 downstream gross-up factor = 2.0802 (GST-creditable benefit). 'Type 2' \u2192 downstream gross-up factor = 1.8868 (not a GST-creditable benefit).",
@@ -2499,7 +2582,8 @@
           "fbtType"
         ],
         "title": "FBTTebeInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:fbt:tebe"
       },
       "HTTPValidationError": {
         "properties": {
@@ -2597,7 +2681,7 @@
         "type": "object"
       },
       "HpScheduleInput": {
-        "description": "Input contract for urn:sbrm:calculator:hp:schedule.",
+        "description": "Input contract for urn:sbrm:calculator:hp:schedule.\n\nElection group hp (no statutory default); see GET /v1/modules.",
         "properties": {
           "amount_financed": {
             "description": "Amount financed as a decimal string. Money: cent-quantised, JSON number or decimal string.",
@@ -2682,7 +2766,8 @@
           "contract_form"
         ],
         "title": "HpScheduleInput",
-        "type": "object"
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:hp:schedule"
       },
       "HpScheduleResponse": {
         "description": "Output contract for urn:sbrm:calculator:hp:schedule.",
@@ -2816,7 +2901,7 @@
       },
       "ModuleListing": {
         "additionalProperties": false,
-        "description": "One entry in the module-discovery listing (GET /v1/modules).\n\nFields are copied verbatim from the ``modules`` array of\n``api/data/calculator_metadata.json``; ``calculators`` is the list of\nthat module's calculator URNs in registry order (mut-2026-09-19).",
+        "description": "One entry in the module-discovery listing (GET /v1/modules).\n\nFields are copied verbatim from the ``modules`` array of\n``api/data/calculator_metadata.json``; ``calculators`` is the list of\nthat module's calculator URNs in registry order.",
         "properties": {
           "calculators": {
             "items": {
@@ -2926,11 +3011,11 @@
       "name": "LodgeiT Labs",
       "url": "https://lodgeit.org/"
     },
-    "description": "**Architectural canon:** [CLAWDOG/109](https://github.com/futureWA/clawdog-brain/blob/master/GLOBAL_NOTES/CLAWDOG/109_CALCULATOR_CONSTELLATION.md)\n\n**Outsource-boundary canon:** [CLAWDOG/110](https://github.com/futureWA/clawdog-brain/blob/master/GLOBAL_NOTES/CLAWDOG/110_OUTSOURCE_BOUNDARY_DISCIPLINE.md)\n\nPhase 3a wires a single calculator (FBT Car Operating Cost). Phase 3c is the second-instance test of whether the abstraction holds.",
+    "description": "A REST egress over the LodgeiT deterministic calculator pool: bare math plus a manifest-fidelity block (live rate-table content_hashes) and an advisory block, behind an atom-vs-bridge URN boundary. The calculator registry grows over time; the route signatures do not.",
     "license": {
       "name": "MIT"
     },
-    "summary": "Phase 3a Egress Interface over the LodgeiT calculator pool. Implements the REST surface of CLAWDOG/109's tri-surface exposure model. Governed by CLAWDOG/110's five non-negotiables (manifest-fidelity, advisory-boundary, atom-vs-bridge, OpenAPI drift, Standing Rule #1).",
+    "summary": "Egress interface over the LodgeiT calculator pool. Implements the REST surface of the constellation's tri-surface exposure model, governed by five non-negotiables (manifest-fidelity, advisory-boundary, atom-vs-bridge, OpenAPI drift, and the tri-surface consistency rule).",
     "title": "ClawDog Calculator-Constellation REST API",
     "version": "0.1.0a0"
   },
@@ -2938,7 +3023,7 @@
   "paths": {
     "/_internal/probe/engine-auth": {
       "post": {
-        "description": "Attempts to mint an ID token for each configured engine URL (or the audiences supplied in the body). Returns per-audience status naming which mint path succeeded (direct_metadata vs fetch_id_token) + per-path error strings on failure. Token itself is NOT returned in full (only prefix + length) to avoid leaking a bearer through response logs.\n\n**Gated by CLAWDOG_ENGINE_AUTH_PROBE_TOKEN env var + X-Clawdog-Probe-Token request header** (per Fable 2026-09-07 04:41 UTC note 1). When env var is unset OR header value doesn't match, endpoint returns 404 (production posture). When both match, endpoint performs the probe (canary posture).\n\n**Deploy gate use:** curl this against a canary/tag revision URL BEFORE promoting the revision to production traffic. If any engine mint fails, the revision stays at 0% traffic and the failure log guides the fix without impacting live callers. Fable's rule: \"the fixed #40 must be proven to mint against a real metadata server before it goes to production traffic.\"",
+        "description": "Attempts to mint an ID token for each configured engine URL (or the audiences supplied in the body). Returns per-audience status naming which mint path succeeded (direct_metadata vs fetch_id_token) + per-path error strings on failure. Token itself is NOT returned in full (only prefix + length) to avoid leaking a bearer through response logs.\n\n**Gated by CLAWDOG_ENGINE_AUTH_PROBE_TOKEN env var + X-Clawdog-Probe-Token request header.** When env var is unset OR header value doesn't match, endpoint returns 404 (production posture). When both match, endpoint performs the probe (canary posture).\n\n**Deploy gate use:** curl this against a canary/tag revision URL BEFORE promoting the revision to production traffic. If any engine mint fails, the revision stays at 0% traffic and the failure log guides the fix without impacting live callers: the token-mint fix must be proven against a real metadata server before it goes to production traffic.",
         "operationId": "probe_engine_auth__internal_probe_engine_auth_post",
         "parameters": [
           {
@@ -3002,7 +3087,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "D22 mc20 admin probe: prove gateway can mint ID tokens for engine audiences.",
+        "summary": "Admin probe: prove the gateway can mint ID tokens for engine audiences.",
         "tags": [
           "internal-probe"
         ]
@@ -3010,7 +3095,7 @@
     },
     "/healthz": {
       "get": {
-        "description": "Return a minimal liveness response for the Cloud Run / Docker HEALTHCHECK.\n\nDoes NOT call into the upstream Prolog engine \u2014 that would couple the\nREST liveness signal to the engine's readiness, which is a deliberately\nindependent dimension.\n\nNOTE (mut-2026-05-25-mc11): Cloud Run / Google edge layer special-cases\nthe literal path ``/healthz`` and returns a Google generic 404 HTML page\nto EXTERNAL public traffic, even when the route is correctly registered\nin FastAPI and the deployed image contains the route bytes (verified\n2026-05-25 00:39 UTC: external curl returns HTML 404 with\n``content-type: text/html`` and NO ``server: Google Frontend`` header,\nwhile FastAPI 404s return JSON ``{\"detail\":\"Not Found\"}`` with\n``server: Google Frontend``; the HTML 404 is from a layer ABOVE GFE).\nCloud Run's INTERNAL startup/liveness probe path uses a different\nnetwork channel that bypasses this interception and DOES reach this\nroute successfully. The path stays at ``/healthz`` so the cloud-run.yaml\nstartupProbe/livenessProbe config continues to work; external operators\nuse ``/livez`` (added below) for public-traffic liveness checks.",
+        "description": "Return a minimal liveness response for the Cloud Run / Docker HEALTHCHECK.\n\nDoes NOT call into the upstream Prolog engine \u2014 that would couple the\nREST liveness signal to the engine's readiness, which is a deliberately\nindependent dimension.\n\nNOTE: the Cloud Run / Google edge layer special-cases\nthe literal path ``/healthz`` and returns a Google generic 404 HTML page\nto EXTERNAL public traffic, even when the route is correctly registered\nin FastAPI and the deployed image contains the route bytes (verified\n2026-05-25 00:39 UTC: external curl returns HTML 404 with\n``content-type: text/html`` and NO ``server: Google Frontend`` header,\nwhile FastAPI 404s return JSON ``{\"detail\":\"Not Found\"}`` with\n``server: Google Frontend``; the HTML 404 is from a layer ABOVE GFE).\nCloud Run's INTERNAL startup/liveness probe path uses a different\nnetwork channel that bypasses this interception and DOES reach this\nroute successfully. The path stays at ``/healthz`` so the cloud-run.yaml\nstartupProbe/livenessProbe config continues to work; external operators\nuse ``/livez`` (added below) for public-traffic liveness checks.",
         "operationId": "healthz_healthz_get",
         "responses": {
           "200": {
@@ -3104,7 +3189,7 @@
     },
     "/v1/calculators": {
       "get": {
-        "description": "Return a manifest of the calculators wired into this deployment.\n\nThe registry grows but the route signature does not. When ``module`` is\nsupplied, the listing is filtered to that module; an unknown module URN\nreturns 404 naming the known ones (mut-2026-09-19).",
+        "description": "Return a manifest of the calculators wired into this deployment.\n\nThe registry grows but the route signature does not. When ``module`` is\nsupplied, the listing is filtered to that module; an unknown module URN\nreturns 404 naming the known ones.",
         "operationId": "list_calculators_v1_calculators_get",
         "parameters": [
           {
@@ -3160,7 +3245,7 @@
     },
     "/v1/calculators/depreciation/at/{period_uri}": {
       "post": {
-        "description": "mc39-2026-08-29 rung 5 (Fable verdict amendment 2 \u00a7A2.8). Onboards depreciation-engine's F1-UPHELD `/v1/calculators/depreciation/at/{period_uri}` endpoint through the REST surface. Computes WDV + period depreciation at a nominated `at_date` for a single asset. Individually-depreciated assets only \u2014 pooled assets (SBE pool, low-value pool, software pool) are refused with typed refusal `pool_asset_out_of_t6_scope` from the engine (T6 scope; passed through as HTTP 400 with the engine's refusal envelope). Gateway applies Fable riders 1-2: `basis` narrowed to AU literals; `numeric_mode` pinned to 'serving' server-side.",
+        "description": "Onboards depreciation-engine's `/v1/calculators/depreciation/at/{period_uri}` endpoint through the REST surface. Computes WDV + period depreciation at a nominated `at_date` for a single asset. Individually-depreciated assets only \u2014 pooled assets (SBE pool, low-value pool, software pool) are refused with typed refusal `pool_asset_out_of_t6_scope` from the engine (out of scope; passed through as HTTP 400 with the engine's refusal envelope). The gateway narrows `basis` to AU literals and pins `numeric_mode` to 'serving' server-side.",
         "operationId": "invoke_depreciation_at_v1_calculators_depreciation_at__period_uri__post",
         "parameters": [
           {
@@ -3175,13 +3260,13 @@
             }
           },
           {
-            "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm populated for depreciation; hoffman_base bundle authoring deferred.",
+            "description": "Bare-atom taxonomy axis value. Supported set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm is currently populated for depreciation; hoffman_base bundle authoring deferred.",
             "in": "query",
             "name": "taxonomy",
             "required": false,
             "schema": {
               "default": "lodgeit_au_sbrm",
-              "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm populated for depreciation; hoffman_base bundle authoring deferred.",
+              "description": "Bare-atom taxonomy axis value. Supported set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm is currently populated for depreciation; hoffman_base bundle authoring deferred.",
               "title": "Taxonomy",
               "type": "string"
             }
@@ -3229,7 +3314,7 @@
     },
     "/v1/calculators/depreciation/range/{period_uri}": {
       "post": {
-        "description": "mc02-2026-09-04 (Fable D5 sibling of /at/). Onboards depreciation-engine's `/v1/calculators/depreciation/range/{period_uri}` endpoint through the REST surface. Computes total depreciation charge over [from_date, to_date] inclusive plus opening_wdv (opening balance carried into the range) and closing_wdv (closing balance carried out). RATIFIED mc11-2026-08-31 \u00a72 Ask 1: sibling of /at/, NOT overload. Individually-depreciated assets only \u2014 pooled assets refused with typed refusal_class `pool_asset_out_of_t6_scope` from the engine (passed through as HTTP 400 with the engine's refusal envelope). Gateway applies Fable riders 1-2: `basis` narrowed to AU literals; `numeric_mode` pinned to 'serving' server-side.",
+        "description": "A sibling of /at/. Onboards depreciation-engine's `/v1/calculators/depreciation/range/{period_uri}` endpoint through the REST surface. Computes total depreciation charge over [from_date, to_date] inclusive plus opening_wdv (opening balance carried into the range) and closing_wdv (closing balance carried out). Sibling of /at/, NOT an overload. Individually-depreciated assets only \u2014 pooled assets refused with typed refusal_class `pool_asset_out_of_t6_scope` from the engine (passed through as HTTP 400 with the engine's refusal envelope). The gateway narrows `basis` to AU literals and pins `numeric_mode` to 'serving' server-side.",
         "operationId": "invoke_depreciation_range_v1_calculators_depreciation_range__period_uri__post",
         "parameters": [
           {
@@ -3244,13 +3329,13 @@
             }
           },
           {
-            "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm populated for depreciation.",
+            "description": "Bare-atom taxonomy axis value. Supported set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm is currently populated for depreciation.",
             "in": "query",
             "name": "taxonomy",
             "required": false,
             "schema": {
               "default": "lodgeit_au_sbrm",
-              "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm populated for depreciation.",
+              "description": "Bare-atom taxonomy axis value. Supported set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm is currently populated for depreciation.",
               "title": "Taxonomy",
               "type": "string"
             }
@@ -3298,7 +3383,7 @@
     },
     "/v1/calculators/div7a/at/{period_uri}": {
       "post": {
-        "description": "Phase D \u2014 onboards Div7A_Engine's `/v1/calculators/div7a/at/{period_uri}` endpoint through the constellation gateway. Computes the \u00a7109E Minimum Yearly Repayment for a single income year with canon 610 \u00a71.2 first-year gotcha correctly applied (n_remaining = original_term \u2212 1 in first real MYR year). Aggregates periodic repayments per canon 620 daily-balance discipline. Returns statutory MYR, actual aggregated repayments, shortfall amount (deemed unfranked dividend under \u00a7109E(1) if non-zero), and interest accrued over the income year.",
+        "description": "Onboards Div7A_Engine's `/v1/calculators/div7a/at/{period_uri}` endpoint through the constellation gateway. Computes the \u00a7109E Minimum Yearly Repayment for a single income year with the Division 7A first-year rule correctly applied (n_remaining = original_term \u2212 1 in the first real MYR year). Aggregates periodic repayments per the daily-balance discipline. Returns statutory MYR, actual aggregated repayments, shortfall amount (deemed unfranked dividend under \u00a7109E(1) if non-zero), and interest accrued over the income year.",
         "operationId": "invoke_div7a_at_v1_calculators_div7a_at__period_uri__post",
         "parameters": [
           {
@@ -3313,13 +3398,13 @@
             }
           },
           {
-            "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. At Phase D only lodgeit_au_sbrm is populated for div7a.",
+            "description": "Bare-atom taxonomy axis value. Supported set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm is currently populated for div7a.",
             "in": "query",
             "name": "taxonomy",
             "required": false,
             "schema": {
               "default": "lodgeit_au_sbrm",
-              "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. At Phase D only lodgeit_au_sbrm is populated for div7a.",
+              "description": "Bare-atom taxonomy axis value. Supported set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm is currently populated for div7a.",
               "title": "Taxonomy",
               "type": "string"
             }
@@ -3409,7 +3494,7 @@
     },
     "/v1/calculators/{calc_uri}/{period_uri}": {
       "post": {
-        "description": "Phase 3a Cut A \u2014 bare math + manifest + advisory. URL-encoded URN path params; the bridge re-validates them against the atom-vs-bridge boundary (CLAWDOG/110 \u00a73.3) before forwarding to the Prolog engine. Response carries the calculator's native trace block, plus the manifest-fidelity block (live content_hashes per CLAWDOG/109 \u00a77) and the advisory block (CLAWDOG/109 \u00a76 / CLAWDOG/110 \u00a73.2).",
+        "description": "Bare math + manifest + advisory. URL-encoded URN path params; the bridge re-validates them against the atom-vs-bridge boundary before forwarding to the Prolog engine. Response carries the calculator's native trace block, plus the manifest-fidelity block (live content_hashes) and the advisory block.",
         "operationId": "invoke_calculator_v1_calculators__calc_uri___period_uri__post",
         "parameters": [
           {
@@ -3435,13 +3520,13 @@
             }
           },
           {
-            "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. Default at Phase 3c.2: lodgeit_au_sbrm (only populated bundle). Strict-required discipline tightens at Phase 3c.3 when hoffman_base populates.",
+            "description": "Bare-atom taxonomy axis value. Supported set: lodgeit_au_sbrm | hoffman_base. Default: lodgeit_au_sbrm (currently the only populated bundle). Strict-required discipline tightens once hoffman_base populates.",
             "in": "query",
             "name": "taxonomy",
             "required": false,
             "schema": {
               "default": "lodgeit_au_sbrm",
-              "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Ratified set: lodgeit_au_sbrm | hoffman_base. Default at Phase 3c.2: lodgeit_au_sbrm (only populated bundle). Strict-required discipline tightens at Phase 3c.3 when hoffman_base populates.",
+              "description": "Bare-atom taxonomy axis value. Supported set: lodgeit_au_sbrm | hoffman_base. Default: lodgeit_au_sbrm (currently the only populated bundle). Strict-required discipline tightens once hoffman_base populates.",
               "title": "Taxonomy",
               "type": "string"
             }
@@ -3549,7 +3634,7 @@
     },
     "/v1/modules": {
       "get": {
-        "description": "Return one entry per metadata module (mut-2026-09-19).\n\nEach module's fields are copied verbatim from\n``api/data/calculator_metadata.json``; ``calculators`` is the list of\nthat module's calculator URNs in ``_CALCULATOR_REGISTRY`` order.",
+        "description": "Return one entry per metadata module.\n\nEach module's fields are copied verbatim from\n``api/data/calculator_metadata.json``; ``calculators`` is the list of\nthat module's calculator URNs in ``_CALCULATOR_REGISTRY`` order.",
         "operationId": "list_modules_v1_modules_get",
         "responses": {
           "200": {
@@ -3587,13 +3672,13 @@
             }
           },
           {
-            "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Default: lodgeit_au_sbrm.",
+            "description": "Bare-atom taxonomy axis value. Default: lodgeit_au_sbrm.",
             "in": "query",
             "name": "taxonomy",
             "required": false,
             "schema": {
               "default": "lodgeit_au_sbrm",
-              "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Default: lodgeit_au_sbrm.",
+              "description": "Bare-atom taxonomy axis value. Default: lodgeit_au_sbrm.",
               "title": "Taxonomy",
               "type": "string"
             }
@@ -3652,13 +3737,13 @@
             }
           },
           {
-            "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Default: lodgeit_au_sbrm.",
+            "description": "Bare-atom taxonomy axis value. Default: lodgeit_au_sbrm.",
             "in": "query",
             "name": "taxonomy",
             "required": false,
             "schema": {
               "default": "lodgeit_au_sbrm",
-              "description": "Bare-atom taxonomy axis value per CLAWDOG/111 \u00a72. Default: lodgeit_au_sbrm.",
+              "description": "Bare-atom taxonomy axis value. Default: lodgeit_au_sbrm.",
               "title": "Taxonomy",
               "type": "string"
             }
@@ -3697,11 +3782,11 @@
   },
   "tags": [
     {
-      "description": "Calculator invocation + discovery (CLAWDOG/109 \u00a73, \u00a74).",
+      "description": "Calculator invocation + discovery.",
       "name": "calculators"
     },
     {
-      "description": "Rate-table provenance surface (CLAWDOG/109 \u00a77).",
+      "description": "Rate-table provenance surface.",
       "name": "rates"
     },
     {
@@ -3709,7 +3794,7 @@
       "name": "system"
     },
     {
-      "description": "Model Context Protocol (JSON-RPC 2.0) surface. Added at `mut-2026-05-29-mc08` Option-A PR 2 per CLAWDOG/151 widget renderer + MCP-Apps integration.",
+      "description": "Model Context Protocol (JSON-RPC 2.0) surface for widget renderer + MCP-Apps integration.",
       "name": "mcp"
     }
   ]

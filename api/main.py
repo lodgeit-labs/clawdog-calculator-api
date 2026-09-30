@@ -18,18 +18,17 @@ app = FastAPI(
     title="ClawDog Calculator-Constellation REST API",
     version=__version__,
     summary=(
-        "Phase 3a Egress Interface over the LodgeiT calculator pool. Implements "
-        "the REST surface of CLAWDOG/109's tri-surface exposure model. Governed "
-        "by CLAWDOG/110's five non-negotiables (manifest-fidelity, advisory-"
-        "boundary, atom-vs-bridge, OpenAPI drift, Standing Rule #1)."
+        "Egress interface over the LodgeiT calculator pool. Implements the "
+        "REST surface of the constellation's tri-surface exposure model, "
+        "governed by five non-negotiables (manifest-fidelity, advisory-"
+        "boundary, atom-vs-bridge, OpenAPI drift, and the tri-surface "
+        "consistency rule)."
     ),
     description=(
-        "**Architectural canon:** [CLAWDOG/109]"
-        "(https://github.com/futureWA/clawdog-brain/blob/master/GLOBAL_NOTES/CLAWDOG/109_CALCULATOR_CONSTELLATION.md)\n\n"
-        "**Outsource-boundary canon:** [CLAWDOG/110]"
-        "(https://github.com/futureWA/clawdog-brain/blob/master/GLOBAL_NOTES/CLAWDOG/110_OUTSOURCE_BOUNDARY_DISCIPLINE.md)\n\n"
-        "Phase 3a wires a single calculator (FBT Car Operating Cost). Phase 3c "
-        "is the second-instance test of whether the abstraction holds."
+        "A REST egress over the LodgeiT deterministic calculator pool: bare "
+        "math plus a manifest-fidelity block (live rate-table content_hashes) "
+        "and an advisory block, behind an atom-vs-bridge URN boundary. The "
+        "calculator registry grows over time; the route signatures do not."
     ),
     contact={
         "name": "LodgeiT Labs",
@@ -39,11 +38,11 @@ app = FastAPI(
     openapi_tags=[
         {
             "name": "calculators",
-            "description": "Calculator invocation + discovery (CLAWDOG/109 §3, §4).",
+            "description": "Calculator invocation + discovery.",
         },
         {
             "name": "rates",
-            "description": "Rate-table provenance surface (CLAWDOG/109 §7).",
+            "description": "Rate-table provenance surface.",
         },
         {
             "name": "system",
@@ -52,8 +51,7 @@ app = FastAPI(
         {
             "name": "mcp",
             "description": (
-                "Model Context Protocol (JSON-RPC 2.0) surface. Added at "
-                "`mut-2026-05-29-mc08` Option-A PR 2 per CLAWDOG/151 widget "
+                "Model Context Protocol (JSON-RPC 2.0) surface for widget "
                 "renderer + MCP-Apps integration."
             ),
         },
@@ -102,7 +100,7 @@ def healthz() -> dict[str, str]:
     REST liveness signal to the engine's readiness, which is a deliberately
     independent dimension.
 
-    NOTE (mut-2026-05-25-mc11): Cloud Run / Google edge layer special-cases
+    NOTE: the Cloud Run / Google edge layer special-cases
     the literal path ``/healthz`` and returns a Google generic 404 HTML page
     to EXTERNAL public traffic, even when the route is correctly registered
     in FastAPI and the deployed image contains the route bytes (verified

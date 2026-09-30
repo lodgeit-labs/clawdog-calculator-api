@@ -4,9 +4,9 @@ Mirrors the request shape accepted by Div7A_Engine's FastAPI at
 ``POST /v1/calculators/div7a/at/{period_uri}``. The gateway forwards this
 payload verbatim to the Div7A_Engine Cloud Run service via PrologClient.dispatch.
 
-Phase D (mut-2026-08-24-mc20). Statute anchor: ITAA 1936 §§109D/109E/109N.
-Canon 610 §1.1 MYR formula + §1.2 first-year gotcha (n_remaining = term - 1
-in first real MYR year); canon 620 periodic-repayment daily-balance accrual.
+Statute anchor: ITAA 1936 §§109D/109E/109N. Minimum-yearly-repayment
+formula and its first-year rule (n_remaining = term - 1 in the first real
+MYR year); periodic-repayment daily-balance accrual.
 """
 from __future__ import annotations
 
@@ -47,8 +47,9 @@ class Div7aRepaymentIn(BaseModel):
 class Div7aAtInput(BaseModel):
     """Div 7A single-income-year MYR request payload.
 
-    Canonical URN: ``urn:sbrm:calculator:div7a:at`` per constellation naming
-    convention (matches ``urn:sbrm:calculator:depreciation:at`` + ``urn:sbrm:calculator:fbt:*``).
+    Canonical URN: ``urn:sbrm:calculator:div7a:at`` per the constellation
+    naming convention (matches ``urn:sbrm:calculator:depreciation:at`` +
+    ``urn:sbrm:calculator:fbt:*``).
 
     Field discipline:
       - ``amalgamated_base``: §109E amalgamated loan base amount at start of year (AUD)
@@ -56,10 +57,15 @@ class Div7aAtInput(BaseModel):
       - ``loan_origination_date``: date the loan was made (ISO or dd/mm/yyyy)
       - ``income_year_start_date``: 1 July of the FY to compute (ISO or dd/mm/yyyy)
       - ``is_first_real_myr_year``: optional; derived from origination/year if omitted
-      - ``repayments``: list; may be empty (canon 620 §1.1 single-annual or multi)
+      - ``repayments``: list; may be empty (single-annual or multiple repayments)
+
+    Election group div7a (no statutory default); see GET /v1/modules.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={"x-calc-uri": "urn:sbrm:calculator:div7a:at"},
+    )
 
     # D14 mc01-2026-09-04 08:45 UTC (Fable ruling verbatim):
     #   'Div7A accepts a negative loan balance and calls it complying.
@@ -91,13 +97,14 @@ class Div7aAtInput(BaseModel):
     # D14 adjacent hardening: zero-or-negative loan term produces a
     # division-by-zero downstream in the canon 610 remaining-term
     # arithmetic. Refuse at the gateway.
+    # Remaining-term arithmetic (the first-year rule, n_remaining = term - 1)
+    # is undefined at zero, so the term must be positive.
     loan_term_years: int = Field(
         ...,
         gt=0,
         description=(
             "§109N loan term in years (7 unsecured / 25 secured). Must "
-            "be positive; canon 610 §1.2 remaining-term arithmetic is "
-            "undefined at zero."
+            "be positive; the remaining-term arithmetic is undefined at zero."
         ),
     )
     loan_origination_date: str = Field(
@@ -111,14 +118,17 @@ class Div7aAtInput(BaseModel):
             "dd/mm/yyyy). AU income year: 1 July – 30 June."
         ),
     )
+    # The first-year rule (n_remaining = original_term - 1 in the first real
+    # MYR year) is derived from origination_date vs income_year_start_date
+    # when this override is omitted.
     is_first_real_myr_year: bool | None = Field(
         default=None,
         description=(
-            "Override for canon 610 §1.2 first-year gotcha. If omitted, "
-            "engine derives from origination_date vs income_year_start_date."
+            "Override for the Division 7A first-year rule. If omitted, the "
+            "engine derives it from origination_date vs income_year_start_date."
         ),
     )
     repayments: list[Div7aRepaymentIn] = Field(
         default_factory=list,
-        description="Repayment events; canon 620 daily-balance aggregation",
+        description="Repayment events; daily-balance aggregation.",
     )

@@ -97,14 +97,22 @@ def _reject_smuggling(value: str, field_name: str) -> str:
 
 
 class FBTCarOperatingCostInput(BaseModel):
-    """Input for the FBT Car Operating Cost method (Phase 3a Cut A).
+    """Input for the FBT Car Operating Cost method.
 
     Field naming mirrors the upstream Prolog engine's request shape (snake_case
     via FastAPI's alias mapping, accepting both snake_case and the camelCase
     used by the existing fbt_tester.py compatibility surface).
+
+    Election group car (statutory default: car-statutory-formula); see GET /v1/modules.
     """
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={
+            "x-calc-uri": "urn:sbrm:calculator:fbt:car-operating-cost"
+        },
+    )
 
     business_use_percentage: Money = money_field(
         ..., ge=0, le=100, alias="businessUsePercentage",
@@ -155,31 +163,37 @@ class FBTCarOperatingCostInput(BaseModel):
         None, alias="acquisitionDate",
         description="ISO date string (e.g. 2024-04-01); drives deemed-depreciation tier dispatch.",
     )
+    # Provenance: mutual exclusion enforced engine-side under strict-
+    # validation (Lesson #14; OT #81 Rung 2 mc07).
     opening_depreciated_value: Money | None = money_field(
         None, ge=0, alias="openingDepreciatedValue",
-        description="Opening depreciated value at start of FBT year (AUD). "
-        "Mutually exclusive with acquisition_cost per engine Lesson #14 "
-        "strict-validation (OT #81 Rung 2 mc07).",
+        description="Mutually exclusive with acquisitionCost. "
+        "Opening depreciated value at start of FBT year (AUD).",
+        json_schema_extra={"x-mutually-exclusive": ["acquisitionCost"]},
     )
-    # OT #81 Rung 2 (mut-2026-05-22-mc07) chained-DV entry-point: acquisition_cost
-    # is the original acquisition cost AUD that the engine uses as the chained-
-    # DV entry-point depreciated value. When supplied with acquisition_date (and
-    # WITHOUT opening_depreciated_value), the engine dispatches to the chained-DV
-    # walk predicate (fbt_car_oc_deemed_amounts_chained/9 added in OT #81 Rung 3
-    # mc08) which walks each FBT year from acquisition forward, applying the
-    # statutory per-year depreciation primitive once per year. This reproduces
-    # the NTAA toolkit's chained-DV reference data byte-exactly (closed by
-    # LodgeiT_FBT PR #26 + Brain canon node CALCULATORS/FBT/140 content_hash
+    # Provenance: acquisition_cost is the original acquisition cost AUD the
+    # engine uses as the chained-DV entry-point. When supplied with
+    # acquisition_date (and WITHOUT opening_depreciated_value), the engine
+    # dispatches to the chained-DV walk predicate
+    # (fbt_car_oc_deemed_amounts_chained/9, OT #81 Rung 3 mc08) which walks
+    # each FBT year from acquisition forward, applying the statutory per-year
+    # depreciation primitive once per year. This reproduces the NTAA toolkit's
+    # chained-DV reference data byte-exactly (closed by LodgeiT_FBT PR #26 +
+    # Brain canon node CALCULATORS/FBT/140 content_hash
     # 552e53cf3b7de5bd7c140deef6c3328afbb98d9d9637fb65f36feabca20a3fea).
-    # Strict mutual-exclusion vs opening_depreciated_value is enforced engine-side
-    # in validate_chained_dv_inputs/2 per Lesson #14; surfaces as a Prolog throw
-    # bubbled to FastAPI as a structured error.
+    # Strict mutual-exclusion vs opening_depreciated_value is enforced engine-
+    # side in validate_chained_dv_inputs/2 per Lesson #14; surfaces as a Prolog
+    # throw bubbled to FastAPI as a structured error.
     acquisition_cost: Money | None = money_field(
         None, ge=0, alias="acquisitionCost",
-        description="Original acquisition cost (AUD) for the chained-DV walk; "
-        "chained-DV entry-point. Mutually exclusive with opening_depreciated_value. "
-        "When supplied with acquisition_date (and without opening_depreciated_value), "
-        "the engine dispatches to the OT #81 chained-DV walk predicate (mc08).",
+        description="Mutually exclusive with openingDepreciatedValue. "
+        "Original acquisition cost (AUD) for the chained-DV walk; "
+        "chained-DV entry-point. When supplied with acquisition_date (and "
+        "without openingDepreciatedValue), the engine dispatches to the "
+        "chained-DV walk predicate.",
+        json_schema_extra={
+            "x-mutually-exclusive": ["openingDepreciatedValue"]
+        },
     )
     days_held_in_fbt_year: int | None = Field(
         None, ge=0, le=366, alias="daysHeldInFBTYear",
@@ -452,15 +466,21 @@ class FBTCarOperatingCostInput(BaseModel):
 
 
 class FBTLoanInput(BaseModel):
-    """Input for Phase 2a Loan Fringe Benefit (engine: ``calculate_fbt_loan_benefit_type_2``).
+    """Input for the Loan Fringe Benefit (engine: ``calculate_fbt_loan_benefit_type_2``).
 
-    FBTAA Division 4 (ss.16–19). Engine arithmetic at FBT_Engine.pl L2434.
-    ``fbt_benchmark_interest_amount`` is the DOLLAR amount (not the 0.0862
-    rate); the rate is applied upstream by the caller against
-    ``original_loan_amount`` if supplied.
+    FBTAA Division 4 (ss.16–19). ``fbt_benchmark_interest_amount`` is the
+    DOLLAR amount (not the 0.0862 rate); the rate is applied upstream by the
+    caller against ``original_loan_amount`` if supplied.
+
+    Election group loan (no statutory default); see GET /v1/modules.
     """
+    # Engine arithmetic at FBT_Engine.pl L2434.
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={"x-calc-uri": "urn:sbrm:calculator:fbt:loan"},
+    )
 
     fbt_benchmark_interest_amount: Money | None = money_field(
         None, ge=0, alias="fbtBenchmarkInterestAmount",
@@ -480,9 +500,12 @@ class FBTLoanInput(BaseModel):
     original_loan_amount: Money | None = money_field(
         None, ge=0, alias="originalLoanAmount",
         description=(
-            "Original loan principal (AUD); only consulted when "
-            "``fbt_benchmark_interest_amount`` is absent."
+            "Only consulted when fbtBenchmarkInterestAmount is omitted. "
+            "Original loan principal (AUD)."
         ),
+        json_schema_extra={
+            "x-requires-absence-of": ["fbtBenchmarkInterestAmount"]
+        },
     )
     fbt_type: str | None = Field(
         None, alias="fbtType",
@@ -491,13 +514,19 @@ class FBTLoanInput(BaseModel):
 
 
 class FBTDebtWaiverInput(BaseModel):
-    """Input for Phase 2b Debt Waiver Fringe Benefit (engine: ``calculate_fbt_debt_waiver``).
+    """Input for the Debt Waiver Fringe Benefit (engine: ``calculate_fbt_debt_waiver``).
 
-    FBTAA s.16. Engine arithmetic at FBT_Engine.pl L3433. Type 2 only per
-    FBTAA; ``fbt_type`` echoed as 'Type 2'.
+    FBTAA s.16. Type 2 only per FBTAA; ``fbt_type`` echoed as 'Type 2'.
+
+    Election group debt-waiver (no statutory default); see GET /v1/modules.
     """
+    # Engine arithmetic at FBT_Engine.pl L3433.
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={"x-calc-uri": "urn:sbrm:calculator:fbt:debt-waiver"},
+    )
 
     amount_waived: Money = money_field(
         ..., ge=0, alias="amountWaived",
@@ -541,12 +570,13 @@ _FBT_TYPE_D19_DESCRIPTION = (
 
 
 class _ExpensePaymentBaseInput(BaseModel):
-    """Shared input shape for Phase 2c Expense Payment (std + in-house variants).
+    """Shared input shape for Expense Payment (std + in-house variants).
 
-    FBTAA Division 5 (ss.20–24). Engine arithmetic at FBT_Engine.pl L3501.
-    In-house variant consults the FY2026 ``in-house-benefit-cap`` rate-node
-    per Standing Rule #6.
+    FBTAA Division 5 (ss.20–24). The in-house variant consults the FY2026
+    ``in-house-benefit-cap`` rate-node.
     """
+    # Engine arithmetic at FBT_Engine.pl L3501; in-house rate-node consumption
+    # tracked under Standing Rule #6.
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -565,9 +595,11 @@ class _ExpensePaymentBaseInput(BaseModel):
     inhouse_benefit_claimed: Money | None = money_field(
         None, ge=0, alias="inhouseBenefitClaimed",
         description=(
-            "In-house benefit reduction claimed (AUD); only consulted on the "
-            "in-house variant; clamped to FY2026 in-house cap (FBTAA s.62)."
+            "Only consulted on the in-house variant. In-house benefit "
+            "reduction claimed (AUD); clamped to FY2026 in-house cap "
+            "(FBTAA s.62)."
         ),
+        json_schema_extra={"x-applies-when": {"variant": ["in-house"]}},
     )
     fbt_type: Literal["Type 1", "Type 2"] = Field(
         ..., alias="fbtType",
@@ -576,19 +608,42 @@ class _ExpensePaymentBaseInput(BaseModel):
 
 
 class FBTExpensePaymentInput(_ExpensePaymentBaseInput):
-    """Phase 2c std Expense Payment."""
+    """Standard Expense Payment.
+
+    Election group expense-payment (no statutory default); see GET /v1/modules.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={
+            "x-calc-uri": "urn:sbrm:calculator:fbt:expense-payment"
+        },
+    )
 
 
 class FBTExpensePaymentInHouseInput(_ExpensePaymentBaseInput):
-    """Phase 2c in-house Expense Payment (consumes ``in-house-benefit-cap``)."""
+    """In-house Expense Payment (consumes ``in-house-benefit-cap``).
+
+    Election group expense-payment (no statutory default); see GET /v1/modules.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={
+            "x-calc-uri": "urn:sbrm:calculator:fbt:expense-payment-in-house"
+        },
+    )
 
 
 class _PropertyBaseInput(BaseModel):
-    """Shared input shape for Phase 2d Property (std + in-house variants).
+    """Shared input shape for Property (std + in-house variants).
 
-    FBTAA Division 7 (ss.40–44). Engine arithmetic at FBT_Engine.pl L3640.
-    In-house variant consults the FY2026 ``in-house-benefit-cap`` rate-node.
+    FBTAA Division 7 (ss.40–44). The in-house variant consults the FY2026
+    ``in-house-benefit-cap`` rate-node.
     """
+    # Engine arithmetic at FBT_Engine.pl L3640.
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -607,9 +662,11 @@ class _PropertyBaseInput(BaseModel):
     inhouse_benefit_claimed: Money | None = money_field(
         None, ge=0, alias="inhouseBenefitClaimed",
         description=(
-            "In-house benefit reduction claimed (AUD); only consulted on the "
-            "in-house variant; clamped to FY2026 in-house cap (FBTAA s.62)."
+            "Only consulted on the in-house variant. In-house benefit "
+            "reduction claimed (AUD); clamped to FY2026 in-house cap "
+            "(FBTAA s.62)."
         ),
+        json_schema_extra={"x-applies-when": {"variant": ["in-house"]}},
     )
     fbt_type: Literal["Type 1", "Type 2"] = Field(
         ..., alias="fbtType",
@@ -618,47 +675,65 @@ class _PropertyBaseInput(BaseModel):
 
 
 class FBTPropertyInput(_PropertyBaseInput):
-    """Phase 2d std Property."""
+    """Standard Property.
+
+    Election group property (no statutory default); see GET /v1/modules.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={"x-calc-uri": "urn:sbrm:calculator:fbt:property"},
+    )
 
 
 class FBTPropertyInHouseInput(_PropertyBaseInput):
-    """Phase 2d in-house Property (consumes ``in-house-benefit-cap``)."""
+    """In-house Property (consumes ``in-house-benefit-cap``).
+
+    Election group property (no statutory default); see GET /v1/modules.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={
+            "x-calc-uri": "urn:sbrm:calculator:fbt:property-in-house"
+        },
+    )
 
 
 class _ResidualBaseInput(BaseModel):
-    """Shared input shape for Phase 2e Residual (std + in-house variants).
+    """Shared input shape for Residual (std + in-house variants).
 
-    FBTAA Division 12 (ss.45–52). Engine arithmetic at
-    ``LodgeiT_FBT/FBT_Engine.pl`` ``calculate_fbt_residual_internal/3`` (L3903).
-    In-house variant consults the FY2026 ``in-house-benefit-cap`` rate-node.
+    FBTAA Division 12 (ss.45–52). The in-house variant consults the FY2026
+    ``in-house-benefit-cap`` rate-node.
 
-    **Field-name discipline (mut-2026-07-07-mc01, PR ships this file).**
-    Residual is the only benefit in the constellation whose primary
-    monetary input is named ``residual_value`` at the engine layer rather
-    than the cross-method ``gst_inclusive_value`` convention. Reason:
-    FBTAA s.50 defines the input as *"residual value"* — there is no
-    GST-inclusive framing in the Residual statute (unlike Property /
-    Expense-Payment / etc., where the GST-inclusive shape is statute-native).
-    The engine predicate at ``FBT_Engine.pl:3906`` reads
-    ``DictIn.residual_value``; ``populate_by_name=True`` + ``by_alias=False``
-    at the invoke bridge in ``api/routes/calculators.py:519`` mean the
-    Python attribute name IS the wire key on the outbound engine call.
+    **Field-name discipline.** Residual is the only benefit in the
+    constellation whose primary monetary input is named ``residual_value``
+    at the engine layer rather than the cross-method ``gst_inclusive_value``
+    convention. Reason: FBTAA s.50 defines the input as *"residual value"*
+    — there is no GST-inclusive framing in the Residual statute (unlike
+    Property / Expense-Payment / etc., where the GST-inclusive shape is
+    statute-native). The engine predicate reads ``DictIn.residual_value``;
+    ``populate_by_name=True`` + ``by_alias=False`` at the invoke bridge mean
+    the Python attribute name IS the wire key on the outbound engine call.
     Naming the attribute ``residual_value`` (instead of
     ``gst_inclusive_value``) is therefore load-bearing — it is the wire
     contract. The OpenAPI-facing camelCase alias ``residualValue`` follows
     the statute directly.
-
-    Historical note: the pre-mc01-2026-07-07 field name
-    ``gst_inclusive_value`` (alias ``gstInclusiveValue``) was a
-    copy-paste artefact from ``_PropertyBaseInput`` when the Wave A public
-    surface landed 2026-05-31 (PR #18 ``mut-2026-05-31-mc15``). It was
-    never smoke-tested end-to-end against PROD — the
-    ``test_production_bundle.py`` gate covered Car OC deemed-dispatch only,
-    so the wire mismatch stayed dormant until Waqas Awan's Microsoft-path
-    proof-of-concept exercised both Residual routes on 2026-07-05
-    (screenshot surfaced to Andrew 2026-07-07 09:11 UTC). The
-    production-bundle gate is extended in the same PR to close the class.
     """
+    # Engine arithmetic at LodgeiT_FBT/FBT_Engine.pl
+    # calculate_fbt_residual_internal/3 (L3903); reads DictIn.residual_value
+    # at FBT_Engine.pl:3906; invoke bridge at api/routes/calculators.py:519.
+    # Field-name discipline banked mut-2026-07-07-mc01. The pre-mc01 field
+    # name gst_inclusive_value (alias gstInclusiveValue) was a copy-paste
+    # artefact from _PropertyBaseInput when the Wave A public surface landed
+    # 2026-05-31 (PR #18 mut-2026-05-31-mc15); never smoke-tested end-to-end
+    # (the production-bundle gate covered Car OC deemed-dispatch only), so
+    # the wire mismatch stayed dormant until Waqas Awan's Microsoft-path
+    # proof-of-concept exercised both Residual routes 2026-07-05 (surfaced to
+    # Andrew 2026-07-07). The production-bundle gate was extended in the same
+    # PR to close the class.
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -681,9 +756,11 @@ class _ResidualBaseInput(BaseModel):
     inhouse_benefit_claimed: Money | None = money_field(
         None, ge=0, alias="inhouseBenefitClaimed",
         description=(
-            "In-house benefit reduction claimed (AUD); only consulted on the "
-            "in-house variant; clamped to FY2026 in-house cap (FBTAA s.62)."
+            "Only consulted on the in-house variant. In-house benefit "
+            "reduction claimed (AUD); clamped to FY2026 in-house cap "
+            "(FBTAA s.62)."
         ),
+        json_schema_extra={"x-applies-when": {"variant": ["in-house"]}},
     )
     fbt_type: Literal["Type 1", "Type 2"] = Field(
         ..., alias="fbtType",
@@ -692,11 +769,31 @@ class _ResidualBaseInput(BaseModel):
 
 
 class FBTResidualInput(_ResidualBaseInput):
-    """Phase 2e std Residual."""
+    """Standard Residual.
+
+    Election group residual (no statutory default); see GET /v1/modules.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={"x-calc-uri": "urn:sbrm:calculator:fbt:residual"},
+    )
 
 
 class FBTResidualInHouseInput(_ResidualBaseInput):
-    """Phase 2e in-house Residual (consumes ``in-house-benefit-cap``)."""
+    """In-house Residual (consumes ``in-house-benefit-cap``).
+
+    Election group residual (no statutory default); see GET /v1/modules.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={
+            "x-calc-uri": "urn:sbrm:calculator:fbt:residual-in-house"
+        },
+    )
 
 
 # =============================================================================
@@ -721,14 +818,21 @@ class FBTResidualInHouseInput(_ResidualBaseInput):
 
 
 class FBTBoardInput(BaseModel):
-    """Input for Phase 2h Board Fringe Benefit (engine: ``calculate_fbt_board``).
+    """Input for the Board Fringe Benefit (engine: ``calculate_fbt_board``).
 
-    FBTAA s.36 (Compilation No. 95). Engine arithmetic at FBT_Engine.pl L2586.
-    Type 2 only. Sheet row 35 sheet-vs-statute divergence is parked under
-    OT #94; the predicate is statute-faithful.
+    FBTAA s.36 (Compilation No. 95). Type 2 only. The predicate is
+    statute-faithful.
+
+    Election group board (no statutory default); see GET /v1/modules.
     """
+    # Engine arithmetic at FBT_Engine.pl L2586. A sheet row 35 sheet-vs-
+    # statute divergence is parked under OT #94.
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={"x-calc-uri": "urn:sbrm:calculator:fbt:board"},
+    )
 
     members_under_twelve: int | None = Field(
         0, ge=0, alias="membersUnderTwelve",
@@ -753,16 +857,23 @@ class FBTBoardInput(BaseModel):
 
 
 class FBTHousingInput(BaseModel):
-    """Input for Phase 2f Non-Remote Housing Fringe Benefit (engine: ``calculate_fbt_housing``).
+    """Input for the Non-Remote Housing Fringe Benefit (engine: ``calculate_fbt_housing``).
 
-    FBTAA s.26(1)(c) + s.26(2)(b). Engine arithmetic at FBT_Engine.pl L2761.
-    Indexation factor is period-scoped per s.26(2)(b); FY2026 published State
-    rates span 0.988 (TAS) to 1.100 (WA). C# range-clamp [0.001, 1.099] under-
-    indexes WA — mirrored here for parity (banked forward concern OT #95
-    sibling).
+    FBTAA s.26(1)(c) + s.26(2)(b). Indexation factor is period-scoped per
+    s.26(2)(b); FY2026 published State rates span 0.988 (TAS) to 1.100 (WA).
+    The C# range-clamp [0.001, 1.099] under-indexes WA — mirrored here for
+    parity.
+
+    Election group housing (no statutory default); see GET /v1/modules.
     """
+    # Engine arithmetic at FBT_Engine.pl L2761. WA under-indexation is a
+    # banked forward concern (OT #95 sibling).
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={"x-calc-uri": "urn:sbrm:calculator:fbt:housing"},
+    )
 
     housing_benefit_value: Money = money_field(
         ..., ge=0, alias="housingBenefitValue",
@@ -787,14 +898,21 @@ class FBTHousingInput(BaseModel):
 
 
 class FBTLafhaInput(BaseModel):
-    """Input for Phase 2g LAFHA Fringe Benefit (engine: ``calculate_fbt_lafha``).
+    """Input for the LAFHA Fringe Benefit (engine: ``calculate_fbt_lafha``).
 
-    FBTAA s.31(2). Engine arithmetic at FBT_Engine.pl L2943. Always Type 2 per
-    ATO TR 96/9. ``exempt_food_component`` is the pre-computed scalar (TD 2025/2
-    composition lookup is sheet/UI-layer concern).
+    FBTAA s.31(2). Always Type 2 per ATO TR 96/9. ``exempt_food_component``
+    is the pre-computed scalar (TD 2025/2 composition lookup is a sheet/UI-
+    layer concern).
+
+    Election group lafha (no statutory default); see GET /v1/modules.
     """
+    # Engine arithmetic at FBT_Engine.pl L2943.
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={"x-calc-uri": "urn:sbrm:calculator:fbt:lafha"},
+    )
 
     weeks_lived_away: float = Field(
         ..., ge=0, alias="weeksLivedAway",
@@ -824,15 +942,22 @@ class FBTLafhaInput(BaseModel):
 
 
 class FBTTebeInput(BaseModel):
-    """Input for Phase 2i Tax-Exempt Body Entertainment (engine: ``calculate_fbt_tebe``).
+    """Input for the Tax-Exempt Body Entertainment benefit (engine: ``calculate_fbt_tebe``).
 
-    FBTAA Subdivision B of Division 10 (ss.38–39). Engine arithmetic at
-    FBT_Engine.pl L3089. s.39 is a thin expenditure-passthrough statute.
-    50/50-split method is a sheet/UI-layer caller concern (the caller supplies
-    the post-50/50 totals; engine sums).
+    FBTAA Subdivision B of Division 10 (ss.38–39). s.39 is a thin
+    expenditure-passthrough statute. The 50/50-split method is a sheet/UI-
+    layer caller concern (the caller supplies the post-50/50 totals; the
+    engine sums).
+
+    Election group tebe (no statutory default); see GET /v1/modules.
     """
+    # Engine arithmetic at FBT_Engine.pl L3089.
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={"x-calc-uri": "urn:sbrm:calculator:fbt:tebe"},
+    )
 
     salary_packaged_meal_efle: Money = money_field(
         ..., ge=0, alias="salaryPackagedMealEfle",
@@ -876,12 +1001,21 @@ class FBTTebeInput(BaseModel):
 
 
 class FBTCarParkingActualInput(BaseModel):
-    """Input for Phase 2j Car Parking Actual Method (engine: ``calculate_fbt_car_parking_actual``).
+    """Input for the Car Parking Actual Method (engine: ``calculate_fbt_car_parking_actual``).
 
-    FBTAA Division 10A simple-sum method. Engine arithmetic at FBT_Engine.pl L3237.
+    FBTAA Division 10A simple-sum method.
+
+    Election group car-parking-count (statutory default: car-parking-actual); see GET /v1/modules.
     """
+    # Engine arithmetic at FBT_Engine.pl L3237.
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={
+            "x-calc-uri": "urn:sbrm:calculator:fbt:car-parking-actual"
+        },
+    )
 
     spaces_provided: Money = money_field(
         ..., ge=0, alias="spacesProvided",
@@ -902,13 +1036,22 @@ class FBTCarParkingActualInput(BaseModel):
 
 
 class FBTCarParkingStatutory228Input(BaseModel):
-    """Input for Phase 2j Car Parking 228-Day Statutory Formula (engine:
+    """Input for the Car Parking 228-Day Statutory Formula (engine:
     ``calculate_fbt_car_parking_statutory_228``).
 
-    FBTAA s.39FA Statutory Formula method. Engine arithmetic at FBT_Engine.pl L3288.
-    """
+    FBTAA s.39FA Statutory Formula method.
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    Election group car-parking-count (statutory default: car-parking-actual); see GET /v1/modules.
+    """
+    # Engine arithmetic at FBT_Engine.pl L3288.
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={
+            "x-calc-uri": "urn:sbrm:calculator:fbt:car-parking-statutory-228"
+        },
+    )
 
     days_car_parking_available: float = Field(
         ..., ge=0, le=366, alias="daysCarParkingAvailable",
@@ -929,14 +1072,23 @@ class FBTCarParkingStatutory228Input(BaseModel):
 
 
 class FBTCarParkingRegister12WkInput(BaseModel):
-    """Input for Phase 2j Car Parking 12-Week Register (engine:
+    """Input for the Car Parking 12-Week Register (engine:
     ``calculate_fbt_car_parking_register_12wk``).
 
-    FBTAA s.39GB 12-Week Register method. Engine arithmetic at FBT_Engine.pl L3360.
-    WRT T1 sheet row 63 sheet-vs-statute divergence parked under OT #96.
-    """
+    FBTAA s.39GB 12-Week Register method.
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    Election group car-parking-count (statutory default: car-parking-actual); see GET /v1/modules.
+    """
+    # Engine arithmetic at FBT_Engine.pl L3360. A WRT T1 sheet row 63
+    # sheet-vs-statute divergence is parked under OT #96.
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={
+            "x-calc-uri": "urn:sbrm:calculator:fbt:car-parking-register-12wk"
+        },
+    )
 
     benefits_in_period: float = Field(
         ..., ge=0, alias="benefitsInPeriod",
@@ -961,13 +1113,14 @@ class FBTCarParkingRegister12WkInput(BaseModel):
 
 
 class _MealEntertainmentBaseInput(BaseModel):
-    """Shared input shape for Phase 2k Meal Entertainment (50/50 + 12-Wk Register variants).
+    """Shared input shape for Meal Entertainment (50/50 + 12-Wk Register variants).
 
-    FBTAA Division 9A (s.37AA-s.37CB). Engine arithmetic at FBT_Engine.pl L4117.
-    Both methods consume the same 9-category input shape; the multiplier
-    dispatches per the engine ``method`` field (set by the route handler from
-    the registry's ``engine_method``).
+    FBTAA Division 9A (s.37AA-s.37CB). Both methods consume the same
+    9-category input shape; the multiplier dispatches per the engine
+    ``method`` field (set by the route handler from the registry's
+    ``engine_method``).
     """
+    # Engine arithmetic at FBT_Engine.pl L4117.
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -1014,18 +1167,38 @@ class _MealEntertainmentBaseInput(BaseModel):
 
 
 class FBTMealEntertainment5050Input(_MealEntertainmentBaseInput):
-    """Phase 2k Meal Entertainment 50/50 Split (FBTAA s.37CA).
+    """Meal Entertainment 50/50 Split (FBTAA s.37CA).
 
     Engine ``method=50_50``; the multiplier is hard-coded to 50 inside the
     engine when this method-atom dispatches.
+
+    Election group meal-entertainment (no statutory default); see GET /v1/modules.
     """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={
+            "x-calc-uri": "urn:sbrm:calculator:fbt:meal-entertainment-50-50"
+        },
+    )
 
 
 class FBTMealEntertainmentRegister12WkInput(_MealEntertainmentBaseInput):
-    """Phase 2k Meal Entertainment 12-Week Register (FBTAA s.37CB).
+    """Meal Entertainment 12-Week Register (FBTAA s.37CB).
 
     Engine ``method=register_12wk``; ``register_percentage`` is REQUIRED.
+
+    Election group meal-entertainment (no statutory default); see GET /v1/modules.
     """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={
+            "x-calc-uri": "urn:sbrm:calculator:fbt:meal-entertainment-register-12wk"
+        },
+    )
 
     register_percentage: float = Field(
         ..., ge=0, le=100, alias="registerPercentage",
@@ -1037,15 +1210,24 @@ class FBTMealEntertainmentRegister12WkInput(_MealEntertainmentBaseInput):
 
 
 class FBTCarStatutoryFormulaInput(BaseModel):
-    """Input for Phase 2l Car Statutory Formula (engine: ``calculate_fbt_car_statutory_formula``).
+    """Input for the Car Statutory Formula method (engine: ``calculate_fbt_car_statutory_formula``).
 
-    FBTAA s.9 Statutory Formula method (legacy v1; rate-table-fed). Engine
-    arithmetic at FBT_Engine.pl L927. Consumes the FY2026
-    ``statutory-fraction`` + ``days-in-year`` rate-table fact-nodes per
-    Standing Rule #6 (the engine throws ``missing_rate(...)`` if absent).
+    FBTAA s.9 Statutory Formula method (legacy v1; rate-table-fed). Consumes
+    the FY2026 ``statutory-fraction`` + ``days-in-year`` rate-table
+    fact-nodes (the engine throws ``missing_rate(...)`` if absent).
+
+    Election group car (statutory default: car-statutory-formula); see GET /v1/modules.
     """
+    # Engine arithmetic at FBT_Engine.pl L927. Rate-table consumption tracked
+    # under Standing Rule #6.
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        json_schema_extra={
+            "x-calc-uri": "urn:sbrm:calculator:fbt:car-statutory-formula"
+        },
+    )
 
     base_value: Money = money_field(
         ..., ge=0, alias="baseValue",
@@ -1294,7 +1476,7 @@ class ModuleListing(BaseModel):
 
     Fields are copied verbatim from the ``modules`` array of
     ``api/data/calculator_metadata.json``; ``calculators`` is the list of
-    that module's calculator URNs in registry order (mut-2026-09-19).
+    that module's calculator URNs in registry order.
     """
 
     model_config = ConfigDict(extra="forbid")
