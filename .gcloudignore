@@ -1,0 +1,34 @@
+# D53 (Fable [CALC] 2026-09-30): keep the Cloud Run source-deploy upload lean.
+# Excludes test/fixture/docs/VCS material that the runtime image never needs,
+# so `gcloud run deploy --source .` builds a smaller, faster context.
+#
+# NOTE: .gcloudignore does NOT affect the local test/gates suite; it only
+# scopes what is uploaded to Cloud Build for the container image.
+
+# Version control
+.git/
+.gitignore
+.github/
+
+# Tests and fixtures (not part of the runtime image)
+tests/
+**/tests/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Docs
+docs/
+*.md
+!README.md
+
+# Local dev / editor
+.venv/
+venv/
+.env
+.env.*
+.vscode/
+.idea/
