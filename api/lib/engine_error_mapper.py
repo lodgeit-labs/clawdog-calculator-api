@@ -92,6 +92,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -227,6 +228,63 @@ def _engine_term_and_payload(parsed: Any) -> tuple[str | None, Mapping | None]:
     return term, (payload if isinstance(payload, Mapping) else None)
 
 
+# D62-b (Fable [CALC] 2026-09-30): the live engine does NOT emit
+# fbt_year_outside_cohort as a bare term. It wraps it: the outer term is
+# `calculation_failed` and the inner term is carried as TEXT inside the body's
+# `detail` string, e.g. (wire-captured verbatim against production):
+#
+#   {"error": "unrecognised_engine_error", "engine_term": "calculation_failed",
+#    "detail": "days_in_year_lookup/3: Unknown error term: fbt_year_outside_cohort(
+#               fy(fy2006),cohort_period('urn:sbrm:period:fbt:fy2026')) (FBT year
+#               not in the days-in-year-by-fy cohort (FY2022–FY2030 currently; ...))"}
+#
+# So the D62 arm keyed on term == "fbt_year_outside_cohort" never fired and the
+# body fell through to 502 unrecognised_engine_error (D8a violation: a caller's
+# out-of-cohort acquisitionDate is a 4xx, not a 5xx). This mirrors the
+# inner-term extraction the mapper already does for the FBT serialiser's
+# stringified-body refusals: when the outer term is a generic wrapper but the
+# text names fbt_year_outside_cohort(...), re-classify to the inner term and
+# parse the requested FY + supported range out of the term text.
+_FBT_COHORT_INNER_RE = re.compile(r"fbt_year_outside_cohort\s*\(")
+# Requested FY: `fy(fy2006)` or a bare `fy2006` immediately after the paren.
+_FBT_COHORT_FY_RE = re.compile(
+    r"fbt_year_outside_cohort\s*\(\s*(?:fy\s*\(\s*)?(fy\d{4})"
+)
+# Supported range: either an explicit `available_range:[fy2022, fy2030]` list,
+# or the prose form `(FY2022–FY2030 currently` (en-dash or hyphen).
+_FBT_COHORT_RANGE_LIST_RE = re.compile(
+    r"available_range\s*:\s*\[\s*(fy\d{4})\s*,\s*(fy\d{4})\s*\]"
+)
+_FBT_COHORT_RANGE_PROSE_RE = re.compile(
+    r"FY(\d{4})\s*[\u2013\u2014-]\s*FY(\d{4})", re.IGNORECASE
+)
+
+
+def _extract_wrapped_cohort_term(parsed: Any) -> tuple[str, str | None, list[str] | None] | None:
+    """If a body's text carries ``fbt_year_outside_cohort(...)`` (even when the
+    outer term is a generic wrapper like ``calculation_failed``), return
+    ``(inner_term, requested_fy, supported_range)`` parsed from the term text,
+    else ``None``.
+
+    ``requested_fy`` and ``supported_range`` are ``None`` when the text does not
+    carry them; the D62 arm falls back to the rate-table listing for the range.
+    """
+    text = json.dumps(parsed) if not isinstance(parsed, str) else parsed
+    if not _FBT_COHORT_INNER_RE.search(text):
+        return None
+    fy_m = _FBT_COHORT_FY_RE.search(text)
+    requested_fy = fy_m.group(1) if fy_m else None
+    supported: list[str] | None = None
+    list_m = _FBT_COHORT_RANGE_LIST_RE.search(text)
+    if list_m:
+        supported = [list_m.group(1), list_m.group(2)]
+    else:
+        prose_m = _FBT_COHORT_RANGE_PROSE_RE.search(text)
+        if prose_m:
+            supported = [f"fy{prose_m.group(1)}", f"fy{prose_m.group(2)}"]
+    return "fbt_year_outside_cohort", requested_fy, supported
+
+
 def _fields_named_by_payload(term: str, payload: Mapping | None) -> list[str]:
     """Field names an engine term points at, for the 422 `loc` list."""
     if not payload:
@@ -260,6 +318,25 @@ def _classify_engine_error_term(
     * unrecognised             → None (caller emits 502 unrecognised_engine_error)
     """
     term, payload = _engine_term_and_payload(parsed)
+
+    # D62-b (Fable [CALC] 2026-09-30): the live engine wraps
+    # fbt_year_outside_cohort inside a generic outer term (calculation_failed)
+    # and carries the real term as TEXT in the body. If the body text names
+    # fbt_year_outside_cohort(...), re-classify to that inner term so the D62
+    # arm below fires (400) instead of falling through to 502. The requested
+    # FY + supported range are parsed from the term text and threaded through a
+    # synthetic payload the D62 arm already knows how to read.
+    wrapped = _extract_wrapped_cohort_term(parsed)
+    if wrapped is not None and term != "fbt_year_outside_cohort":
+        inner_term, requested_fy, supported_range = wrapped
+        term = inner_term
+        synth = dict(payload) if isinstance(payload, Mapping) else {}
+        if requested_fy is not None and not synth.get("fy"):
+            synth["fy"] = requested_fy
+        if supported_range and not synth.get("available_range"):
+            synth["available_range"] = supported_range
+        payload = synth
+
     if term is None:
         return None
 
