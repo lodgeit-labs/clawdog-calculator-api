@@ -131,7 +131,7 @@ jobs:
           fi
           echo "🟢 PASS: live env-var-set is a subset of declared set; no names would be dropped by this deploy."
 
-      - name: Deploy to Cloud Run
+      - name: Deploy to Cloud Run (canary, --no-traffic)
         id: deploy
         run: |
           set -o pipefail
@@ -150,6 +150,16 @@ jobs:
           # would-be silent drop mechanically (matched-drift blind spot
           # per mc40 Andrew follow-up 1: cross-checking two documents that
           # can both be wrong the same way is not a guard).
+          #
+          # D53 (Fable [CALC] 2026-09-30): deploy the new revision with
+          # --no-traffic --tag canary so it receives ZERO production
+          # traffic and is reachable only at the canary tag URL. The
+          # post-deploy smoke then runs against that canary URL; traffic is
+          # promoted to the new revision ONLY if the smoke exits 0. This
+          # bounds the blast radius of a bad deploy to the canary URL — the
+          # exact failure mode of the 2026-09-29 FBT-500 incident, where the
+          # smoke ran against the service URL (old revision) and 100% of
+          # traffic had already moved to the broken revision.
           set_env_vars=$(python3 -c "import json; d = json.load(open('deploy/env_vars.json'))['env']; print('^|^' + '|'.join(f'{k}={v}' for k, v in d.items()))")
           gcloud run deploy "$SERVICE" \
             --source . \
@@ -157,9 +167,18 @@ jobs:
             --project "$GCP_PROJECT" \
             --platform managed \
             --allow-unauthenticated \
+            --no-traffic \
+            --tag canary \
             --set-env-vars="$set_env_vars" \
             --quiet 2>&1 | tee deploy.log
-          echo "Deploy complete. New revision:"
+          # Capture the freshly-deployed (latest) revision name; it carries
+          # 0% traffic until the promote step (gated on smoke success).
+          CANARY_REVISION=$(gcloud run services describe "$SERVICE" \
+            --region "$GCP_REGION" \
+            --project "$GCP_PROJECT" \
+            --format='value(status.latestCreatedRevisionName)')
+          echo "canary_revision=$CANARY_REVISION" >> "$GITHUB_OUTPUT"
+          echo "Deployed canary revision (0% traffic): $CANARY_REVISION"
           gcloud run revisions list \
             --service "$SERVICE" \
             --region "$GCP_REGION" \
@@ -208,11 +227,38 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Post-deploy smoke-prod
+      - name: Post-deploy smoke-prod (against the canary tag URL)
         id: smoke
+        env:
+          # D53: point the smoke at the canary revision's tag URL, NOT the
+          # service URL — the service URL still serves the previous, healthy
+          # revision at this point (canary is --no-traffic). smoke_prod.sh
+          # honours API_BASE_URL (see its header).
+          API_BASE_URL: https://canary---fbt-calculator-api-qkp3j5bjnq-ts.a.run.app
         run: |
           chmod +x scripts/smoke_prod.sh
+          echo "Smoking canary revision ${{ steps.deploy.outputs.canary_revision }} at $API_BASE_URL"
           make smoke-prod
+
+      # D53 (Fable [CALC] 2026-09-30): promote traffic to the new revision
+      # ONLY when the canary smoke exited 0. On any earlier failure this step
+      # is skipped and 100% of traffic stays on the previous healthy revision
+      # — the canary revision is left deployed at 0% for inspection.
+      - name: Promote traffic to canary (only if smoke passed)
+        id: promote
+        if: success()
+        run: |
+          set -o pipefail
+          echo "Canary smoke green — promoting 100% traffic to the latest revision (${{ steps.deploy.outputs.canary_revision }})"
+          gcloud run services update-traffic "$SERVICE" \
+            --region "$GCP_REGION" \
+            --project "$GCP_PROJECT" \
+            --to-latest \
+            --quiet
+          gcloud run services describe "$SERVICE" \
+            --region "$GCP_REGION" \
+            --project "$GCP_PROJECT" \
+            --format='value(status.traffic)'
 
       # Computed-value gate (mut-2026-09-11-mc00): asserts every FBT calculator
       # returns a decimal-string trio with no bare float. Complements smoke-prod
@@ -229,21 +275,30 @@ jobs:
       # debug step also skipped. Two parallel steps:
       #   #9 on smoke failure  : print rollback hint + previous revisions
       #   #9b on deploy failure: print build-id chain + describe URL
-      - name: On smoke-prod failure — print rollback hint
+      - name: On canary smoke failure — fail with canary revision, traffic untouched
         if: failure() && steps.smoke.outcome == 'failure'
         run: |
-          echo "::error::smoke-prod failed against the freshly-deployed revision."
-          echo "::error::Consider rollback via:"
-          echo "::error::  gcloud run services update-traffic $SERVICE \\"
-          echo "::error::    --region $GCP_REGION \\"
-          echo "::error::    --to-revisions=<previous-revision>=100"
+          # D53: the canary smoke failed. Traffic was NEVER moved (the deploy
+          # was --no-traffic and the promote step is gated on success), so
+          # 100% of production is still on the previous healthy revision. We
+          # fail the job loudly, naming the canary revision so it can be
+          # inspected at its tag URL or deleted.
+          echo "::error title=🔴 canary smoke FAILED — traffic NOT promoted::The canary revision ${{ steps.deploy.outputs.canary_revision }} failed post-deploy smoke-prod against https://canary---fbt-calculator-api-qkp3j5bjnq-ts.a.run.app. Traffic is UNTOUCHED — 100% remains on the previous healthy revision. Inspect the canary at its tag URL, or delete it with: gcloud run revisions delete ${{ steps.deploy.outputs.canary_revision }} --region $GCP_REGION --project $GCP_PROJECT --quiet"
+          echo "Canary revision (0% traffic, failed smoke): ${{ steps.deploy.outputs.canary_revision }}"
           echo ""
-          echo "Previous revisions:"
+          echo "Current traffic split (unchanged; previous revision still serving):"
+          gcloud run services describe "$SERVICE" \
+            --region "$GCP_REGION" \
+            --project "$GCP_PROJECT" \
+            --format='value(status.traffic)' || true
+          echo ""
+          echo "Recent revisions:"
           gcloud run revisions list \
             --service "$SERVICE" \
             --region "$GCP_REGION" \
             --limit 5 \
             --format='table(metadata.name,metadata.creationTimestamp.date())' || true
+          exit 1
 
       - name: On deploy failure — print Cloud Build debug surface
         if: failure() && steps.deploy.outcome == 'failure'
