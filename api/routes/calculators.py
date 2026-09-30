@@ -538,7 +538,7 @@ async def get_prolog_client() -> PrologClient:
     summary="List calculator modules available through the REST surface.",
 )
 async def list_modules() -> list[ModuleListing]:
-    """Return one entry per metadata module (mut-2026-09-19).
+    """Return one entry per metadata module.
 
     Each module's fields are copied verbatim from
     ``api/data/calculator_metadata.json``; ``calculators`` is the list of
@@ -583,7 +583,7 @@ async def list_calculators(
 
     The registry grows but the route signature does not. When ``module`` is
     supplied, the listing is filtered to that module; an unknown module URN
-    returns 404 naming the known ones (mut-2026-09-19).
+    returns 404 naming the known ones.
     """
     if module is not None:
         known_modules = [m["module_uri"] for m in _metadata_modules(_CALCULATOR_METADATA)]
@@ -685,12 +685,11 @@ async def invoke_hp_schedule(body: HpScheduleInput) -> HpScheduleResponse:
     response_model=None,
     summary="Invoke a calculator for the given URN-encoded period.",
     description=(
-        "Phase 3a Cut A — bare math + manifest + advisory. URL-encoded URN "
-        "path params; the bridge re-validates them against the atom-vs-bridge "
-        "boundary (CLAWDOG/110 §3.3) before forwarding to the Prolog engine. "
-        "Response carries the calculator's native trace block, plus the "
-        "manifest-fidelity block (live content_hashes per CLAWDOG/109 §7) and "
-        "the advisory block (CLAWDOG/109 §6 / CLAWDOG/110 §3.2)."
+        "Bare math + manifest + advisory. URL-encoded URN path params; the "
+        "bridge re-validates them against the atom-vs-bridge boundary before "
+        "forwarding to the Prolog engine. Response carries the calculator's "
+        "native trace block, plus the manifest-fidelity block (live "
+        "content_hashes) and the advisory block."
     ),
 )
 async def invoke_calculator(
@@ -734,10 +733,10 @@ async def invoke_calculator(
         str,
         Query(
             description=(
-                "Bare-atom taxonomy axis value per CLAWDOG/111 §2. "
-                "Ratified set: lodgeit_au_sbrm | hoffman_base. "
-                "Default at Phase 3c.2: lodgeit_au_sbrm (only populated bundle). "
-                "Strict-required discipline tightens at Phase 3c.3 when hoffman_base populates."
+                "Bare-atom taxonomy axis value. "
+                "Supported set: lodgeit_au_sbrm | hoffman_base. "
+                "Default: lodgeit_au_sbrm (currently the only populated bundle). "
+                "Strict-required discipline tightens once hoffman_base populates."
             ),
         ),
     ] = DEFAULT_TAXONOMY,
@@ -1137,14 +1136,14 @@ _DEPRECIATION_RANGE_RESPONSE_FIELDS = (
     "/calculators/div7a/at/{period_uri}",
     summary="Invoke the Div 7A MYR endpoint for the given URN-encoded period.",
     description=(
-        "Phase D — onboards Div7A_Engine's `/v1/calculators/div7a/at/{period_uri}` "
+        "Onboards Div7A_Engine's `/v1/calculators/div7a/at/{period_uri}` "
         "endpoint through the constellation gateway. Computes the §109E Minimum "
-        "Yearly Repayment for a single income year with canon 610 §1.2 first-year "
-        "gotcha correctly applied (n_remaining = original_term − 1 in first real "
-        "MYR year). Aggregates periodic repayments per canon 620 daily-balance "
-        "discipline. Returns statutory MYR, actual aggregated repayments, shortfall "
-        "amount (deemed unfranked dividend under §109E(1) if non-zero), and interest "
-        "accrued over the income year."
+        "Yearly Repayment for a single income year with the Division 7A "
+        "first-year rule correctly applied (n_remaining = original_term − 1 in "
+        "the first real MYR year). Aggregates periodic repayments per the "
+        "daily-balance discipline. Returns statutory MYR, actual aggregated "
+        "repayments, shortfall amount (deemed unfranked dividend under §109E(1) "
+        "if non-zero), and interest accrued over the income year."
     ),
 )
 async def invoke_div7a_at(
@@ -1155,9 +1154,9 @@ async def invoke_div7a_at(
         str,
         Query(
             description=(
-                "Bare-atom taxonomy axis value per CLAWDOG/111 §2. "
-                "Ratified set: lodgeit_au_sbrm | hoffman_base. "
-                "At Phase D only lodgeit_au_sbrm is populated for div7a."
+                "Bare-atom taxonomy axis value. "
+                "Supported set: lodgeit_au_sbrm | hoffman_base. "
+                "Only lodgeit_au_sbrm is currently populated for div7a."
             ),
         ),
     ] = DEFAULT_TAXONOMY,
@@ -1273,16 +1272,15 @@ async def invoke_div7a_at(
         "URN-encoded period."
     ),
     description=(
-        "mc39-2026-08-29 rung 5 (Fable verdict amendment 2 §A2.8). Onboards "
-        "depreciation-engine's F1-UPHELD `/v1/calculators/depreciation/at/"
+        "Onboards depreciation-engine's `/v1/calculators/depreciation/at/"
         "{period_uri}` endpoint through the REST surface. Computes WDV + "
         "period depreciation at a nominated `at_date` for a single asset. "
         "Individually-depreciated assets only — pooled assets (SBE pool, "
         "low-value pool, software pool) are refused with typed refusal "
-        "`pool_asset_out_of_t6_scope` from the engine (T6 scope; passed "
-        "through as HTTP 400 with the engine's refusal envelope). Gateway "
-        "applies Fable riders 1-2: `basis` narrowed to AU literals; "
-        "`numeric_mode` pinned to 'serving' server-side."
+        "`pool_asset_out_of_t6_scope` from the engine (out of scope; passed "
+        "through as HTTP 400 with the engine's refusal envelope). The gateway "
+        "narrows `basis` to AU literals and pins `numeric_mode` to 'serving' "
+        "server-side."
     ),
 )
 async def invoke_depreciation_at(
@@ -1293,9 +1291,9 @@ async def invoke_depreciation_at(
         str,
         Query(
             description=(
-                "Bare-atom taxonomy axis value per CLAWDOG/111 §2. "
-                "Ratified set: lodgeit_au_sbrm | hoffman_base. "
-                "Only lodgeit_au_sbrm populated for depreciation; "
+                "Bare-atom taxonomy axis value. "
+                "Supported set: lodgeit_au_sbrm | hoffman_base. "
+                "Only lodgeit_au_sbrm is currently populated for depreciation; "
                 "hoffman_base bundle authoring deferred."
             ),
         ),
@@ -1412,18 +1410,17 @@ async def invoke_depreciation_at(
         "URN-encoded period."
     ),
     description=(
-        "mc02-2026-09-04 (Fable D5 sibling of /at/). Onboards "
-        "depreciation-engine's `/v1/calculators/depreciation/range/"
-        "{period_uri}` endpoint through the REST surface. Computes total "
-        "depreciation charge over [from_date, to_date] inclusive plus "
-        "opening_wdv (opening balance carried into the range) and "
-        "closing_wdv (closing balance carried out). RATIFIED mc11-"
-        "2026-08-31 §2 Ask 1: sibling of /at/, NOT overload. "
-        "Individually-depreciated assets only — pooled assets refused "
-        "with typed refusal_class `pool_asset_out_of_t6_scope` from the "
-        "engine (passed through as HTTP 400 with the engine's refusal "
-        "envelope). Gateway applies Fable riders 1-2: `basis` narrowed to "
-        "AU literals; `numeric_mode` pinned to 'serving' server-side."
+        "A sibling of /at/. Onboards depreciation-engine's "
+        "`/v1/calculators/depreciation/range/{period_uri}` endpoint through "
+        "the REST surface. Computes total depreciation charge over "
+        "[from_date, to_date] inclusive plus opening_wdv (opening balance "
+        "carried into the range) and closing_wdv (closing balance carried "
+        "out). Sibling of /at/, NOT an overload. Individually-depreciated "
+        "assets only — pooled assets refused with typed refusal_class "
+        "`pool_asset_out_of_t6_scope` from the engine (passed through as "
+        "HTTP 400 with the engine's refusal envelope). The gateway narrows "
+        "`basis` to AU literals and pins `numeric_mode` to 'serving' "
+        "server-side."
     ),
 )
 async def invoke_depreciation_range(
@@ -1434,9 +1431,9 @@ async def invoke_depreciation_range(
         str,
         Query(
             description=(
-                "Bare-atom taxonomy axis value per CLAWDOG/111 §2. "
-                "Ratified set: lodgeit_au_sbrm | hoffman_base. "
-                "Only lodgeit_au_sbrm populated for depreciation."
+                "Bare-atom taxonomy axis value. "
+                "Supported set: lodgeit_au_sbrm | hoffman_base. "
+                "Only lodgeit_au_sbrm is currently populated for depreciation."
             ),
         ),
     ] = DEFAULT_TAXONOMY,

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from api.schemas.money import reject_sub_cent_string
 
@@ -44,7 +44,14 @@ class HpBalloonInput(BaseModel):
 
 
 class HpScheduleInput(BaseModel):
-    """Input contract for urn:sbrm:calculator:hp:schedule."""
+    """Input contract for urn:sbrm:calculator:hp:schedule.
+
+    Election group hp (no statutory default); see GET /v1/modules.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={"x-calc-uri": "urn:sbrm:calculator:hp:schedule"},
+    )
 
     amount_financed: str = Field(
         description=(

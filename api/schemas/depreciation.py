@@ -181,25 +181,29 @@ AccountingMethodLiteral = Literal["prime_cost", "diminishing_value"]
 
 
 class AssetCreatedInput(BaseModel):
-    """Asset ingestion input (mirrors engine's `AssetCreatedInput`).
+    """Asset ingestion input (mirrors the engine's `AssetCreatedInput`).
 
-    F10 amendment: `acquisition_date` is required (non-optional). Basis-
-    conditional fields (`accounting_useful_life_years` + `accounting_method`
-    when basis is accounting; `tax_asset_class` when basis is tax) are
-    validated at the engine's schema layer (F13 UPHELD) rather than
-    duplicated here; the gateway forwards the payload verbatim and lets the
-    engine return the typed refusal on inconsistency.
+    `acquisition_date` is required (non-optional). Basis-conditional fields
+    (`accounting_useful_life_years` + `accounting_method` when basis is
+    accounting; `tax_asset_class` when basis is tax) are validated at the
+    engine's schema layer rather than duplicated here; the gateway forwards
+    the payload verbatim and lets the engine return the typed refusal on
+    inconsistency.
     """
+    # Provenance: acquisition_date made required per the F10 amendment;
+    # basis-conditional field validation held at the engine schema layer
+    # (F13 UPHELD).
 
     model_config = ConfigDict(extra="forbid")
 
     cost: Annotated[
         Decimal,
         BeforeValidator(_to_cent_quantised_decimal),
+        # Provenance: fail-loud rejection of zero/negative cost per SR #3.
         Field(
             gt=0,
             description=(
-                "Initial cost basis. Positive Decimal; SR #3 fail-loud "
+                "Initial cost basis. Positive Decimal; fail-loud "
                 "rejects zero or negative. " + _MONEY_DESC
             ),
             json_schema_extra={"x-money": True},
@@ -225,11 +229,14 @@ class AssetCreatedInput(BaseModel):
             default=None,
             gt=0,
             description=(
-                "Accounting useful life in years. Required when "
-                "basis is 'accounting' or 'au_aasb116'; must be omitted "
-                "when basis is 'tax' or 'au_itaa97' (tax path resolves "
-                "effective_life from the SBRM rate table)."
+                "Required when basis is 'accounting' or 'au_aasb116'; must "
+                "be omitted when basis is 'tax' or 'au_itaa97'. Accounting "
+                "useful life in years (the tax path resolves effective_life "
+                "from the SBRM rate table)."
             ),
+            json_schema_extra={
+                "x-applies-when": {"basis": ["accounting", "au_aasb116"]}
+            },
         ),
     ] = None
 
@@ -238,10 +245,13 @@ class AssetCreatedInput(BaseModel):
         Field(
             default=None,
             description=(
-                "Accounting depreciation method. Required when basis is "
-                "'accounting' or 'au_aasb116'. Values: 'prime_cost' "
+                "Required when basis is 'accounting' or 'au_aasb116'. "
+                "Accounting depreciation method. Values: 'prime_cost' "
                 "(straight-line) or 'diminishing_value'."
             ),
+            json_schema_extra={
+                "x-applies-when": {"basis": ["accounting", "au_aasb116"]}
+            },
         ),
     ] = None
 
@@ -252,65 +262,61 @@ class AssetCreatedInput(BaseModel):
         Field(
             default=None,
             description=(
-                "Tax asset class URI resolving to a rate-table effective-life "
-                "entry. Required when basis is 'tax' or 'au_itaa97'; must be "
-                "omitted when basis is 'accounting' or 'au_aasb116'."
+                "Required when basis is 'tax' or 'au_itaa97'; must be omitted "
+                "when basis is 'accounting' or 'au_aasb116'. Tax asset class "
+                "URI resolving to a rate-table effective-life entry."
             ),
+            json_schema_extra={
+                "x-applies-when": {"basis": ["tax", "au_itaa97"]}
+            },
         ),
     ] = None
 
-    # F2-α field (RATIFIED mc11-2026-08-31; ratifying-doc
-    # `memory/proposals/2026-08-31-depreciation-product-scope-RATIFIED.md`
-    # §2 Ask 2 revised at mc12 §9.d): `dv_rate_factor` was previously
-    # excluded by `extra="forbid"`, which made diminishing-value method
-    # unreachable through the gateway (rung 5 case 6a returned HTTP 422
-    # `extra_forbidden`; 6b returned HTTP 502 engine_unavailable). Field is
-    # now declared at the gateway so the payload reaches the engine; the
-    # conditional validation ("required when accounting_method='diminishing_value'")
-    # stays at the engine's schema layer per F13 UPHELD schema-authority.
+    # dv_rate_factor was previously excluded by `extra="forbid"`, which made
+    # the diminishing-value method unreachable through the gateway. The field
+    # is now declared at the gateway so the payload reaches the engine; the
+    # conditional validation (required when accounting_method is
+    # 'diminishing_value') stays at the engine's schema layer (F13 UPHELD).
     dv_rate_factor: Annotated[
         Decimal | None,
         Field(
             default=None,
             gt=0,
             description=(
-                "Diminishing-value rate factor as a multiplier of 1/life. "
-                "ATO Div 40 default is 2 (200% method); prime-cost equivalent "
-                "is 1. REQUIRED at the engine when accounting_method is "
-                "'diminishing_value'; conditional validation is enforced at "
-                "the engine schema layer per F13 UPHELD (the gateway does not "
-                "duplicate). MUST be omitted when accounting_method is "
-                "'prime_cost'. Unit convention: rate factor (e.g. 2.0 for the "
-                "200% method), NOT the resulting per-year rate."
+                "Required at the engine when accounting_method is "
+                "'diminishing_value'; must be omitted when accounting_method "
+                "is 'prime_cost'. Diminishing-value rate factor as a "
+                "multiplier of 1/life. ATO Div 40 default is 2 (200% method); "
+                "prime-cost equivalent is 1. Conditional validation is enforced "
+                "at the engine schema layer (the gateway does not duplicate). "
+                "Unit convention: rate factor (e.g. 2.0 for the 200% method), "
+                "NOT the resulting per-year rate."
             ),
+            json_schema_extra={
+                "x-applies-when": {"accounting_method": ["diminishing_value"]}
+            },
         ),
     ] = None
 
-    # F2-β field (RATIFIED mc11-2026-08-31 §2 Ask 2 CONDITIONAL revised at
-    # mc12 10:38 UTC to UNCONDITIONAL): `pool_type` was previously excluded
-    # by `extra="forbid"`, which meant a pooled asset received a generic
-    # `extra_forbidden` schema error rather than the typed
-    # `pool_asset_out_of_t6_scope` refusal the manifest promises. Rider 3
-    # typed-refusal passthrough (rung 5 case 7 wire-verified via depreciation
-    # route's `refusal_class`-preserving 400 branch) makes the manifest
-    # exclusion demonstrable rather than aspirational. Conditional validation
-    # ("pool_type is refused by the engine's D2 fold with typed refusal_class
-    # `pool_asset_out_of_t6_scope`") stays at the engine per F13 UPHELD;
-    # gateway accepts the field so the payload reaches the engine and the
-    # typed refusal fires.
+    # pool_type was previously excluded by `extra="forbid"`, which meant a
+    # pooled asset received a generic `extra_forbidden` schema error rather
+    # than the typed `pool_asset_out_of_t6_scope` refusal the manifest
+    # promises. The gateway now accepts the field so the payload reaches the
+    # engine and the typed refusal fires; the conditional validation stays at
+    # the engine schema layer (F13 UPHELD).
     pool_type: Annotated[
         str | None,
         Field(
             default=None,
             description=(
                 "Pool membership discriminator. Any non-null value is refused "
-                "by the engine's D2 fold with typed refusal_class "
-                "'pool_asset_out_of_t6_scope' (rider 3 passthrough: gateway "
-                "returns HTTP 400 with refusal envelope preserved rather than "
-                "flattening to 502). T6 first-cut scope is single asset only; "
-                "pool machinery lands in the T6.1 pool-retrofit sprint. "
-                "Documented exclusion in the manifest is now wire-demonstrable "
-                "because the field reaches the engine's typed refusal path."
+                "by the engine's fold with typed refusal_class "
+                "'pool_asset_out_of_t6_scope' (the gateway returns HTTP 400 "
+                "with the refusal envelope preserved rather than flattening to "
+                "502). Current scope is single asset only; pool machinery is "
+                "out of scope. The documented manifest exclusion is "
+                "wire-demonstrable because the field reaches the engine's "
+                "typed refusal path."
             ),
         ),
     ] = None
@@ -386,28 +392,35 @@ class DepreciationAtInput(BaseModel):
     """Request body for the gateway's depreciation `at` route.
 
     Wire-shape mirrors the upstream depreciation-engine
-    `/v1/calculators/depreciation/at/{period_uri}` endpoint (Fable F1 UPHELD
-    mc11-2026-08-02 URN parity). Gateway-side amendments per Fable verdict
-    amendment 2 §A2.4 riders 1-2:
+    `/v1/calculators/depreciation/at/{period_uri}` endpoint (URN parity).
+    Gateway-side amendments:
 
-      * Rider 1: `basis` narrowed to AU literals; UK is refused.
-      * Rider 2: `numeric_mode` is NOT a caller-visible field; the gateway
-        pins the engine to `numeric_mode="serving"` internally.
+      * `basis` narrowed to AU literals; UK is refused.
+      * `numeric_mode` is NOT a caller-visible field; the gateway pins the
+        engine to `numeric_mode="serving"` internally.
 
     Basis-conditional field validation (which `asset` fields must be present
-    given the `basis` value) is enforced at the engine's schema layer per
-    F13 UPHELD; the gateway does not duplicate that validation.
-    """
+    given the `basis` value) is enforced at the engine's schema layer; the
+    gateway does not duplicate that validation.
 
-    model_config = ConfigDict(extra="forbid")
+    Election group depreciation (no statutory default); see GET /v1/modules.
+    """
+    # Provenance: URN parity F1 UPHELD (mc11-2026-08-02); basis/numeric_mode
+    # amendments are Fable verdict amendment 2 §A2.4 riders 1-2; engine-side
+    # basis-conditional validation is F13 UPHELD.
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"x-calc-uri": "urn:sbrm:calculator:depreciation:at"},
+    )
 
     basis: Annotated[
         GatewayBasisLiteral,
+        # Provenance: accounting-only at v1 (Fable D8c mc00-2026-09-04).
         Field(
             description=(
-                "Depreciation basis discriminator. Fable D8c mc00-"
-                "2026-09-04: Andrew ruled accounting-only at v1. "
-                "Gateway narrows the engine's five-literal vocabulary "
+                "Depreciation basis discriminator. Accounting-only at v1: "
+                "the gateway narrows the engine's five-literal vocabulary "
                 "to `'accounting'` (AASB 116 useful-life basis). Tax "
                 "basis (ITAA97 Div 40) is architecturally reachable at "
                 "the engine but is not exposed on this URN; it will "
@@ -449,17 +462,17 @@ class DepreciationAtInput(BaseModel):
 
     day_count: Annotated[
         DayCountLiteral | None,
+        # Provenance: optional day_count with actual/actual default settled
+        # Fable D4 mc17 2026-09-03; kept optional under the /at/ wire-freeze
+        # (F19) so integrated callers and the smoke set do not break.
         Field(
             default=None,
             description=(
-                "Optional day-count convention. **Fable D4 mc17 2026-09-03 "
-                "12:20 UTC:** /at/ accepts an optional `day_count`, "
-                "defaulting to `actual/actual` (the fold's basis-implicit "
-                "convention for `basis: \"accounting\"`; AASB 116-faithful "
-                "anniversary-scoped denominator). Not required because "
-                "/at/ is live in the gateway registry (F19 wire-freeze on "
-                "/at/); a required field breaks integrated callers and the "
-                "smoke set for no gain. The applied convention is ECHOED "
+                "Optional day-count convention, defaulting to `actual/actual` "
+                "(the fold's basis-implicit convention for `basis: "
+                "\"accounting\"`; AASB 116-faithful anniversary-scoped "
+                "denominator). Not required, so integrated callers and the "
+                "smoke set are unaffected. The applied convention is ECHOED "
                 "in the response's `day_count` field so callers can "
                 "byte-verify their expectation regardless of whether they "
                 "supplied it. Values: `actual/actual` | `actual/365` | "
@@ -557,40 +570,48 @@ class DepreciationRangeInput(BaseModel):
     """Request body for the gateway's depreciation `range` route.
 
     Wire-shape mirrors the upstream depreciation-engine
-    `/v1/calculators/depreciation/range/{period_uri}` endpoint (Fable D5
-    mc02 2026-09-04 sibling of `/at/`, NOT overload per RATIFIED §2
-    Ask 1).
+    `/v1/calculators/depreciation/range/{period_uri}` endpoint (a sibling of
+    `/at/`, NOT an overload).
 
-    Gateway-side amendments (same as /at/ per Fable riders 1-2):
+    Gateway-side amendments (same as /at/):
 
-      * Rider 1: `basis` narrowed to AU literals; UK refused.
-      * Rider 2: `numeric_mode` NOT caller-visible; gateway pins
-        `serving` server-side.
+      * `basis` narrowed to AU literals; UK refused.
+      * `numeric_mode` NOT caller-visible; gateway pins `serving`
+        server-side.
 
-    **day_count is REQUIRED (no default)** per RATIFIED §2 Ask 4;
-    unaffected by Fable D5. Values: `actual/actual` (recommended
-    default for basis:accounting; AASB 116-faithful anniversary-
-    scoped denominator; each period charges exactly cost/life) |
-    `actual/365` (constant 365 denominator regardless of FY length;
-    kept HONEST at the label per Andrew ratification and Fable mc17
-    D4 ruling) | `monthly` (per-month round-and-sum for ledger
+    **day_count is REQUIRED (no default).** Values: `actual/actual`
+    (recommended default for basis:accounting; AASB 116-faithful
+    anniversary-scoped denominator; each period charges exactly cost/life) |
+    `actual/365` (constant 365 denominator regardless of FY length; kept
+    honest at the label) | `monthly` (per-month round-and-sum for ledger
     reconciliation).
 
-    Endpoint semantics per RATIFIED §2 Ask 3:
+    Endpoint semantics:
     - INCLUSIVE of both endpoints (1 to 31 August is 31 days)
     - Zero-day range (`from_date == to_date`) returns `range_dep = 0.00`
-    """
 
-    model_config = ConfigDict(extra="forbid")
+    Election group depreciation (no statutory default); see GET /v1/modules.
+    """
+    # Provenance: sibling-not-overload settled Fable D5 mc02 2026-09-04;
+    # required day_count per RATIFIED §2 Ask 4; basis/numeric_mode riders 1-2;
+    # inclusive-endpoints per RATIFIED §2 Ask 3.
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "x-calc-uri": "urn:sbrm:calculator:depreciation:range"
+        },
+    )
 
     basis: Annotated[
         GatewayBasisLiteral,
+        # Provenance: narrowed to Literal['accounting'] at both endpoints
+        # (Fable D8c mc00-2026-09-04).
         Field(
             description=(
-                "Basis discriminator (same vocabulary as /at/). D8c "
-                "mc00-2026-09-04 narrowed to Literal['accounting'] at "
-                "both endpoints; see /at/'s basis field for the "
-                "widening path."
+                "Basis discriminator (same vocabulary as /at/). Narrowed to "
+                "Literal['accounting'] at both endpoints; see /at/'s basis "
+                "field for the widening path."
             ),
         ),
     ]
@@ -604,11 +625,10 @@ class DepreciationRangeInput(BaseModel):
         date,
         Field(
             description=(
-                "Range start date, INCLUSIVE. Per RATIFIED §2 Ask 3: a "
-                "request with `from_date=2023-08-01` and `to_date=2023-08-31` "
-                "computes for 31 days (the whole of August). If "
-                "`from_date > to_date` the request is rejected at "
-                "schema-layer 422."
+                "Range start date, INCLUSIVE: a request with "
+                "`from_date=2023-08-01` and `to_date=2023-08-31` computes for "
+                "31 days (the whole of August). If `from_date > to_date` the "
+                "request is rejected at schema-layer 422."
             ),
         ),
     ]
@@ -628,13 +648,13 @@ class DepreciationRangeInput(BaseModel):
         DayCountLiteral,
         Field(
             description=(
-                "REQUIRED (no default per RATIFIED §2 Ask 4). Values: "
+                "REQUIRED (no default). Values: "
                 "`actual/actual` (recommended default for basis:accounting; "
                 "AASB 116-faithful; each period charges exactly cost/life; "
                 "asset lands on zero at life-end); `actual/365` (constant "
-                "365 denominator regardless of FY length; leap-anniversary "
-                "over-charge = the D4 defect anchor); `monthly` (per-month "
-                "round-and-sum for ledger reconciliation)."
+                "365 denominator regardless of FY length; a leap-anniversary "
+                "year over-charges relative to actual/actual); `monthly` "
+                "(per-month round-and-sum for ledger reconciliation)."
             ),
         ),
     ]
