@@ -316,6 +316,43 @@ def _classify_engine_error_term(
         }]
         return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
 
+    # D62: fbt_year_outside_cohort names a VALUE out of range, not a caller
+    # request field, and the engine emits it as a BARE term (no refusal_class):
+    #   error(fbt_year_outside_cohort(FY, available_range:[fy2022, fy2030]), _)
+    # A chained deemed-DV walk reached an FBT year the rate table's day-count
+    # cohort does not cover. That is the caller's request (their acquisitionDate
+    # resolves to an out-of-cohort FY), not our fault — so it must be a 400, not
+    # the 502 unrecognised_engine_error fallthrough (D8a: never report a 4xx-class
+    # refusal as a 5xx). It names no request field, so 400 (not 422); modelled on
+    # the money_not_cent_quantised arm above. The supported cohort years come
+    # from the engine body when present (`available_range` in the refusal
+    # payload), else the rate-table listing
+    # (rate_tables/.../fbt/.../fy2026/days-in-year-by-fy.md: [fy2022, fy2030]).
+    if term == "fbt_year_outside_cohort":
+        p = payload or {}
+        supported = p.get("available_range") or p.get("cohort_years")
+        if not isinstance(supported, (list, tuple)) or not supported:
+            # Rate-table listing fallback (days-in-year-by-fy cohort).
+            supported = ["fy2022", "fy2030"]
+        supported_years = [str(y) for y in supported]
+        requested_fy = p.get("fy") or p.get("year") or p.get("requested_fy")
+        return HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "refusal_class": "fbt_year_outside_cohort",
+                "engine": plain_engine,
+                "requested_fy": requested_fy,
+                "supported_cohort_years": supported_years,
+                "message": (
+                    "The acquisition date resolves to an FBT year outside the "
+                    "deemed-depreciation day-count cohort covered by the FY2026 "
+                    f"rate table (supported range: {supported_years}). Supply an "
+                    "acquisition date whose chained deemed-DV walk stays within "
+                    "the supported cohort years."
+                ),
+            },
+        )
+
     # A typed refusal carrying refusal_class → 400, envelope preserved, label
     # made non-_unavailable (generalises the depreciation "rider 3" behaviour).
     if isinstance(parsed, Mapping) and (
