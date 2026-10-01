@@ -535,6 +535,18 @@ def _rate_table_root_for(period_uri: str, taxonomy: str = DEFAULT_TAXONOMY) -> P
     return rate_table_root_for(period_uri, taxonomy)
 
 
+def _engine_name_for(calc_uri: str) -> str:
+    """The calculator's module name (fbt / div7a / depreciation / hp).
+
+    D63 (Fable [CALC] 2026-10-01): a single source that every refusal-mapping
+    call site uses to name the refusing engine in a 4xx body, so no body can
+    fall back to the literal "engine". The URN is
+    ``urn:sbrm:calculator:<module>:<method>``; the module is the second-last
+    colon segment.
+    """
+    return calc_uri.split(":")[-2]
+
+
 async def get_prolog_client() -> PrologClient:
     """FastAPI dependency: yields a configured Prolog client."""
     return PrologClient()
@@ -890,9 +902,13 @@ async def invoke_calculator(
         # failures → structured 502/503 as before. Historic per-route inline
         # 400+refusal_class handling folded into the mapper (Fable §6
         # cosmetic flatten also applies).
-        raise map_engine_error_to_http(exc) from exc
+        raise map_engine_error_to_http(
+            exc, engine_name=_engine_name_for(calc_uri_decoded)
+        ) from exc
     except PrologCalculationError as exc:
-        raise map_calculation_error_to_http(exc) from exc
+        raise map_calculation_error_to_http(
+            exc, engine_name=_engine_name_for(calc_uri_decoded)
+        ) from exc
 
     taxable_value = engine_response.get("taxable_value")
     # D12 mut-2026-09-09-mc00 gateway PR: engine emits taxable_value as a
@@ -1214,7 +1230,8 @@ async def invoke_div7a_at(
         # 5xx/transport paths; 4xx are re-emitted with the mapper's shape
         # (D8a: never surface engine 4xx as gateway 5xx).
         raise map_engine_error_to_http(
-            exc, engine_label="div7a_engine_unavailable"
+            exc, engine_label="div7a_engine_unavailable",
+            engine_name=_engine_name_for(_DIV7A_AT_URI),
         ) from exc
     except PrologCalculationError as exc:
         raise HTTPException(
@@ -1353,9 +1370,13 @@ async def invoke_depreciation_at(
         # cosmetic: flat `detail`, no double-nesting). Engine 4xx (e.g.
         # 422 for missing accounting_useful_life_years) surfaces as
         # gateway 4xx with actionable detail.
-        raise map_engine_error_to_http(exc) from exc
+        raise map_engine_error_to_http(
+            exc, engine_name=_engine_name_for(_DEPRECIATION_AT_URI)
+        ) from exc
     except PrologCalculationError as exc:
-        raise map_calculation_error_to_http(exc) from exc
+        raise map_calculation_error_to_http(
+            exc, engine_name=_engine_name_for(_DEPRECIATION_AT_URI)
+        ) from exc
 
     # Engine response shape (mc39): {basis, at_date, wdv_at, period_dep_at}.
     # Any missing primary field is a structural-defence-tier failure (L#34).
@@ -1488,9 +1509,13 @@ async def invoke_depreciation_range(
         engine_response = await prolog.depreciation_range(period_uri_decoded, payload)
     except PrologEngineUnavailable as exc:
         # mc00-2026-09-04 (Fable D8a + D8b): centralised mapper (see /at/).
-        raise map_engine_error_to_http(exc) from exc
+        raise map_engine_error_to_http(
+            exc, engine_name=_engine_name_for(_DEPRECIATION_RANGE_URI)
+        ) from exc
     except PrologCalculationError as exc:
-        raise map_calculation_error_to_http(exc) from exc
+        raise map_calculation_error_to_http(
+            exc, engine_name=_engine_name_for(_DEPRECIATION_RANGE_URI)
+        ) from exc
 
     # Structural-defence-tier (L#34): required response fields.
     for required in _DEPRECIATION_RANGE_RESPONSE_FIELDS:

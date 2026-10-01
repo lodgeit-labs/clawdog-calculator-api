@@ -309,6 +309,7 @@ def _classify_engine_error_term(
     *,
     engine: str,
     engine_label: str | None,
+    engine_name: str | None = None,
 ) -> HTTPException | None:
     """D54 classification: return a typed 4xx HTTPException for a known engine
     error term, or ``None`` to fall through to the caller's existing 502 path.
@@ -343,7 +344,12 @@ def _classify_engine_error_term(
     # Non-transport engine label: the *_unavailable suffix is reserved for
     # transport failures (map_engine_error_to_http). A classified 4xx names
     # the engine plainly.
-    plain_engine = (engine_label or engine or "engine")
+    # D63 (Fable [CALC] 2026-10-01): a classified 4xx names the calculator's
+    # module (fbt/div7a/depreciation/hp), supplied by the route via
+    # ``engine_name``. Falls back to the historic engine_label/engine so the
+    # transport-path behaviour (map_engine_error_to_http uses exc.engine) is
+    # unchanged when no module is threaded.
+    plain_engine = (engine_name or engine_label or engine or "engine")
     if plain_engine.endswith("_unavailable"):
         plain_engine = plain_engine[: -len("_unavailable")]
 
@@ -514,6 +520,7 @@ def map_engine_error_to_http(
     exc: PrologEngineUnavailable,
     *,
     engine_label: str | None = None,
+    engine_name: str | None = None,
 ) -> HTTPException:
     """Turn a ``PrologEngineUnavailable`` into a gateway ``HTTPException``.
 
@@ -758,7 +765,8 @@ def map_engine_error_to_http(
         # failure — it is a deterministic refusal the caller can act on.
         # Classify by term first; only unrecognised 5xx bodies stay 502.
         classified = _classify_engine_error_term(
-            dict(exc.detail), engine=exc.engine, engine_label=engine_label
+            dict(exc.detail), engine=exc.engine, engine_label=engine_label,
+            engine_name=engine_name,
         )
         if classified is not None:
             return classified
@@ -848,6 +856,7 @@ def map_calculation_error_to_http(
     exc: PrologCalculationError,
     *,
     engine_label: str | None = None,
+    engine_name: str | None = None,
 ) -> HTTPException:
     """Turn a ``PrologCalculationError`` into a gateway ``HTTPException``.
 
@@ -880,7 +889,7 @@ def map_calculation_error_to_http(
         parsed["refusal_payload"] = exc.detail
 
     classified = _classify_engine_error_term(
-        parsed, engine="engine", engine_label=engine_label
+        parsed, engine="engine", engine_label=engine_label, engine_name=engine_name
     )
     if classified is not None:
         return classified
