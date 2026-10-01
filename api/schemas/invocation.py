@@ -99,9 +99,8 @@ def _reject_smuggling(value: str, field_name: str) -> str:
 class FBTCarOperatingCostInput(BaseModel):
     """Input for the FBT Car Operating Cost method.
 
-    Field naming mirrors the upstream Prolog engine's request shape (snake_case
-    via FastAPI's alias mapping, accepting both snake_case and the camelCase
-    used by the existing fbt_tester.py compatibility surface).
+    Fields accept both snake_case and camelCase names (via FastAPI alias
+    mapping) to match the calculation engine's request shape.
 
     Election group car (statutory default: car-statutory-formula); see GET /v1/modules.
     """
@@ -1486,9 +1485,8 @@ class CalculatorListing(BaseModel):
 class ModuleListing(BaseModel):
     """One entry in the module-discovery listing (GET /v1/modules).
 
-    Fields are copied verbatim from the ``modules`` array of
-    ``api/data/calculator_metadata.json``; ``calculators`` is the list of
-    that module's calculator URNs in registry order.
+    Fields mirror the published module metadata; ``calculators`` is the list
+    of that module's calculator URNs in listing order.
     """
 
     model_config = ConfigDict(extra="forbid")
