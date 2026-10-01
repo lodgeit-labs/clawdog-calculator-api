@@ -548,9 +548,8 @@ async def get_prolog_client() -> PrologClient:
 async def list_modules() -> list[ModuleListing]:
     """Return one entry per metadata module.
 
-    Each module's fields are copied verbatim from
-    ``api/data/calculator_metadata.json``; ``calculators`` is the list of
-    that module's calculator URNs in ``_CALCULATOR_REGISTRY`` order.
+    Each module's fields mirror the published module metadata; ``calculators``
+    is the list of that module's calculator URNs in listing order.
     """
     # Calculator URNs grouped by module, preserving registry order.
     calcs_by_module: dict[str, list[str]] = {}
@@ -632,8 +631,8 @@ async def list_calculators(
     summary="Invoke the hire purchase amortisation schedule calculator.",
     description=(
         "Dedicated route for urn:sbrm:calculator:hp:schedule (module hp). "
-        "Period-unscoped accounting calculator backed by the pure-Decimal "
-        "engine api/engines/hp/schedule.py. Monthly frequency only in v1; a "
+        "Period-unscoped accounting calculator backed by an exact-decimal "
+        "calculation engine. Monthly frequency only in v1; a "
         "non-monthly frequency is refused with HTTP 400 refusal_class "
         "unsupported_frequency. A balloon requires an explicit mode "
         "(replace | add); a missing mode is refused with HTTP 422. The "
@@ -693,11 +692,10 @@ async def invoke_hp_schedule(body: HpScheduleInput) -> HpScheduleResponse:
     response_model=None,
     summary="Invoke a calculator for the given URN-encoded period.",
     description=(
-        "Bare math + manifest + advisory. URL-encoded URN path params; the "
-        "bridge re-validates them against the atom-vs-bridge boundary before "
-        "forwarding to the Prolog engine. Response carries the calculator's "
-        "native trace block, plus the manifest-fidelity block (live "
-        "content_hashes) and the advisory block."
+        "Bare math + manifest + advisory. URL-encoded URN path params are "
+        "re-validated before being forwarded to the calculation engine. "
+        "Response carries the calculator's native trace block, plus the "
+        "manifest-fidelity block (live content_hashes) and the advisory block."
     ),
 )
 async def invoke_calculator(
@@ -726,13 +724,11 @@ async def invoke_calculator(
         | dict,
         Body(
             description=(
-                "Calculator input body. The schema dispatched per `calc_uri` "
-                "path param; see the `_CALC_INPUT_MODEL_REST` registry in "
-                "`api/routes/calculators.py` for the per-URN pydantic class "
-                "binding. FastAPI presents all wrapped input types as a "
-                "Union; the route validates the body against the URN's "
-                "specific class at request time and surfaces a structured "
-                "422 on mismatch."
+                "Calculator input body. The schema is selected by the "
+                "`calc_uri` path param: each URN binds to its own input "
+                "model. All input types are presented as a Union; the route "
+                "validates the body against the URN's specific schema at "
+                "request time and surfaces a structured 422 on mismatch."
             ),
         ),
     ],

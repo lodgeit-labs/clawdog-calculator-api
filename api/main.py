@@ -96,7 +96,7 @@ app.include_router(internal_auth_probe_routes.router)
 def healthz() -> dict[str, str]:
     """Return a minimal liveness response for the Cloud Run / Docker HEALTHCHECK.
 
-    Does NOT call into the upstream Prolog engine — that would couple the
+    Does NOT call into the calculation engine — that would couple the
     REST liveness signal to the engine's readiness, which is a deliberately
     independent dimension.
 
@@ -126,7 +126,7 @@ def livez() -> dict[str, str]:
     docstring); ``/livez`` is NOT reserved and routes correctly through
     Google Frontend to FastAPI.
 
-    Same body shape as ``/healthz``. Does NOT call into the upstream Prolog
+    Same body shape as ``/healthz``. Does NOT call into the calculation
     engine.
     """
     return {"status": "ok", "service": "clawdog-calculator-api", "version": __version__}
