@@ -646,19 +646,11 @@
             "title": "Acquisitiondate"
           },
           "businessUsePercentage": {
-            "description": "Business-use % of total operating costs. Clamped to [0, 100] by the engine. Money: cent-quantised, JSON number or decimal string.",
-            "oneOf": [
-              {
-                "multipleOf": 0.01,
-                "type": "number"
-              },
-              {
-                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
-                "type": "string"
-              }
-            ],
+            "description": "Business-use % of total operating costs. Clamped to [0, 100] by the engine.",
+            "maximum": 100.0,
+            "minimum": 0.0,
             "title": "Businessusepercentage",
-            "x-money": true
+            "type": "number"
           },
           "daysHeldInFBTYear": {
             "anyOf": [
@@ -915,19 +907,10 @@
             "title": "Fbttype"
           },
           "spacesProvided": {
-            "description": "Number of car parking spaces provided. Money: cent-quantised, JSON number or decimal string.",
-            "oneOf": [
-              {
-                "multipleOf": 0.01,
-                "type": "number"
-              },
-              {
-                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
-                "type": "string"
-              }
-            ],
+            "description": "Number of car parking spaces provided.",
+            "minimum": 0.0,
             "title": "Spacesprovided",
-            "x-money": true
+            "type": "number"
           },
           "valuationMethodRate": {
             "description": "Per-space daily rate (AUD). Money: cent-quantised, JSON number or decimal string.",
@@ -1330,19 +1313,11 @@
             "x-money": true
           },
           "otherwiseDeductiblePercentage": {
-            "description": "Otherwise-deductible percentage [0..100] per FBTAA s.24. Money: cent-quantised, JSON number or decimal string.",
-            "oneOf": [
-              {
-                "multipleOf": 0.01,
-                "type": "number"
-              },
-              {
-                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
-                "type": "string"
-              }
-            ],
+            "description": "Otherwise-deductible percentage [0..100] per FBTAA s.24.",
+            "maximum": 100.0,
+            "minimum": 0.0,
             "title": "Otherwisedeductiblepercentage",
-            "x-money": true
+            "type": "number"
           }
         },
         "required": [
@@ -1428,19 +1403,11 @@
             "x-money": true
           },
           "otherwiseDeductiblePercentage": {
-            "description": "Otherwise-deductible percentage [0..100] per FBTAA s.24. Money: cent-quantised, JSON number or decimal string.",
-            "oneOf": [
-              {
-                "multipleOf": 0.01,
-                "type": "number"
-              },
-              {
-                "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
-                "type": "string"
-              }
-            ],
+            "description": "Otherwise-deductible percentage [0..100] per FBTAA s.24.",
+            "maximum": 100.0,
+            "minimum": 0.0,
             "title": "Otherwisedeductiblepercentage",
-            "x-money": true
+            "type": "number"
           }
         },
         "required": [
