@@ -114,7 +114,10 @@ class FBTCarOperatingCostInput(BaseModel):
         },
     )
 
-    business_use_percentage: Money = money_field(
+    # D65 (Fable [CALC] 2026-10-01): businessUsePercentage is a percentage,
+    # not money. Restore the pre-D56 plain-number type + [0,100] bounds
+    # (openapi 42b7eca: number, minimum 0, maximum 100); no x-money.
+    business_use_percentage: float = Field(
         ..., ge=0, le=100, alias="businessUsePercentage",
         description="Business-use % of total operating costs. Clamped to [0, 100] by the engine.",
     )
@@ -584,7 +587,11 @@ class _ExpensePaymentBaseInput(BaseModel):
         ..., ge=0, alias="expenseValue",
         description="Gross expense amount paid/reimbursed by the employer (AUD).",
     )
-    otherwise_deductible_percentage: Money = money_field(
+    # D65 (Fable [CALC] 2026-10-01): otherwiseDeductiblePercentage is a
+    # percentage, not money. Restore the pre-D56 plain-number type + [0,100]
+    # bounds (openapi 42b7eca: number, minimum 0, maximum 100); no x-money.
+    # Matches the sibling loan/property/residual declarations already on float.
+    otherwise_deductible_percentage: float = Field(
         ..., ge=0, le=100, alias="otherwiseDeductiblePercentage",
         description="Otherwise-deductible percentage [0..100] per FBTAA s.24.",
     )
@@ -1017,7 +1024,12 @@ class FBTCarParkingActualInput(BaseModel):
         },
     )
 
-    spaces_provided: Money = money_field(
+    # D65 (Fable [CALC] 2026-10-01): spacesProvided is a count, not money.
+    # Restore the pre-D56 type. Git history (a37b2f5) shows the pre-D56 type
+    # was `float` (NOT int), ge=0, no upper bound (openapi 42b7eca: number,
+    # minimum 0, no maximum). No engine integer evidence found, so restore
+    # number/min-0 exactly rather than typing it int.
+    spaces_provided: float = Field(
         ..., ge=0, alias="spacesProvided",
         description="Number of car parking spaces provided.",
     )
