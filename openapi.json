@@ -2931,6 +2931,14 @@
         "title": "ModuleListing",
         "type": "object"
       },
+      "TaxDepreciationInput": {
+        "additionalProperties": true,
+        "description": "Request body for the gateway's tax-depreciation dispatch route.\n\nWire-shape mirrors the upstream tax-depreciation-engine dispatch endpoint.\nThe selected ``{calculator}`` (decline-in-value | low-value-pool |\nsmall-business-pool) is carried in the URL path, not the body. The body is\nforwarded verbatim; the engine is the authoritative validator of each\ncalculator's own field contract.\n\nJurisdiction AU; statute ITAA 1997 Division 40 (decline in value) and\nSubdivision 328-D (small-business and low-value pooling). Election group\ntax-depreciation (no statutory default); see GET /v1/modules.",
+        "properties": {},
+        "title": "TaxDepreciationInput",
+        "type": "object",
+        "x-calc-uri-prefix": "urn:sbrm:calculator:tax-depreciation"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -3454,6 +3462,82 @@
           }
         },
         "summary": "Invoke the hire purchase amortisation schedule calculator.",
+        "tags": [
+          "calculators"
+        ]
+      }
+    },
+    "/v1/calculators/tax-depreciation/{calculator}/{period_uri}": {
+      "post": {
+        "description": "Onboards the tax-depreciation-engine dispatch route `/v1/calculators/tax-depreciation/{calculator}/{period_uri}` through the constellation gateway. `{calculator}` is one of `decline-in-value` (ITAA 1997 Division 40 individual-asset decline in value), `low-value-pool` (ITAA 1997 Subdivision 40-E low-value pool), or `small-business-pool` (ITAA 1997 Subdivision 328-D small business general pool). This is AU TAX depreciation \u2014 a statutory income-tax deduction, distinct from accounting depreciation (AASB 116 carrying amount) exposed by the separate depreciation module; the two are not interchangeable. The gateway forwards the request body verbatim to the engine (the engine owns each calculator's field contract) and wraps the engine response with the constellation manifest + advisory blocks.",
+        "operationId": "invoke_tax_depreciation_v1_calculators_tax_depreciation__calculator___period_uri__post",
+        "parameters": [
+          {
+            "description": "Engine calculator segment: decline-in-value | low-value-pool | small-business-pool.",
+            "in": "path",
+            "name": "calculator",
+            "required": true,
+            "schema": {
+              "description": "Engine calculator segment: decline-in-value | low-value-pool | small-business-pool.",
+              "title": "Calculator",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL-encoded period URN.",
+            "in": "path",
+            "name": "period_uri",
+            "required": true,
+            "schema": {
+              "description": "URL-encoded period URN.",
+              "title": "Period Uri",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bare-atom taxonomy axis value. Supported set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm is currently populated for tax-depreciation.",
+            "in": "query",
+            "name": "taxonomy",
+            "required": false,
+            "schema": {
+              "default": "lodgeit_au_sbrm",
+              "description": "Bare-atom taxonomy axis value. Supported set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm is currently populated for tax-depreciation.",
+              "title": "Taxonomy",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaxDepreciationInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Invoke an AU tax-depreciation calculator for the given URN-encoded income-year period.",
         "tags": [
           "calculators"
         ]

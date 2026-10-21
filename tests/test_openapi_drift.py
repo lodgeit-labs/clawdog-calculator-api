@@ -167,7 +167,7 @@ def test_mcp_tool_descriptions_have_no_internal_references() -> None:
     )
     assert resp.status_code == 200, resp.text
     tools = resp.json()["result"]["tools"]
-    assert len(tools) == 23, f"expected 23 MCP tools, got {len(tools)}"
+    assert len(tools) == 26, f"expected 26 MCP tools, got {len(tools)}"
     offenders: list[str] = []
     for tool in tools:
         name = tool.get("name", "<unnamed>")

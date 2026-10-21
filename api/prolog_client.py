@@ -107,6 +107,11 @@ DEFAULT_DEPRECIATION_URL = "http://localhost:8082"
 # entry point per L#28 single-concern. Naming preserved for consistency;
 # behaviour is HTTP JSON round-trip regardless of downstream engine tech.
 DEFAULT_DIV7A_URL = "http://localhost:8083"
+# tax-depreciation-engine (ITAA 1997 Div 40 / Subdiv 328-D). Native FastAPI
+# dispatch service, routed via the shared dispatch abstraction like Div7A.
+# Distinct from the accounting-depreciation engine (DEFAULT_DEPRECIATION_URL,
+# port 8082, AASB 116): this is AU TAX depreciation on its own engine + port.
+DEFAULT_TAX_DEP_URL = "http://localhost:8084"
 DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=5.0)
 
 # Engine identifiers for ``PrologClient.dispatch()``. Each maps to one
@@ -115,6 +120,10 @@ DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=5.0)
 FBT_ENGINE = "fbt"
 DEPRECIATION_ENGINE = "depreciation"
 DIV7A_ENGINE = "div7a"  # Phase D (mut-2026-08-24-mc20): Div7A_Engine gateway routing
+# tax-depreciation-engine: AU TAX depreciation (ITAA 1997 Div 40 decline in
+# value + Subdiv 328-D pooling). Distinct engine from the accounting
+# DEPRECIATION_ENGINE above.
+TAX_DEPRECIATION_ENGINE = "tax-depreciation"
 
 # Per-asset Tier-1 classifier lookups in the depreciation engine dominate
 # the audit-batch runtime; raise the read timeout to match the run_audit.py
@@ -158,6 +167,25 @@ def div7a_engine_url() -> str:
     as those engines for uniform transport-layer failure handling.
     """
     return os.environ.get("DIV7A_ENGINE_URL", DEFAULT_DIV7A_URL).rstrip("/")
+
+
+def tax_depreciation_engine_url() -> str:
+    """Return the upstream tax-depreciation-engine base URL.
+
+    Resolution order:
+        1. ``TAX_DEPRECIATION_ENGINE_URL`` environment variable.
+        2. Module default ``http://localhost:8084``.
+
+    The tax-depreciation-engine speaks native FastAPI at the dispatch route
+    ``/v1/calculators/tax-depreciation/{calculator}/{period_uri}``; the
+    gateway templates the path at call site and uses the shared dispatch
+    abstraction for uniform transport-failure handling. This is AU TAX
+    depreciation (ITAA 1997 Div 40 / Subdiv 328-D), a different engine from
+    the accounting-depreciation engine (``DEPRECIATION_PROLOG_URL``).
+    """
+    return os.environ.get(
+        "TAX_DEPRECIATION_ENGINE_URL", DEFAULT_TAX_DEP_URL
+    ).rstrip("/")
 
 
 class EngineAuthUnavailable(RuntimeError):
@@ -540,6 +568,18 @@ class PrologClient:
             "path_template": "/v1/calculators/div7a/at/{period_uri}",
             "timeout": DEFAULT_TIMEOUT,
         },
+        # tax-depreciation-engine: dispatch route templates BOTH the
+        # {calculator} segment (decline-in-value | low-value-pool |
+        # small-business-pool) and the {period_uri}. The call site supplies
+        # the fully-templated path via path_override, as Div7A does. Bounded
+        # arithmetic (Div 40 decline-in-value / Subdiv 328-D pooling), so the
+        # default 30s/5s timeout applies.
+        TAX_DEPRECIATION_ENGINE: {
+            "path_template": (
+                "/v1/calculators/tax-depreciation/{calculator}/{period_uri}"
+            ),
+            "timeout": DEFAULT_TIMEOUT,
+        },
     }
 
     def __init__(
@@ -547,6 +587,7 @@ class PrologClient:
         base_url: str | None = None,
         depreciation_base_url: str | None = None,
         div7a_base_url: str | None = None,
+        tax_dep_base_url: str | None = None,
         timeout: httpx.Timeout | None = None,
         client: httpx.AsyncClient | None = None,
     ) -> None:
@@ -555,6 +596,9 @@ class PrologClient:
             depreciation_base_url or depreciation_prolog_url()
         ).rstrip("/")
         self._div7a_base_url = (div7a_base_url or div7a_engine_url()).rstrip("/")
+        self._tax_dep_base_url = (
+            tax_dep_base_url or tax_depreciation_engine_url()
+        ).rstrip("/")
         self._timeout = timeout or DEFAULT_TIMEOUT
         self._client = client
 
@@ -566,6 +610,8 @@ class PrologClient:
             return self._depreciation_base_url
         if engine == DIV7A_ENGINE:
             return self._div7a_base_url
+        if engine == TAX_DEPRECIATION_ENGINE:
+            return self._tax_dep_base_url
         raise ValueError(f"unknown engine id: {engine!r}")
 
     async def dispatch(
@@ -783,6 +829,29 @@ class PrologClient:
             path_override=f"/v1/calculators/div7a/at/{period_uri}",
         )
 
+    async def tax_depreciation(
+        self, calculator: str, period_uri: str, payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """POST to tax-depreciation-engine
+        ``/v1/calculators/tax-depreciation/{calculator}/{period_uri}``.
+
+        ``calculator`` is one of ``decline-in-value`` | ``low-value-pool`` |
+        ``small-business-pool`` and is templated into the path alongside the
+        full ``period_uri`` URN. Mirrors ``div7a_at`` exactly but with the
+        extra ``{calculator}`` path segment. Uses the shared ``dispatch()``
+        transport-failure machinery with a per-call path override.
+
+        This is AU TAX depreciation (ITAA 1997 Div 40 / Subdiv 328-D), served
+        by a different engine from the accounting-depreciation methods.
+        """
+        return await self.dispatch(
+            TAX_DEPRECIATION_ENGINE,
+            payload,
+            path_override=(
+                f"/v1/calculators/tax-depreciation/{calculator}/{period_uri}"
+            ),
+        )
+
     async def health(self) -> dict[str, Any]:
         """GET ``/health`` and return the parsed JSON response.
 
@@ -804,12 +873,16 @@ class PrologClient:
 __all__ = [
     "DEFAULT_PROLOG_URL",
     "DEFAULT_DEPRECIATION_URL",
+    "DEFAULT_TAX_DEP_URL",
     "FBT_ENGINE",
     "DEPRECIATION_ENGINE",
     "DIV7A_ENGINE",
+    "TAX_DEPRECIATION_ENGINE",
     "PrologClient",
     "PrologCalculationError",
     "PrologEngineUnavailable",
     "prolog_url",
     "depreciation_prolog_url",
+    "div7a_engine_url",
+    "tax_depreciation_engine_url",
 ]
