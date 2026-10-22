@@ -60,6 +60,16 @@
       "election_groups": []
     },
     {
+      "module_uri": "urn:sbrm:module:tax-depreciation",
+      "label": "Tax depreciation (AU)",
+      "jurisdiction": "AU",
+      "statutes": [{"act": "Income Tax Assessment Act 1997", "provisions": ["Division 40", "Subdivision 328-D"]}],
+      "period_family": "urn:sbrm:period:tax-depreciation:*",
+      "description": "Tax depreciation of a depreciating asset for a single income year: the decline in value under ITAA 1997 Division 40, and the pooling deductions under Subdivision 328-D for the small business general pool and the low-value pool. This is a statutory income tax deduction, not an accounting carrying amount under AASB 116; the two are distinct and are not interchangeable. The period selects the income year. Decline in value is the individual-asset method under Division 40; the two pool methods aggregate assets and are chosen under the pooling rules.",
+      "resolution_order": ["decline-in-value", "low-value-pool", "small-business-pool"],
+      "election_groups": []
+    },
+    {
       "module_uri": "urn:sbrm:module:depreciation",
       "label": "Depreciation, accounting basis (AU)",
       "jurisdiction": "AU",
@@ -280,6 +290,36 @@
       "statutes": [{"act": "ITAA 1936", "provisions": ["s 109D", "s 109E", "s 109N"]}],
       "selection": {"kind": "fact"},
       "description": "Minimum yearly repayment, shortfall and deemed dividend for an amalgamated Division 7A loan in the selected income year. Maximum term 7 years unsecured, 25 years secured over real property. Refuses a zero or negative balance."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:tax-depreciation:decline-in-value",
+      "rounding_advisory": "Rounding: lodgeit-tax-depreciation-rounding-1.0 — single-asset decline, deduction and closing adjustable value in cents (2 dp); balancing adjustments rounded to whole dollars per asset; ties to even (banker's rounding), not ties away from zero. Exact inside, round once per emitted figure; every whole-dollar step appears in trace with the unrounded figure beside it.",
+      "label": "Tax depreciation: decline in value",
+      "module": "urn:sbrm:module:tax-depreciation",
+      "benefit_type": null,
+      "statutes": [{"act": "ITAA 1997", "provisions": ["Division 40", "s 40-25", "s 40-70", "s 40-72"]}],
+      "selection": {"kind": "fact"},
+      "description": "Decline in value of a single depreciating asset for an income year under ITAA 1997 Division 40, by the prime cost or diminishing value method. This is the individual-asset tax deduction. Use the pooling calculators where the asset is allocated to the small business general pool or the low-value pool instead. This is a tax figure, not an accounting carrying amount under AASB 116."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:tax-depreciation:low-value-pool",
+      "rounding_advisory": "Rounding: lodgeit-tax-depreciation-rounding-1.0 — pool additions enter in cents; the pool decline is rounded to whole dollars and the closing pool balance carries forward in whole dollars; ties to even (banker's rounding), not ties away from zero. Exact inside, round once per emitted figure; every whole-dollar step appears in trace with the unrounded figure beside it.",
+      "label": "Tax depreciation: low-value pool",
+      "module": "urn:sbrm:module:tax-depreciation",
+      "benefit_type": null,
+      "statutes": [{"act": "ITAA 1997", "provisions": ["Subdivision 40-E", "s 40-440"]}],
+      "selection": {"kind": "fact"},
+      "description": "Low-value pool deduction for an income year under ITAA 1997 Subdivision 40-E: 37.5% of the pool's opening balance plus 18.75% of low-cost and low-value assets added during the year. This is a tax deduction on the pool, not an individual-asset decline in value and not an accounting figure."
+    },
+    {
+      "calc_uri": "urn:sbrm:calculator:tax-depreciation:small-business-pool",
+      "rounding_advisory": "Rounding: lodgeit-tax-depreciation-rounding-1.0 — pool additions enter in cents; the pool decline is rounded to whole dollars and the closing pool balance carries forward in whole dollars; low-pool-balance write-off at the year's threshold; ties to even (banker's rounding), not ties away from zero. Exact inside, round once per emitted figure; every whole-dollar step appears in trace with the unrounded figure beside it.",
+      "label": "Tax depreciation: small business general pool",
+      "module": "urn:sbrm:module:tax-depreciation",
+      "benefit_type": null,
+      "statutes": [{"act": "ITAA 1997", "provisions": ["Subdivision 328-D", "s 328-185", "s 328-190"]}],
+      "selection": {"kind": "fact"},
+      "description": "Small business general pool deduction for an income year under ITAA 1997 Subdivision 328-D: 30% of the pool's opening balance plus 15% of assets added during the year, for a small business entity using simplified depreciation. This is a tax deduction on the pool, not an individual-asset decline in value and not an accounting figure."
     },
     {
       "calc_uri": "urn:sbrm:calculator:depreciation:at",

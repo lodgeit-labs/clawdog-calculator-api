@@ -69,6 +69,11 @@ from api.schemas.invocation import (
     FBTResidualInput,
     FBTTebeInput,
 )
+from api.schemas.tax_depreciation import (
+    DeclineInValueInput,
+    LowValuePoolInput,
+    SmallBusinessPoolInput,
+)
 from api.services.widget_url_resolver import (
     all_calc_widget_mappings,
     standalone_widget_url,
@@ -113,6 +118,14 @@ _CALC_INPUT_MODEL: dict[str, type[Any]] = {
     # mc02-2026-09-04 (Fable D5 mc02 ratified): depreciation range
     # endpoint sibling of /at/; RATIFIED mc11-2026-08-31 §2 Ask 1.
     "urn:sbrm:calculator:depreciation:range": DepreciationRangeInput,
+    # Tax-depreciation module (gateway wiring of tax-depreciation-engine).
+    # Each calculator has its own gateway input model (money as decimal
+    # strings, cent-checked; effective_life_years required on decline-in-value
+    # with no asset_description fallback). Mirrors _CALC_INPUT_MODEL_REST per
+    # the parity gate.
+    "urn:sbrm:calculator:tax-depreciation:decline-in-value": DeclineInValueInput,
+    "urn:sbrm:calculator:tax-depreciation:low-value-pool": LowValuePoolInput,
+    "urn:sbrm:calculator:tax-depreciation:small-business-pool": SmallBusinessPoolInput,
     # Module hp (clawdog/hp-schedule-engine): dedicated REST route
     # /v1/calculators/hp/schedule; advertised uniformly via tools/list.
     "urn:sbrm:calculator:hp:schedule": HpScheduleInput,

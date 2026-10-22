@@ -65,7 +65,7 @@ def test_probe_all_ok_when_direct_metadata_mints_all_audiences(client: TestClien
     body = resp.json()
     assert body["probe"] == "engine-auth-mint"
     assert body["all_ok"] is True
-    assert body["audiences_checked"] == 3  # fbt + depreciation + div7a defaults
+    assert body["audiences_checked"] == 4  # fbt + depreciation + div7a + tax-depreciation defaults
 
     for result in body["results"]:
         assert result["status"] == "OK"
@@ -205,10 +205,11 @@ def test_probe_returns_404_when_header_value_mismatched(client: TestClient) -> N
     assert resp.status_code == 404
 
 
-def test_probe_default_audiences_are_the_three_configured_engines(client: TestClient) -> None:
-    """When body has no `audiences`, endpoint uses the three configured
-    engine URLs. Verifies the default-audience discovery hasn't drifted
-    from the env-var-resolved base URLs.
+def test_probe_default_audiences_are_the_four_configured_engines(client: TestClient) -> None:
+    """When body has no `audiences`, endpoint uses the four configured
+    engine URLs (fbt + depreciation + div7a + tax-depreciation). Verifies
+    the default-audience discovery hasn't drifted from the env-var-resolved
+    base URLs.
     """
     fake_token = "eyJ.default.audiences.probe.token_at_least_20_chars_ok"
     audiences_seen: list[str] = []
@@ -222,11 +223,11 @@ def test_probe_default_audiences_are_the_three_configured_engines(client: TestCl
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["audiences_checked"] == 3
+    assert body["audiences_checked"] == 4
     # Each result carries the audience URL; probe passed the audience by
     # value to the mint function so we can assert on the seen list.
-    assert len(audiences_seen) == 3
-    # The 3 configured engines resolve to their default localhost URLs when
+    assert len(audiences_seen) == 4
+    # The 4 configured engines resolve to their default localhost URLs when
     # env vars are unset (test env), which is expected. Just check they're
-    # 3 distinct URLs.
-    assert len(set(audiences_seen)) == 3
+    # 4 distinct URLs.
+    assert len(set(audiences_seen)) == 4
