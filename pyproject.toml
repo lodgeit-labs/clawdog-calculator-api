@@ -29,9 +29,20 @@ classifiers = [
     "Topic :: Office/Business :: Financial :: Accounting",
 ]
 dependencies = [
-    "fastapi>=0.110",
+    # Schema-dependency pins (ci-pin-schema-deps, [CALC] Fable 2026-10-22).
+    # pydantic 2.14.x (released 2026-10-08/10-11) stopped emitting pydantic-
+    # core's native Decimal->string `pattern` in the Money `anyOf`, drifting
+    # openapi.json and reddening `make openapi-check` on every fresh CI venv
+    # (CI #257 on 624e2c5; PR #64 on 21 Oct). Root cause was the unbounded
+    # `pydantic>=2.6`. Floor+ceiling to the 2.13 line (pattern PRESENT,
+    # matches committed openapi.json) and pin the transitive schema stack
+    # exact so the drift gate cannot re-open on a silent float. Bump these
+    # four lines together after re-running `make gates` + `make openapi-check`.
+    "fastapi==0.159.1",
+    "starlette==1.9.0",
     "uvicorn[standard]>=0.27",
-    "pydantic>=2.6",
+    "pydantic>=2.13,<2.14",
+    "pydantic-core==2.46.5",
     "httpx>=0.27",
     "PyYAML>=6.0",
     # Engine lock-down Step 1 (mut-2026-09-06-mc14 per Fable 2026-09-06 UTC):
