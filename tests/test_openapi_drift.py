@@ -38,8 +38,10 @@ _INTERNAL_REF_PATTERNS = {
 _ALLOWED_TOKEN = "CLAWDOG_ENGINE_AUTH_PROBE_TOKEN"
 
 # Structural invariant guarded alongside the text change: D64 is text-only, so
-# the x-money field count must stay exactly where D65 left it.
-_EXPECTED_X_MONEY_COUNT = 75
+# the x-money field count must stay where D65 left it (75) PLUS the 13 top-level
+# x-money properties added by the tax-depreciation gateway wiring (SCOPE v1.4:
+# money as decimal strings in the three tax-depreciation input schemas).
+_EXPECTED_X_MONEY_COUNT = 88
 
 
 def _scan_string_for_internal_refs(value: str) -> list[tuple[str, str]]:

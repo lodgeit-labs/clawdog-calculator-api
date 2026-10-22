@@ -293,7 +293,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:tax-depreciation:decline-in-value",
-      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
+      "rounding_advisory": "Rounding: lodgeit-tax-depreciation-rounding-1.0 — single-asset decline, deduction and closing adjustable value in cents (2 dp); balancing adjustments rounded to whole dollars per asset; ties to even (banker's rounding), not ties away from zero. Exact inside, round once per emitted figure; every whole-dollar step appears in trace with the unrounded figure beside it.",
       "label": "Tax depreciation: decline in value",
       "module": "urn:sbrm:module:tax-depreciation",
       "benefit_type": null,
@@ -303,7 +303,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:tax-depreciation:low-value-pool",
-      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
+      "rounding_advisory": "Rounding: lodgeit-tax-depreciation-rounding-1.0 — pool additions enter in cents; the pool decline is rounded to whole dollars and the closing pool balance carries forward in whole dollars; ties to even (banker's rounding), not ties away from zero. Exact inside, round once per emitted figure; every whole-dollar step appears in trace with the unrounded figure beside it.",
       "label": "Tax depreciation: low-value pool",
       "module": "urn:sbrm:module:tax-depreciation",
       "benefit_type": null,
@@ -313,7 +313,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:tax-depreciation:small-business-pool",
-      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rule 3 — money at 2 dp, rates at 4 dp, ties away from zero. Rules 5–7 do not apply (single-figure calculator).",
+      "rounding_advisory": "Rounding: lodgeit-tax-depreciation-rounding-1.0 — pool additions enter in cents; the pool decline is rounded to whole dollars and the closing pool balance carries forward in whole dollars; low-pool-balance write-off at the year's threshold; ties to even (banker's rounding), not ties away from zero. Exact inside, round once per emitted figure; every whole-dollar step appears in trace with the unrounded figure beside it.",
       "label": "Tax depreciation: small business general pool",
       "module": "urn:sbrm:module:tax-depreciation",
       "benefit_type": null,

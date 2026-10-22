@@ -215,6 +215,36 @@ ADVISORY_TEXT_AU_ACCOUNTING: str = (
     "and the tax-basis figure will not equal this one."
 )
 
+# Tax-depreciation advisory (SCOPE_tax_depreciation_v1.md §5). This module is
+# AU *tax* depreciation: the decline-in-value deduction under ITAA 1997
+# Division 40 and the pooling deductions under Subdivision 328-D. §5 requires
+# the advisory to say the figure is a tax figure under Div 40 / Subdiv 328-D,
+# NOT an AASB 116 carrying amount, and that it is a review aid, not a lodgement.
+# Structurally the mirror of the accounting-basis text: a positive statement of
+# what the figure IS, and a load-bearing negative statement of what it is not
+# (an accounting carrying amount). registered_agent_required is True (tax
+# figure carried into a return).
+ADVISORY_TEXT_AU_TAX_DEPRECIATION: str = (
+    "This is calculator output, not advice. It is a taxation figure: a "
+    "decline-in-value deduction under ITAA 1997 Division 40, or a pool "
+    "deduction under Subdivision 328-D, for the income year selected by the "
+    "period. It is not an accounting carrying amount under AASB 116 (Property, "
+    "Plant and Equipment); the tax figure and the accounting figure are "
+    "distinct and are not interchangeable. This is a review aid, not a "
+    "lodgement; consult a registered tax agent before relying on these numbers "
+    "for any return, position, or advice provided to a third party. "
+    "Statutory framing: TAA 1953 s284-15 (false or misleading statements; "
+    "penalty bands escalate with culpability) and the Tax Agent Services "
+    "Act 2009 (registered-agent requirement)."
+)
+
+STATUTORY_BASIS_AU_TAX_DEPRECIATION = [
+    {"statute": "ITAA 1997", "section": "Division 40"},
+    {"statute": "ITAA 1997", "section": "Subdivision 328-D"},
+    {"statute": "TAA 1953", "section": "s284-15"},
+    {"statute": "Tax Agent Services Act 2009", "section": "s50-5"},
+]
+
 ADVISORY_TEXT_UK: str = (
     "This is calculator output, not advice. Consult a registered tax adviser "
     "before relying on these numbers for any return, position, or advice "
@@ -259,6 +289,20 @@ STATUTORY_BASIS_AU_ACCOUNTING = [
 STATUTORY_BASIS_UK = [
     {"statute": "Finance Act 2008", "section": "Schedule 41"},
 ]
+
+
+def _is_tax_depreciation(calculator_uri: str | None) -> bool:
+    """True when the calculator URN's module segment is ``tax-depreciation``.
+
+    URN shape: ``urn:sbrm:calculator:<module>:<method>``; the module is the
+    second-last colon segment (same derivation as the route's
+    ``_engine_name_for``). Used to route the SCOPE §5 Div 40 / Subdiv 328-D
+    advisory, distinct from the accounting ``depreciation`` module.
+    """
+    if not calculator_uri:
+        return False
+    parts = calculator_uri.split(":")
+    return len(parts) >= 2 and parts[-2] == "tax-depreciation"
 
 
 def _append_rounding_advisory(block: dict[str, Any], calculator_uri: str | None) -> dict[str, Any]:
@@ -336,6 +380,19 @@ def advisory_block(
             "registered_agent_required": True,
             "statutory_basis": STATUTORY_BASIS_UK,
             "jurisdiction": "UK",
+        }, calculator_uri)
+
+    # AU — tax-depreciation branch (SCOPE §5). Keyed on the calculator_uri
+    # module segment being `tax-depreciation`, independent of basis/manifest
+    # conditioning: this module always needs the Div 40 / Subdiv 328-D vs
+    # AASB 116 framing. Placed before the accounting-basis branch so it is not
+    # shadowed. The accounting `depreciation` module keeps basis="accounting".
+    if _is_tax_depreciation(calculator_uri):
+        return _append_rounding_advisory({
+            "disclaimer": ADVISORY_TEXT_AU_TAX_DEPRECIATION,
+            "registered_agent_required": True,
+            "statutory_basis": STATUTORY_BASIS_AU_TAX_DEPRECIATION,
+            "jurisdiction": "AU",
         }, calculator_uri)
 
     # AU — Fable D10 accounting-basis branch takes precedence over D6
@@ -418,9 +475,11 @@ __all__ = [
     "ADVISORY_TEXT_AU",
     "ADVISORY_TEXT_AU_ACCOUNTING",
     "ADVISORY_TEXT_AU_EMPTY_MANIFEST",
+    "ADVISORY_TEXT_AU_TAX_DEPRECIATION",
     "ADVISORY_TEXT_UK",
     "STATUTORY_BASIS_AU",
     "STATUTORY_BASIS_AU_ACCOUNTING",
+    "STATUTORY_BASIS_AU_TAX_DEPRECIATION",
     "STATUTORY_BASIS_UK",
     "advisory_block",
     "wrap_response",

@@ -81,7 +81,12 @@ from api.schemas.invocation import (
     validate_calc_uri,
     validate_period_uri,
 )
-from api.schemas.tax_depreciation import TaxDepreciationInput
+from api.schemas.tax_depreciation import (
+    TAX_DEP_INPUT_MODEL_BY_SEGMENT,
+    DeclineInValueInput,
+    LowValuePoolInput,
+    SmallBusinessPoolInput,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -481,7 +486,7 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
         "jurisdiction": "AU",
         "label": "Tax depreciation: decline in value",
         "supported_periods": _TAX_DEP_SUPPORTED_PERIODS,
-        "input_schema_ref": "#/components/schemas/TaxDepreciationInput",
+        "input_schema_ref": "#/components/schemas/DeclineInValueInput",
     },
     _TAX_DEP_LOW_VALUE_POOL_URI: {
         "engine_method": "low-value-pool",
@@ -489,7 +494,7 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
         "jurisdiction": "AU",
         "label": "Tax depreciation: low-value pool",
         "supported_periods": _TAX_DEP_SUPPORTED_PERIODS,
-        "input_schema_ref": "#/components/schemas/TaxDepreciationInput",
+        "input_schema_ref": "#/components/schemas/LowValuePoolInput",
     },
     _TAX_DEP_SMALL_BUSINESS_POOL_URI: {
         "engine_method": "small-business-pool",
@@ -497,7 +502,7 @@ _CALCULATOR_REGISTRY: dict[str, dict] = {
         "jurisdiction": "AU",
         "label": "Tax depreciation: small business general pool",
         "supported_periods": _TAX_DEP_SUPPORTED_PERIODS,
-        "input_schema_ref": "#/components/schemas/TaxDepreciationInput",
+        "input_schema_ref": "#/components/schemas/SmallBusinessPoolInput",
     },
     # Module hp (clawdog/hp-schedule-engine). Dedicated REST route
     # /v1/calculators/hp/schedule; period-unscoped accounting calculator
@@ -574,13 +579,16 @@ _CALC_INPUT_MODEL_REST: dict[str, type] = {
     _DEPRECIATION_AT_URI: DepreciationAtInput,
     _DEPRECIATION_RANGE_URI: DepreciationRangeInput,
     _DIV7A_AT_URI: Div7aAtInput,
-    # Tax-depreciation: all three calculators share the verbatim-forward
-    # TaxDepreciationInput body. Registered here so the generic route
-    # dispatches through the native handler (internal-dispatch branch below)
-    # rather than returning the "missing from _CALC_INPUT_MODEL_REST" 500.
-    _TAX_DEP_DECLINE_IN_VALUE_URI: TaxDepreciationInput,
-    _TAX_DEP_LOW_VALUE_POOL_URI: TaxDepreciationInput,
-    _TAX_DEP_SMALL_BUSINESS_POOL_URI: TaxDepreciationInput,
+    # Tax-depreciation: each calculator has its own gateway input model
+    # (money as decimal strings, cent-checked; effective_life_years required
+    # on decline-in-value with no asset_description fallback). Registered
+    # here so the generic route validates against the right per-URN model
+    # and dispatches through the native handler (internal-dispatch branch
+    # below) rather than returning the "missing from _CALC_INPUT_MODEL_REST"
+    # 500.
+    _TAX_DEP_DECLINE_IN_VALUE_URI: DeclineInValueInput,
+    _TAX_DEP_LOW_VALUE_POOL_URI: LowValuePoolInput,
+    _TAX_DEP_SMALL_BUSINESS_POOL_URI: SmallBusinessPoolInput,
     # D53b (Fable [CALC] 2026-09-30): hp:schedule is served by the dedicated
     # route /v1/calculators/hp/schedule, but the generic route only consults
     # this dispatch table — so a generic-route call
@@ -1427,7 +1435,10 @@ async def invoke_tax_depreciation(
         ),
     ],
     period_uri: Annotated[str, PathParam(description="URL-encoded period URN.")],
-    body: TaxDepreciationInput,
+    body: Annotated[
+        DeclineInValueInput | LowValuePoolInput | SmallBusinessPoolInput,
+        Body(...),
+    ],
     prolog: Annotated[PrologClient, Depends(get_prolog_client)],
     taxonomy: Annotated[
         str,
@@ -1443,6 +1454,14 @@ async def invoke_tax_depreciation(
 ) -> dict:
     period_uri_decoded = unquote(period_uri)
     calculator_decoded = unquote(calculator)
+    # FastAPI union-parses the body opportunistically; re-normalise to a dict so
+    # the per-segment model below is the authoritative validator (the calc
+    # segment is the discriminator, not body duck-typing).
+    raw_body: dict = (
+        body.model_dump(by_alias=True, exclude_none=True)
+        if hasattr(body, "model_dump")
+        else dict(body)
+    )
 
     try:
         validate_period_uri(period_uri_decoded)
@@ -1493,8 +1512,23 @@ async def invoke_tax_depreciation(
             ),
         )
 
-    # Verbatim-forward: the engine owns each calculator's field contract.
-    payload: dict = body.model_dump(by_alias=True, exclude_none=True, mode="json")
+    # Gateway owns the input contract (§5, §10): validate the raw body against
+    # the per-calculator model BEFORE calling the engine. This is where money
+    # is cent-checked (money_not_cent_quantised -> 422 naming the field) and
+    # where effective_life_years is enforced required with no asset_description
+    # fallback. A validation failure is the gateway's 422, not the engine's.
+    input_model = TAX_DEP_INPUT_MODEL_BY_SEGMENT[calculator_decoded]
+    try:
+        parsed = input_model.model_validate(raw_body)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=exc.errors(include_url=False),
+        ) from exc
+
+    # Money leaves the gateway as decimal strings (§10, the hp pattern); the
+    # validated model already holds str money fields. Forward by alias.
+    payload: dict = parsed.model_dump(by_alias=True, exclude_none=True, mode="json")
 
     try:
         engine_response = await prolog.tax_depreciation(
@@ -1503,12 +1537,17 @@ async def invoke_tax_depreciation(
     except PrologEngineUnavailable as exc:
         # Central mapper: engine 4xx -> same 4xx (caller-fault) with sanitised
         # detail; 5xx / transport -> structured 502/503/504 under the
-        # tax_depreciation_engine_unavailable label (mirrors div7a).
+        # tax_depreciation_engine_unavailable label (mirrors div7a). D63:
+        # engine_name names the refusing engine ("tax-depreciation").
         raise map_engine_error_to_http(
-            exc, engine_label="tax_depreciation_engine_unavailable"
+            exc,
+            engine_label="tax_depreciation_engine_unavailable",
+            engine_name=_engine_name_for(calc_uri),
         ) from exc
     except PrologCalculationError as exc:
-        raise map_calculation_error_to_http(exc) from exc
+        raise map_calculation_error_to_http(
+            exc, engine_name=_engine_name_for(calc_uri)
+        ) from exc
 
     # Manifest fidelity: cite the rate URIs the engine actually consumed. The
     # engine SHOULD emit `rate_uris_consumed` (like FBT + Div7A); when it is
