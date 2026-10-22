@@ -205,6 +205,7 @@
         "type": "object"
       },
       "DeclineInValueInput": {
+        "additionalProperties": false,
         "description": "``decline-in-value`` \u2014 one asset, one year (ITAA 1997 s 40-70 DV,\ns 40-75 prime cost). SCOPE \u00a74.1.\n\n``effective_life_years`` is REQUIRED with no ``asset_description`` fallback\n(\u00a72, \u00a74): effective-life lookup is out of scope.",
         "properties": {
           "cost": {
@@ -2953,6 +2954,7 @@
         "type": "object"
       },
       "LowValuePoolInput": {
+        "additionalProperties": false,
         "description": "``low-value-pool`` \u2014 one pool, one year (ITAA 1997 s 40-440). SCOPE \u00a74.2.",
         "properties": {
           "cost_of_low_cost_assets_allocated": {
@@ -3059,6 +3061,7 @@
         "type": "object"
       },
       "SmallBusinessPoolInput": {
+        "additionalProperties": false,
         "description": "``small-business-pool`` \u2014 one pool, one year (Subdiv 328-D). SCOPE \u00a74.3.",
         "properties": {
           "additions": {
@@ -3094,6 +3097,7 @@
         "x-calc-uri": "urn:sbrm:calculator:tax-depreciation:small-business-pool"
       },
       "TaxDepDisposal": {
+        "additionalProperties": false,
         "description": "A disposal in the income year (\u00a74.1, s 40-285).",
         "properties": {
           "date": {
@@ -3116,6 +3120,7 @@
         "type": "object"
       },
       "TaxDepSecondElementCost": {
+        "additionalProperties": false,
         "description": "A second-element cost incurred during the income year (\u00a74.1, \u00a74.2).",
         "properties": {
           "amount": {

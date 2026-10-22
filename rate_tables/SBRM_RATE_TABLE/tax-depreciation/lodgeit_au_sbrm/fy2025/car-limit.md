@@ -51,7 +51,7 @@ statutory_source:
 cryptographic_anchor:
   ipfs_cid: "PENDING_IPFS_BROADCAST"
   hash_domain: "pre_anchor_draft"
-  content_hash: "PLACEHOLDER_CONTENT_HASH"
+  content_hash: "dc789ee199f7a420cc63e356ad5d1c35267c5f0599055f967d37069a2080da35"
 
 # Cybernetic state
 cybernetic_state:
@@ -87,9 +87,8 @@ helm_mutations:
       human_override_required because ato.gov.au was Akamai-blocked (HTTP
       403) to the fetcher this session; the value is cited per operator
       direction and secondary-corroborated, pending a primary-source read of
-      NAT 1996-06.2025 before promotion. content_hash is the canonical
-      PLACEHOLDER_CONTENT_HASH; it anchors on the next
-      scripts/audit_content_hashes.py --write pass.
+      NAT 1996-06.2025 before promotion. content_hash anchored via
+      scripts/audit_content_hashes.py --write at mint time.
 ---
 
 # Car limit (s.40-230) — Tax depreciation FY2025

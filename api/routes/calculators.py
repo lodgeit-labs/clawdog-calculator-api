@@ -157,7 +157,6 @@ _TAX_DEP_DECLINE_IN_VALUE_URI = "urn:sbrm:calculator:tax-depreciation:decline-in
 _TAX_DEP_LOW_VALUE_POOL_URI = "urn:sbrm:calculator:tax-depreciation:low-value-pool"
 _TAX_DEP_SMALL_BUSINESS_POOL_URI = "urn:sbrm:calculator:tax-depreciation:small-business-pool"
 _TAX_DEP_FY2025 = "urn:sbrm:period:tax-depreciation:fy2025"
-_TAX_DEP_FY2026 = "urn:sbrm:period:tax-depreciation:fy2026"
 
 # Map each tax-depreciation calc URN to the engine's {calculator} path segment
 # (the URN's last segment). The dedicated route reads the segment from the
@@ -167,8 +166,11 @@ _TAX_DEP_URI_TO_CALCULATOR: dict[str, str] = {
     _TAX_DEP_LOW_VALUE_POOL_URI: "low-value-pool",
     _TAX_DEP_SMALL_BUSINESS_POOL_URI: "small-business-pool",
 }
-# The three supported income-year periods, shared by all three calculators.
-_TAX_DEP_SUPPORTED_PERIODS = [_TAX_DEP_FY2025, _TAX_DEP_FY2026]
+# Supported income-year period(s), shared by all three calculators. FY2025
+# only: the engine serves fy2025 and the FY2025 rate tables are populated;
+# fy2026 rate-table values (car limit, SBE threshold) are TBD, so fy2026 is
+# NOT advertised until those nodes land (Fable [CALC] 2026-10-22).
+_TAX_DEP_SUPPORTED_PERIODS = [_TAX_DEP_FY2025]
 # The engine's supported {calculator} path segments (reverse of the map above).
 _TAX_DEP_SUPPORTED_CALCULATORS = set(_TAX_DEP_URI_TO_CALCULATOR.values())
 

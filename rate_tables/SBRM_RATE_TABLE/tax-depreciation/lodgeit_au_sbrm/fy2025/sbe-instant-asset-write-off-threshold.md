@@ -61,7 +61,7 @@ statutory_source:
 cryptographic_anchor:
   ipfs_cid: "PENDING_IPFS_BROADCAST"
   hash_domain: "pre_anchor_draft"
-  content_hash: "PLACEHOLDER_CONTENT_HASH"
+  content_hash: "6d9f7540c5861ab03a2f6be3c7860fbe964a0efaf4a8ebe681610788fb92e7e2"
 
 # Cybernetic state
 cybernetic_state:
@@ -101,9 +101,8 @@ helm_mutations:
       $1,000. Mechanism read from legislation.gov.au (consolidated ITAA
       C2004A05138 + Act C2025A00029). Minted at 'draft' /
       human_override_required pending a primary read of NAT 1996-06.2025 for
-      the headline figure. content_hash is the canonical
-      PLACEHOLDER_CONTENT_HASH; anchors on the next
-      scripts/audit_content_hashes.py --write pass.
+      the headline figure. content_hash anchored via
+      scripts/audit_content_hashes.py --write at mint time.
 ---
 
 # Small business instant asset write-off threshold (s.328-180) — Tax depreciation FY2025

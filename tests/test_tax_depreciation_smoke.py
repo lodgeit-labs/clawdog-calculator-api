@@ -30,7 +30,9 @@ the statutory algorithm lives in the engine's own repo.
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from urllib.parse import quote
 
@@ -38,6 +40,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import app
+from api.manifest_fidelity import build_manifest
 from api.prolog_client import PrologCalculationError, PrologEngineUnavailable
 
 PERIOD_URI = "urn:sbrm:period:tax-depreciation:fy2025"
@@ -340,6 +343,63 @@ def test_missing_effective_life_years_returns_422_naming_field(
 
 
 # ---------------------------------------------------------------------------
+# 4a. extra="forbid": unknown / typo'd fields -> 422 naming the field (§2, §4).
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "bad_field",
+    [
+        "asset_description",  # out-of-scope rate-finder fallback; gateway forbids it
+        "effective_life",     # the typo for effective_life_years
+    ],
+)
+def test_unknown_field_returns_422_naming_field(
+    client: TestClient, bad_field: str
+) -> None:
+    """Every new input model is extra="forbid": an unknown field (the
+    out-of-scope asset_description fallback, or the effective_life typo for
+    effective_life_years) is rejected with a 422 that names the offending field,
+    before the engine is called. No silent drop (§2, §4)."""
+    body = {**DRILL_PRESS_INPUT, bad_field: "x"}
+    mock = AsyncMock()
+    with patch("api.routes.calculators.PrologClient.tax_depreciation", new=mock):
+        resp = client.post(
+            f"/v1/calculators/tax-depreciation/decline-in-value/{PERIOD_URI_ENCODED}",
+            json=body,
+        )
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    locs = {str(loc) for err in detail for loc in err.get("loc", [])}
+    assert bad_field in locs, (
+        f"422 must name the offending field {bad_field!r}; got locs={locs}"
+    )
+    mock.assert_not_awaited()
+
+
+def test_nested_model_also_forbids_unknown_field(client: TestClient) -> None:
+    """extra="forbid" applies to nested models too: an unknown key inside the
+    disposal object is a 422 naming it, not silently dropped."""
+    body = {
+        **DRILL_PRESS_INPUT,
+        "disposal": {
+            "date": "2025-02-01",
+            "termination_value": "36000.01",
+            "proceeds": "36000.01",  # unknown nested field (should be termination_value)
+        },
+    }
+    mock = AsyncMock()
+    with patch("api.routes.calculators.PrologClient.tax_depreciation", new=mock):
+        resp = client.post(
+            f"/v1/calculators/tax-depreciation/decline-in-value/{PERIOD_URI_ENCODED}",
+            json=body,
+        )
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    locs = {str(loc) for err in detail for loc in err.get("loc", [])}
+    assert "proceeds" in locs, f"nested 422 must name 'proceeds'; got {locs}"
+    mock.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
 # 4b. Sub-cent money → 422 money_not_cent_quantised (gateway cent-check, §5/§10).
 # ---------------------------------------------------------------------------
 def test_sub_cent_money_returns_422_cent_quantised(client: TestClient) -> None:
@@ -468,12 +528,75 @@ def test_tax_depreciation_discovery_listing(client: TestClient) -> None:
     }
     assert all(c["module"] == "urn:sbrm:module:tax-depreciation" for c in calcs)
     assert all(c["jurisdiction"] == "AU" for c in calcs)
+    # FY2025 only: fy2026 rate-table values are TBD so fy2026 is not advertised.
     for c in calcs:
         assert set(c["supported_periods"]) == {
             "urn:sbrm:period:tax-depreciation:fy2025",
-            "urn:sbrm:period:tax-depreciation:fy2026",
         }
 
     mods = client.get("/v1/modules").json()
     module_uris = {m["module_uri"] for m in mods}
     assert "urn:sbrm:module:tax-depreciation" in module_uris
+
+
+# ---------------------------------------------------------------------------
+# 9. Every engine-emittable rate URN resolves through build_manifest to a
+#    gateway file with a real content hash (Fable [CALC] 2026-10-22 (c)).
+# ---------------------------------------------------------------------------
+_RATE_TABLE_ROOT = (
+    Path(__file__).resolve().parents[1]
+    / "rate_tables"
+    / "SBRM_RATE_TABLE"
+    / "tax-depreciation"
+    / "lodgeit_au_sbrm"
+    / "fy2025"
+)
+
+# Every rate URN the three engines can emit for FY2025. car-limit and
+# sbe-instant-asset-write-off-threshold are emitted today; sbe-low-pool-value-
+# threshold will be emitted after Samsaam's s.328-180/s.328-210 split, but the
+# gateway file must already resolve so the engine can start emitting it without
+# a gateway change.
+_ALL_FY2025_RATE_URNS = [
+    "urn:sbrm:rate:tax-depreciation:fy2025:car-limit",
+    "urn:sbrm:rate:tax-depreciation:fy2025:sbe-instant-asset-write-off-threshold",
+    "urn:sbrm:rate:tax-depreciation:fy2025:sbe-low-pool-value-threshold",
+]
+
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+@pytest.mark.parametrize("rate_urn", _ALL_FY2025_RATE_URNS)
+def test_every_engine_rate_urn_resolves_to_a_hashed_gateway_file(
+    rate_urn: str,
+) -> None:
+    """Each FY2025 rate URN the engine can emit resolves through build_manifest
+    to a gateway rate-table file on disk with a live SHA-256 content hash.
+
+    This proves the gateway can hash each node into a response manifest. Note:
+    cybernetic_state.status="draft" does NOT stop a node resolving — build_manifest
+    and hash_rate_table read the raw bytes and SHA-256 them regardless of the
+    node's cybernetic_state; draft is a promotion-gate signal for humans, not a
+    runtime resolution gate. If the file were absent, build_manifest would raise
+    FileNotFoundError (that is the failure this guards against).
+    """
+    manifest = build_manifest([rate_urn], _RATE_TABLE_ROOT)
+    entries = manifest["rate_table_uris"]
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry["uri"] == rate_urn
+    assert _SHA256_RE.match(entry["content_hash"]), (
+        f"{rate_urn} did not resolve to a 64-hex content hash: {entry!r}"
+    )
+
+
+def test_all_three_rate_urns_resolve_together() -> None:
+    """All three FY2025 rate URNs resolve in a single manifest build, each with a
+    distinct hash — the shape a future small-business-pool response produces once
+    the engine emits all three."""
+    manifest = build_manifest(_ALL_FY2025_RATE_URNS, _RATE_TABLE_ROOT)
+    entries = manifest["rate_table_uris"]
+    assert [e["uri"] for e in entries] == _ALL_FY2025_RATE_URNS
+    hashes = {e["content_hash"] for e in entries}
+    assert len(hashes) == 3, "each node must hash distinctly"
+    assert all(_SHA256_RE.match(h) for h in hashes)

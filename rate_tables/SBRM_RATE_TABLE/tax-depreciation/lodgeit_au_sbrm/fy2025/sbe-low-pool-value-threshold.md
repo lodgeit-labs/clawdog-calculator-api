@@ -62,7 +62,7 @@ statutory_source:
 cryptographic_anchor:
   ipfs_cid: "PENDING_IPFS_BROADCAST"
   hash_domain: "pre_anchor_draft"
-  content_hash: "PLACEHOLDER_CONTENT_HASH"
+  content_hash: "2d461eea60b65ea437bd116a593b032a708e7e163cd14af43dca588c695dff0e"
 
 # Cybernetic state
 cybernetic_state:
@@ -104,8 +104,8 @@ helm_mutations:
       The engine does not yet emit this URN; it keys s.328-210 off the
       s.328-180 entry today. Minted at 'draft' / human_override_required
       pending (a) a primary read of NAT 1996-06.2025 and (b) an engine update
-      to emit this URN. content_hash is the canonical PLACEHOLDER_CONTENT_HASH;
-      anchors on the next scripts/audit_content_hashes.py --write pass.
+      to emit this URN. content_hash anchored via
+      scripts/audit_content_hashes.py --write at mint time.
 ---
 
 # Low pool value write-off threshold (s.328-210) — Tax depreciation FY2025

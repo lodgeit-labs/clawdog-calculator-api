@@ -52,7 +52,10 @@ def _money_field(description: str, *, optional: bool = False):
 class TaxDepSecondElementCost(BaseModel):
     """A second-element cost incurred during the income year (§4.1, §4.2)."""
 
-    model_config = ConfigDict(populate_by_name=True)
+    # extra="forbid": an unknown nested field is a 422, not silently dropped —
+    # so a typo (e.g. effective_life for effective_life_years) is named, not
+    # ignored. Applies to nested models too (Fable [CALC] 2026-10-22).
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     date: str = Field(description="Date the cost was incurred, ISO (YYYY-MM-DD).")
     amount: str = _money_field("Second-element cost amount.")
@@ -66,7 +69,7 @@ class TaxDepSecondElementCost(BaseModel):
 class TaxDepDisposal(BaseModel):
     """A disposal in the income year (§4.1, s 40-285)."""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     date: str = Field(description="Disposal date, ISO (YYYY-MM-DD).")
     termination_value: str = _money_field("Termination (disposal) value.")
@@ -87,6 +90,10 @@ class DeclineInValueInput(BaseModel):
 
     model_config = ConfigDict(
         populate_by_name=True,
+        # extra="forbid": reject unknown fields with a 422 naming the offending
+        # key, so a typo like effective_life (for effective_life_years) or an
+        # out-of-scope asset_description fallback is surfaced, not swallowed.
+        extra="forbid",
         json_schema_extra={
             "x-calc-uri": "urn:sbrm:calculator:tax-depreciation:decline-in-value"
         },
@@ -144,6 +151,7 @@ class LowValuePoolInput(BaseModel):
 
     model_config = ConfigDict(
         populate_by_name=True,
+        extra="forbid",
         json_schema_extra={
             "x-calc-uri": "urn:sbrm:calculator:tax-depreciation:low-value-pool"
         },
@@ -185,6 +193,7 @@ class SmallBusinessPoolInput(BaseModel):
 
     model_config = ConfigDict(
         populate_by_name=True,
+        extra="forbid",
         json_schema_extra={
             "x-calc-uri": "urn:sbrm:calculator:tax-depreciation:small-business-pool"
         },
