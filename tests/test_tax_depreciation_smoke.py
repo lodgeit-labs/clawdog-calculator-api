@@ -16,10 +16,14 @@ and `app/engine/*.py` return dicts): top-level calculator fields
 (`decline_in_value`, `deduction`, `closing_adjustable_value`,
 `balancing_adjustment`, `closing_pool_balance`, `pool_decline_in_value`),
 `trace`, `rate_uris_consumed`, and the engine-appended
-`rounding_policy: "lodgeit-tax-depreciation-rounding-1.0"`. The figures are
-LodgeiT Tax Depreciation report rows from org 1598, Company Tax Return 2025
-(return 40360): Drill Press disposal (decline 5,030.16, loss 1,470) and the
-low-value pool (34 → decline 13 → closing 21).
+`rounding_policy: "lodgeit-rounding-1.0"` (v1.5, 7 Nov decision "A, full
+standard" — no module-specific variant). The figures are the v1.5 authoritative
+cents values (exact, rounded once, ties away from zero); where LodgeiT's legacy
+report shows a whole-dollar figure that is due to migrate, the calculator figure
+is correct by design and the legacy value is recorded as metadata. org 1598,
+Company Tax Return 2025 (return 40360): Drill Press disposal (decline 5,030.16,
+balancing -1,470.02; legacy report -1,470) and the low-value pool
+(decline 12.75, closing 21.25; legacy report 13 / 21).
 
 **Two-depreciations discipline.** This is AU TAX depreciation (ITAA 1997
 Division 40 / Subdivision 328-D), distinct from the accounting depreciation
@@ -86,43 +90,48 @@ DRILL_PRESS_ENGINE_RESPONSE = {
     "decline_in_value": "5030.16",
     "deduction": "5030.16",
     "closing_adjustable_value": "37470.03",
-    "balancing_adjustment": "-1470.00",
+    "balancing_adjustment": "-1470.02",
     "trace": {
         "engine_version": "lodgeit-tax-depreciation-calculators/0.1.0",
         "statute": "ITAA 1997 s 40-70 (diminishing value)",
-        "balancing_adjustment_unrounded": "-1470.02",
+        "legacy_lodgeit_value": "-1470",
+        "legacy_variance_reason": "legacy_per_asset_whole_dollar",
     },
     "rate_uris_consumed": [],
-    "rounding_policy": "lodgeit-tax-depreciation-rounding-1.0",
+    "rounding_policy": "lodgeit-rounding-1.0",
 }
 
 # low_value_pool.calculate() return shape (app/engine/low_value_pool.py).
-# Opening 34.00 × 37.5% = 12.75 → 13 (whole dollars); closing 34 − 13 = 21.
+# v1.5: cents carry. Opening 34.00 × 37.5% = 12.75; closing 34 − 12.75 = 21.25.
+# Legacy LodgeiT report rounded these to 13 / 21 (whole-dollar pool rule, migrating).
 LOW_VALUE_POOL_ENGINE_RESPONSE = {
-    "decline_in_value": "13.00",
-    "closing_pool_balance": "21.00",
+    "decline_in_value": "12.75",
+    "closing_pool_balance": "21.25",
     "assessable_amount": "0.00",
     "trace": {
         "engine_version": "lodgeit-tax-depreciation-calculators/0.1.0",
         "statute": "ITAA 1997 s 40-440 (low-value pool)",
-        "decline_unrounded": "12.75",
+        "legacy_lodgeit_value": "13",
+        "legacy_variance_reason": "legacy_pool_whole_dollar",
     },
     "rate_uris_consumed": [],
-    "rounding_policy": "lodgeit-tax-depreciation-rounding-1.0",
+    "rounding_policy": "lodgeit-rounding-1.0",
 }
 
-# small_business_pool.calculate() return shape. Opening 61,684 × 30% =
-# 18,505.20 → 18,505; closing 61,684 − 18,505 = 43,179.
+# small_business_pool.calculate() return shape. v1.5: cents carry. Opening
+# 61,684 × 30% = 18,505.20; closing 61,684 − 18,505.20 = 43,178.80.
+# Legacy LodgeiT report rounded to 18,505 / 43,179 (whole-dollar pool rule, migrating).
 SMALL_BUSINESS_POOL_ENGINE_RESPONSE = {
-    "pool_decline_in_value": "18505.00",
-    "closing_pool_balance": "43179.00",
+    "pool_decline_in_value": "18505.20",
+    "closing_pool_balance": "43178.80",
     "trace": {
         "engine_version": "lodgeit-tax-depreciation-calculators/0.1.0",
         "statute": "ITAA 1997 Subdiv 328-D (small business pool)",
-        "pool_decline_unrounded": "18505.20",
+        "legacy_lodgeit_value": "18505",
+        "legacy_variance_reason": "legacy_pool_whole_dollar",
     },
     "rate_uris_consumed": [],
-    "rounding_policy": "lodgeit-tax-depreciation-rounding-1.0",
+    "rounding_policy": "lodgeit-rounding-1.0",
 }
 
 _ENGINE_RESPONSE_BY_CALCULATOR = {
@@ -163,8 +172,8 @@ def test_tax_depreciation_route_registered(
 # ---------------------------------------------------------------------------
 def test_drill_press_decline_and_balancing_forwarded(client: TestClient) -> None:
     """Dep1 (org 1598 / return 40360): the Drill Press disposal row. The engine
-    figures (decline 5030.16, loss 1470 → balancing -1470.00) pass through the
-    gateway byte-faithfully, and the gateway adds manifest + advisory."""
+    figures (decline 5030.16, balancing -1470.02 in cents under v1.5) pass through
+    the gateway byte-faithfully, and the gateway adds manifest + advisory."""
     with patch(
         "api.routes.calculators.PrologClient.tax_depreciation",
         new_callable=AsyncMock,
@@ -178,12 +187,12 @@ def test_drill_press_decline_and_balancing_forwarded(client: TestClient) -> None
     body = resp.json()
     assert body["decline_in_value"] == "5030.16"
     assert body["deduction"] == "5030.16"
-    assert body["balancing_adjustment"] == "-1470.00"
+    assert body["balancing_adjustment"] == "-1470.02"
     assert body["closing_adjustable_value"] == "37470.03"
-    # §4.4: the unrounded figure sits beside the whole-dollar step in trace.
-    assert body["trace"]["balancing_adjustment_unrounded"] == "-1470.02"
-    # rounding_policy is the tax-depreciation policy, passed through from engine.
-    assert body["rounding_policy"] == "lodgeit-tax-depreciation-rounding-1.0"
+    # v1.5 §4.4: cents carry; the legacy whole-dollar value is metadata in trace.
+    assert body["trace"]["legacy_lodgeit_value"] == "-1470"
+    # rounding_policy is the constellation standard (v1.5; no module variant).
+    assert body["rounding_policy"] == "lodgeit-rounding-1.0"
     # Gateway-added envelope.
     assert body["manifest"]["rate_table_uris"] == []
     assert body["advisory"]["jurisdiction"] == "AU"
@@ -192,10 +201,10 @@ def test_drill_press_decline_and_balancing_forwarded(client: TestClient) -> None
 # ---------------------------------------------------------------------------
 # 2b. Low-value pool — 13 / 21 forwarded exactly.
 # ---------------------------------------------------------------------------
-def test_low_value_pool_13_21_forwarded(client: TestClient) -> None:
-    """Dep2 (org 1598 / return 40360): the low-value pool. Opening 34 → decline
-    13 → closing 21 (the report's own worked example of the whole-dollar rule),
-    passed through the gateway byte-faithfully."""
+def test_low_value_pool_1275_2125_forwarded(client: TestClient) -> None:
+    """Dep2 (org 1598 / return 40360): the low-value pool. v1.5: opening 34 →
+    decline 12.75 → closing 21.25 (cents carry; the legacy report's 13 / 21 is the
+    whole-dollar rule that is migrating), passed through the gateway byte-faithfully."""
     with patch(
         "api.routes.calculators.PrologClient.tax_depreciation",
         new_callable=AsyncMock,
@@ -207,10 +216,10 @@ def test_low_value_pool_13_21_forwarded(client: TestClient) -> None:
         )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["decline_in_value"] == "13.00"
-    assert body["closing_pool_balance"] == "21.00"
-    assert body["trace"]["decline_unrounded"] == "12.75"
-    assert body["rounding_policy"] == "lodgeit-tax-depreciation-rounding-1.0"
+    assert body["decline_in_value"] == "12.75"
+    assert body["closing_pool_balance"] == "21.25"
+    assert body["trace"]["legacy_lodgeit_value"] == "13"
+    assert body["rounding_policy"] == "lodgeit-rounding-1.0"
 
 
 # ---------------------------------------------------------------------------
@@ -506,7 +515,7 @@ def test_tax_depreciation_generic_route_dispatches(client: TestClient) -> None:
             json=SMALL_BUSINESS_POOL_INPUT,
         )
     assert resp.status_code == 200, resp.text
-    assert resp.json().get("pool_decline_in_value") == "18505.00"
+    assert resp.json().get("pool_decline_in_value") == "18505.20"
 
 
 # ---------------------------------------------------------------------------
