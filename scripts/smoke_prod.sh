@@ -431,6 +431,14 @@ required = {
     # smoke-prod on the #48 merge failed with UNEXPECTED:hp:schedule. This
     # line is that missed floor raise (URN floor 22 -> 23).
     'urn:sbrm:calculator:hp:schedule',
+    # 2026-11-07 (clawdog/reland-64-after-engine-live): the three tax-depreciation
+    # URNs ship in the SAME PR that registers the routes (the re-land of #64),
+    # raising the Check-6 required floor 23 -> 26. This is the floor raise that
+    # #64 originally missed, which failed the post-deploy smoke with
+    # UNEXPECTED:tax-depreciation:* (same class as the hp:schedule PR #48 miss).
+    'urn:sbrm:calculator:tax-depreciation:decline-in-value',
+    'urn:sbrm:calculator:tax-depreciation:low-value-pool',
+    'urn:sbrm:calculator:tax-depreciation:small-business-pool',
 }
 # OT #131 fold (RATIFIED mc11-2026-08-31): bidirectional declared-vs-live
 # check. missing = required - uris catches under-registration (a URN
@@ -465,7 +473,7 @@ else:
     print('OK')
 ")
     if [ "$CALCS_OK" = "OK" ]; then
-        echo "🟢 PASS: all 23 expected calculator URNs registered (2 existing + 8 Wave A + 4 Wave B + 6 Wave C + 1 Div7A + 1 depreciation:range + 1 hp:schedule) and no unexpected URNs"
+        echo "🟢 PASS: all 26 expected calculator URNs registered (2 existing + 8 Wave A + 4 Wave B + 6 Wave C + 1 Div7A + 1 depreciation:range + 1 hp:schedule + 3 tax-depreciation) and no unexpected URNs"
         PASS_COUNT=$((PASS_COUNT + 1))
     else
         echo "🔴 FAIL: $CALCS_OK"
