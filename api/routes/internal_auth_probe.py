@@ -83,7 +83,6 @@ from api.prolog_client import (
     depreciation_prolog_url,
     div7a_engine_url,
     prolog_url,
-    tax_depreciation_engine_url,
 )
 
 logger = logging.getLogger(__name__)
@@ -124,12 +123,7 @@ def _assert_probe_authorised(supplied_header: str | None) -> None:
 
 def _configured_engine_audiences() -> list[str]:
     """Return the base URLs of the three engines from env-var resolution."""
-    return [
-        prolog_url(),
-        depreciation_prolog_url(),
-        div7a_engine_url(),
-        tax_depreciation_engine_url(),
-    ]
+    return [prolog_url(), depreciation_prolog_url(), div7a_engine_url()]
 
 
 def _mint_result_for_audience(audience: str) -> dict:
