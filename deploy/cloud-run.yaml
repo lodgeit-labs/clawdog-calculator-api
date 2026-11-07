@@ -91,6 +91,20 @@ spec:
               # Lesson #40 + USER.md rule 12 (cross-Egress env var
               # injection is manual, not auto-discovered by Cloud Run).
               value: "https://depreciation-engine-8340695160.australia-southeast1.run.app"
+            - name: TAX_DEPRECIATION_ENGINE_URL
+              # Tax-depreciation-engine gateway routing. Points at the live
+              # tax-depreciation-engine Cloud Run service (project
+              # lodgeit-calc-constellation, region australia-southeast1;
+              # constellation calculator module for ITAA 1997 Div 40 /
+              # Subdiv 328-D). Paired gateway half of
+              # tax-depreciation-calculator#1; the deploy workflow sets this
+              # from deploy/env_vars.json. Follows the FBT_PROLOG_URL
+              # placeholder-guard pattern per Lesson #40; do NOT leave as
+              # placeholder — scripts/check_deploy_placeholders.py at pre-push
+              # catches regressions. Project-number URL form per USER.md
+              # rule 10. Distinct engine from DEPRECIATION_PROLOG_URL above
+              # (accounting AASB 116) — this is AU TAX depreciation.
+              value: "https://tax-depreciation-engine-8340695160.australia-southeast1.run.app"
             - name: LODGEIT_FBT_REPO
               # Points the manifest-fidelity helper at the bundled SBRM
               # rate-table tree shipped inside this image (see Dockerfile).
