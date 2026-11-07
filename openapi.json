@@ -204,6 +204,93 @@
         "title": "CalculatorListing",
         "type": "object"
       },
+      "DeclineInValueInput": {
+        "additionalProperties": false,
+        "description": "``decline-in-value`` \u2014 one asset, one year (ITAA 1997 s 40-70 DV,\ns 40-75 prime cost). SCOPE \u00a74.1.\n\n``effective_life_years`` is REQUIRED with no ``asset_description`` fallback\n(\u00a72, \u00a74): effective-life lookup is out of scope.",
+        "properties": {
+          "cost": {
+            "description": "First element of cost. Money: cent-quantised decimal string.",
+            "title": "Cost",
+            "type": "string",
+            "x-money": true
+          },
+          "disposal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaxDepDisposal"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Disposal in the year, if any."
+          },
+          "effective_life_years": {
+            "description": "Effective life in years (> 0). REQUIRED input; no asset-description fallback \u2014 effective-life lookup is out of scope for this calculator (\u00a72, \u00a74.1). DV rate = 200% / life for assets first held after 9 May 2006; 150% / life before.",
+            "exclusiveMinimum": 0.0,
+            "title": "Effective Life Years",
+            "type": "number"
+          },
+          "is_car": {
+            "default": false,
+            "description": "True to apply the car cost limit (s 40-230) from the year's rate table.",
+            "title": "Is Car",
+            "type": "boolean"
+          },
+          "method": {
+            "description": "Decline-in-value method: diminishing_value | prime_cost.",
+            "enum": [
+              "diminishing_value",
+              "prime_cost"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "opening_adjustable_value": {
+            "description": "Opening adjustable value; omit in the year of acquisition. Money: cent-quantised decimal string.",
+            "title": "Opening Adjustable Value",
+            "type": "string",
+            "x-money": true
+          },
+          "second_element_costs": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TaxDepSecondElementCost"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Second-element costs incurred during the year.",
+            "title": "Second Element Costs"
+          },
+          "start_held_date": {
+            "description": "Date the asset started to be held for use (YYYY-MM-DD).",
+            "title": "Start Held Date",
+            "type": "string"
+          },
+          "taxable_use_percent": {
+            "default": 100.0,
+            "description": "Taxable-use percentage 0\u2013100 (default 100).",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Taxable Use Percent",
+            "type": "number"
+          }
+        },
+        "required": [
+          "method",
+          "cost",
+          "start_held_date",
+          "effective_life_years"
+        ],
+        "title": "DeclineInValueInput",
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:tax-depreciation:decline-in-value"
+      },
       "DepreciationAtInput": {
         "additionalProperties": false,
         "description": "Request body for the gateway's depreciation `at` route.\n\nWire-shape mirrors the upstream depreciation-engine\n`/v1/calculators/depreciation/at/{period_uri}` endpoint (URN parity).\nGateway-side amendments:\n\n  * `basis` narrowed to AU literals; UK is refused.\n  * `numeric_mode` is NOT a caller-visible field; the gateway pins the\n    engine to `numeric_mode=\"serving\"` internally.\n\nBasis-conditional field validation (which `asset` fields must be present\ngiven the `basis` value) is enforced at the engine's schema layer; the\ngateway does not duplicate that validation.\n\nElection group depreciation (no statutory default); see GET /v1/modules.",
@@ -2866,6 +2953,48 @@
         "title": "HpTotals",
         "type": "object"
       },
+      "LowValuePoolInput": {
+        "additionalProperties": false,
+        "description": "``low-value-pool`` \u2014 one pool, one year (ITAA 1997 s 40-440). SCOPE \u00a74.2.",
+        "properties": {
+          "cost_of_low_cost_assets_allocated": {
+            "description": "Cost of low-cost assets allocated this year, taxable-use reduced (C). Money: cent-quantised decimal string.",
+            "title": "Cost Of Low Cost Assets Allocated",
+            "type": "string",
+            "x-money": true
+          },
+          "opening_adjustable_value_of_assets_allocated": {
+            "description": "Opening adjustable value of assets allocated this year (B). Money: cent-quantised decimal string.",
+            "title": "Opening Adjustable Value Of Assets Allocated",
+            "type": "string",
+            "x-money": true
+          },
+          "opening_pool_balance": {
+            "description": "Opening pool balance (A). Money: cent-quantised decimal string.",
+            "title": "Opening Pool Balance",
+            "type": "string",
+            "x-money": true
+          },
+          "reduced_termination_values": {
+            "description": "Reduced termination values of assets disposed from the pool. Money: cent-quantised decimal string.",
+            "title": "Reduced Termination Values",
+            "type": "string",
+            "x-money": true
+          },
+          "second_element_costs": {
+            "description": "Second-element costs added during the year (D). Money: cent-quantised decimal string.",
+            "title": "Second Element Costs",
+            "type": "string",
+            "x-money": true
+          }
+        },
+        "required": [
+          "opening_pool_balance"
+        ],
+        "title": "LowValuePoolInput",
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:tax-depreciation:low-value-pool"
+      },
       "ModuleListing": {
         "additionalProperties": false,
         "description": "One entry in the module-discovery listing (GET /v1/modules).\n\nFields mirror the published module metadata; ``calculators`` is the list\nof that module's calculator URNs in listing order.",
@@ -2929,6 +3058,88 @@
           "description"
         ],
         "title": "ModuleListing",
+        "type": "object"
+      },
+      "SmallBusinessPoolInput": {
+        "additionalProperties": false,
+        "description": "``small-business-pool`` \u2014 one pool, one year (Subdiv 328-D). SCOPE \u00a74.3.",
+        "properties": {
+          "additions": {
+            "description": "Additions during the year, taxable-use reduced. Money: cent-quantised decimal string.",
+            "title": "Additions",
+            "type": "string",
+            "x-money": true
+          },
+          "instant_asset_write_off_items": {
+            "description": "Instant-asset-write-off items for the year. Money: cent-quantised decimal string.",
+            "title": "Instant Asset Write Off Items",
+            "type": "string",
+            "x-money": true
+          },
+          "opening_pool_balance": {
+            "description": "Opening pool balance. Money: cent-quantised decimal string.",
+            "title": "Opening Pool Balance",
+            "type": "string",
+            "x-money": true
+          },
+          "reductions": {
+            "description": "Reductions / termination values from the pool. Money: cent-quantised decimal string.",
+            "title": "Reductions",
+            "type": "string",
+            "x-money": true
+          }
+        },
+        "required": [
+          "opening_pool_balance"
+        ],
+        "title": "SmallBusinessPoolInput",
+        "type": "object",
+        "x-calc-uri": "urn:sbrm:calculator:tax-depreciation:small-business-pool"
+      },
+      "TaxDepDisposal": {
+        "additionalProperties": false,
+        "description": "A disposal in the income year (\u00a74.1, s 40-285).",
+        "properties": {
+          "date": {
+            "description": "Disposal date, ISO (YYYY-MM-DD).",
+            "title": "Date",
+            "type": "string"
+          },
+          "termination_value": {
+            "description": "Termination (disposal) value. Money: cent-quantised decimal string.",
+            "title": "Termination Value",
+            "type": "string",
+            "x-money": true
+          }
+        },
+        "required": [
+          "date",
+          "termination_value"
+        ],
+        "title": "TaxDepDisposal",
+        "type": "object"
+      },
+      "TaxDepSecondElementCost": {
+        "additionalProperties": false,
+        "description": "A second-element cost incurred during the income year (\u00a74.1, \u00a74.2).",
+        "properties": {
+          "amount": {
+            "description": "Second-element cost amount. Money: cent-quantised decimal string.",
+            "title": "Amount",
+            "type": "string",
+            "x-money": true
+          },
+          "date": {
+            "description": "Date the cost was incurred, ISO (YYYY-MM-DD).",
+            "title": "Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "amount"
+        ],
+        "title": "TaxDepSecondElementCost",
         "type": "object"
       },
       "ValidationError": {
@@ -3454,6 +3665,93 @@
           }
         },
         "summary": "Invoke the hire purchase amortisation schedule calculator.",
+        "tags": [
+          "calculators"
+        ]
+      }
+    },
+    "/v1/calculators/tax-depreciation/{calculator}/{period_uri}": {
+      "post": {
+        "description": "Onboards the tax-depreciation-engine dispatch route `/v1/calculators/tax-depreciation/{calculator}/{period_uri}` through the constellation gateway. `{calculator}` is one of `decline-in-value` (ITAA 1997 Division 40 individual-asset decline in value), `low-value-pool` (ITAA 1997 Subdivision 40-E low-value pool), or `small-business-pool` (ITAA 1997 Subdivision 328-D small business general pool). This is AU TAX depreciation \u2014 a statutory income-tax deduction, distinct from accounting depreciation (AASB 116 carrying amount) exposed by the separate depreciation module; the two are not interchangeable. The gateway forwards the request body verbatim to the engine (the engine owns each calculator's field contract) and wraps the engine response with the constellation manifest + advisory blocks.",
+        "operationId": "invoke_tax_depreciation_v1_calculators_tax_depreciation__calculator___period_uri__post",
+        "parameters": [
+          {
+            "description": "Engine calculator segment: decline-in-value | low-value-pool | small-business-pool.",
+            "in": "path",
+            "name": "calculator",
+            "required": true,
+            "schema": {
+              "description": "Engine calculator segment: decline-in-value | low-value-pool | small-business-pool.",
+              "title": "Calculator",
+              "type": "string"
+            }
+          },
+          {
+            "description": "URL-encoded period URN.",
+            "in": "path",
+            "name": "period_uri",
+            "required": true,
+            "schema": {
+              "description": "URL-encoded period URN.",
+              "title": "Period Uri",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bare-atom taxonomy axis value. Supported set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm is currently populated for tax-depreciation.",
+            "in": "query",
+            "name": "taxonomy",
+            "required": false,
+            "schema": {
+              "default": "lodgeit_au_sbrm",
+              "description": "Bare-atom taxonomy axis value. Supported set: lodgeit_au_sbrm | hoffman_base. Only lodgeit_au_sbrm is currently populated for tax-depreciation.",
+              "title": "Taxonomy",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DeclineInValueInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LowValuePoolInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SmallBusinessPoolInput"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Invoke an AU tax-depreciation calculator for the given URN-encoded income-year period.",
         "tags": [
           "calculators"
         ]

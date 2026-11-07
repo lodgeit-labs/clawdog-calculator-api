@@ -7,6 +7,7 @@
     "FBT_PROLOG_URL": "https://fbt-engine-8340695160.australia-southeast1.run.app",
     "DIV7A_ENGINE_URL": "https://div7a-engine-8340695160.australia-southeast1.run.app",
     "DEPRECIATION_PROLOG_URL": "https://depreciation-engine-8340695160.australia-southeast1.run.app",
+    "TAX_DEPRECIATION_ENGINE_URL": "https://tax-depreciation-engine-8340695160.australia-southeast1.run.app",
     "LODGEIT_FBT_REPO": "/app",
     "LANG": "en_AU.UTF-8",
     "LC_ALL": "en_AU.UTF-8"

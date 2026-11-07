@@ -48,7 +48,18 @@ _THREE_FIELDS = (
 # shifts, this test fails loudly and the number is re-anchored in the same PR.
 _XMONEY_COUNT_BEFORE_D65 = 79
 _XMONEY_REMOVED_BY_D65 = 4
-_EXPECTED_XMONEY_COUNT = _XMONEY_COUNT_BEFORE_D65 - _XMONEY_REMOVED_BY_D65  # 75
+# Tax-depreciation gateway wiring (SCOPE v1.4): the three tax-depreciation
+# input schemas declare money as decimal strings with x-money markers (hp
+# pattern). This added 13 top-level x-money properties to the live spec
+# (re-anchored in the same PR that introduced them, per the loud-baseline
+# discipline). The count is of top-level component-schema properties carrying
+# x-money (see _xmoney_properties), not nested anyOf occurrences.
+_XMONEY_ADDED_BY_TAX_DEPRECIATION = 13
+_EXPECTED_XMONEY_COUNT = (
+    _XMONEY_COUNT_BEFORE_D65
+    - _XMONEY_REMOVED_BY_D65
+    + _XMONEY_ADDED_BY_TAX_DEPRECIATION
+)  # 88
 
 
 def _fbt_url(calc_uri: str) -> str:

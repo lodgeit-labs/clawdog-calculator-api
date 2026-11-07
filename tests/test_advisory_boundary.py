@@ -241,6 +241,15 @@ def test_every_registered_calculator_response_carries_manifest_block(
                 "myr": "12000.00", "deemed_dividend": "0.00",
                 "complying": True, "rate_uris_consumed": [],
             }
+        if calc_uri.startswith("urn:sbrm:calculator:tax-depreciation:"):
+            # Tax-depreciation engine response shape (figures + trace +
+            # rate_uris_consumed), mocked minimally for the manifest-presence
+            # gate. Empty rate_uris_consumed -> honest empty manifest.
+            return {
+                "deduction": "3000.00",
+                "trace": {},
+                "rate_uris_consumed": [],
+            }
         # Wave A/B/C FBT default shape.
         # D21 amendment (mut-2026-09-06-mc15): emit gross-up trio so the
         # gateway's D21 trio-consistency check (calculators.py) does not
@@ -275,6 +284,11 @@ def test_every_registered_calculator_response_carries_manifest_block(
 
         async def div7a_at(self, period_uri, payload):
             return _fake_response_for("urn:sbrm:calculator:div7a:at")
+
+        async def tax_depreciation(self, calculator, period_uri, payload):
+            return _fake_response_for(
+                f"urn:sbrm:calculator:tax-depreciation:{calculator}"
+            )
 
     async def _override():
         return _ManifestPresenceFake()
@@ -332,6 +346,13 @@ def test_every_registered_calculator_response_carries_manifest_block(
                     "term_years": 7,
                     "benchmark_rate": "0.0862",
                 }
+            elif calc_uri.startswith("urn:sbrm:calculator:tax-depreciation:"):
+                calculator_seg = calc_uri.rsplit(":", 1)[-1]
+                path = (
+                    f"/v1/calculators/tax-depreciation/{calculator_seg}/"
+                    f"{quote(meta['supported_periods'][0], safe='')}"
+                )
+                body = {"opening_balance": "10000.00"}
             elif calc_uri == "urn:sbrm:calculator:hp:schedule":
                 # Module hp is a dedicated-route accounting calculator whose
                 # response carries its own manifest shape (calculator /
