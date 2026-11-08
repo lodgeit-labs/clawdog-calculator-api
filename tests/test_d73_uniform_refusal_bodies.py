@@ -58,6 +58,33 @@ _DIV7A_400_BODY = json.dumps(
     }
 )
 
+# (a') Div 7A — Argon's verbatim captured body (D73 follow-up 2026-11-08): the
+# engine re-returns an ALREADY-gateway-wrapped body whose real refusal_class is
+# nested inside a stringified `engine_detail`. The uniform contract must still
+# surface refusal_class at the top level and engine as the module name.
+# Argon's exact wire body:
+#   {"detail":{"error":"engine_bad_request","engine":"div7a_engine",
+#     "status_code":400,"engine_detail":"{\"detail\":\"…\",
+#     \"refusal_class\":\"myr_year_not_after_loan_year\",
+#     \"refusal_payload\":{…}}"}}
+# The inner object below is reproduced verbatim as the engine's stringified
+# engine_detail; the gateway receives it as the engine's 400 body.
+_ARGON_DIV7A_INNER = json.dumps(
+    {
+        "detail": "MYR income year is not after the loan's making year",
+        "refusal_class": "myr_year_not_after_loan_year",
+        "refusal_payload": {"loan_making_fy": 2024, "myr_fy": 2024},
+    }
+)
+_ARGON_DIV7A_400_BODY = json.dumps(
+    {
+        "error": "engine_bad_request",
+        "engine": "div7a_engine",
+        "status_code": 400,
+        "engine_detail": _ARGON_DIV7A_INNER,
+    }
+)
+
 # (b) Depreciation — pool asset out of T6 scope; engine emits detail==refusal_class.
 _DEP_400_BODY = json.dumps(
     {
@@ -99,6 +126,17 @@ _MAPPER_400_CASES = [
             engine_name="div7a",
         ),
         id="div7a-myr-beyond-loan-term",
+    ),
+    pytest.param(
+        "div7a",
+        "myr_year_not_after_loan_year",
+        "div7a",
+        lambda: map_engine_error_to_http(
+            _engine_exc(400, _ARGON_DIV7A_400_BODY, "div7a"),
+            engine_label="div7a_engine_unavailable",
+            engine_name="div7a",
+        ),
+        id="div7a-argon-verbatim-nested-refusal-class",
     ),
     pytest.param(
         "depreciation",
@@ -173,6 +211,30 @@ def test_uniform_400_refusal_envelope_hp_via_live_route(client: TestClient) -> N
     # Legacy keys kept for compatibility (deprecation note in D73 report).
     assert detail["error"] == "unsupported_frequency"
     assert detail["field"] == "frequency"
+
+
+def test_argon_verbatim_div7a_body_flattens_to_top_level_refusal_class() -> None:
+    """D73 follow-up (Fable [CALC] 2026-11-08): Argon's verbatim captured Div 7A
+    body — where refusal_class is buried inside a stringified `engine_detail`
+    and `engine` is the historic `div7a_engine` label — MUST flatten to the
+    uniform envelope with refusal_class at the top level and engine="div7a".
+    """
+    http_exc = map_engine_error_to_http(
+        _engine_exc(400, _ARGON_DIV7A_400_BODY, "div7a"),
+        engine_label="div7a_engine_unavailable",
+        engine_name="div7a",
+    )
+    assert http_exc.status_code == 400, http_exc.detail
+    detail = http_exc.detail
+    assert isinstance(detail, dict)
+    # The two assertions Fable named explicitly.
+    assert detail["refusal_class"] == "myr_year_not_after_loan_year"
+    assert detail["engine"] == "div7a"
+    # engine must not be the historic "div7a_engine" / "_unavailable" label.
+    assert detail["engine"] != "div7a_engine"
+    assert not str(detail["engine"]).endswith("_unavailable")
+    # refusal_payload is recovered from the nested body.
+    assert detail["refusal_payload"] == {"loan_making_fy": 2024, "myr_fy": 2024}
 
 
 # ---------------------------------------------------------------------------
