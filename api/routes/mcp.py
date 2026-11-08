@@ -35,9 +35,11 @@ sprints (CLAWDOG/150).
 """
 from __future__ import annotations
 
+import json
 from typing import Annotated, Any
 from urllib.parse import quote
 
+import httpx
 from fastapi import APIRouter, Body, Request, status
 from fastapi.responses import JSONResponse, Response
 
@@ -297,21 +299,26 @@ async def _handle_tools_call(
 
     We map ``name`` back to its calc-URI via
     ``mcp_tool_registry.tool_calc_uri_for_name``, pull ``period_uri`` out
-    of ``arguments``, then bridge to the existing REST handler by calling
-    the FastAPI app's internal test client mounted at the same process —
-    NO out-of-process round trip. The REST handler's existing structured
-    error mapping (502/503/422 with JSON detail) is preserved verbatim;
-    we wrap it in a JSON-RPC result/error envelope.
+    of ``arguments``, then bridge to the existing REST handler by an
+    IN-PROCESS ASGI self-call to the same REST URL — NO out-of-process
+    round trip. The REST handler's full stack (per-URN pydantic input
+    model + cent checks + engine dispatch + manifest + advisory, and the
+    D73 uniform error shapes) runs verbatim; we wrap the response in the
+    MCP ``tools/call`` result shape.
 
-    Today: we DO NOT actually invoke the REST handler (the per-route
-    bodies have type-checked pydantic models that wouldn't fit a generic
-    dispatch path cleanly without route-handler refactor — Lesson #31
-    forbids). Instead, ``tools/call`` returns a structured ``redirect``
-    payload pointing the MCP client at the equivalent REST URL, so the
-    client can either iframe-load the widget OR POST directly to REST.
-    This is the n=1 minimal-viable shape; n=2 generalisation (true
-    in-process dispatch) is deferred to a future PR when route-handler
-    convergence is justified by signal.
+    D77 (Fable [CALC] 2026-11-08): this REPLACES the n=1 ``rest_redirect``
+    pointer. Previously ``tools/call`` returned only a text pointer
+    ("ready to invoke via REST POST ...") and never executed the
+    calculator, so MCP clients (Claude custom connector) got no result.
+    The n=2 signal arrived, so true in-process dispatch lands here.
+
+    Result shape (MCP spec 2025-06-18 ``tools/call``):
+      * REST 200 → ``content: [{type: "text", text: <JSON body>}]`` plus
+        ``structuredContent: <same body>``;
+      * REST 4xx (400/404/422) → ``isError: true`` with the REST error
+        body as the text content (D73 uniform shape preserved);
+      * the widget-iframe info stays under ``_dispatch`` so clients that
+        render widgets keep working.
     """
     name = params.get("name")
     if not isinstance(name, str):
@@ -354,7 +361,6 @@ async def _handle_tools_call(
     # ``/v1/calculators/{calc_uri}/{period_uri}`` while depreciation lives
     # at ``/v1/calculators/depreciation/at/{period_uri}`` (mc39-2026-08-29
     # rung 5: audit URN retired, at URN adopted per Fable F1 UPHELD).
-    base_url = str(request.base_url).rstrip("/")
     if calc_uri == "urn:sbrm:calculator:depreciation:at":
         rest_path = f"/v1/calculators/depreciation/at/{quote(period_uri, safe='')}"
     else:
@@ -363,39 +369,51 @@ async def _handle_tools_call(
             f"{quote(period_uri, safe='')}"
         )
 
-    # Strip the period_uri from arguments before surfacing as REST body
-    # template (period_uri lives in the URL).
-    rest_body_template = {k: v for k, v in arguments.items() if k != "period_uri"}
+    # Strip the period_uri from arguments before POSTing as the REST body
+    # (period_uri lives in the URL).
+    rest_body = {k: v for k, v in arguments.items() if k != "period_uri"}
 
-    # Resolve the widget URL if the client wants to render via iframe
-    # rather than direct REST POST. None when no widget mapped.
+    # Resolve the widget URL if the client wants to render via iframe in
+    # addition to the computed result. None when no widget mapped.
     from api.services.widget_url_resolver import widget_url_for_calc
 
     widget_url = widget_url_for_calc(calc_uri)
 
-    return {
-        "content": [
-            {
-                "type": "text",
-                "text": (
-                    f"calculator={meta['label']!r} ready to invoke via REST POST "
-                    f"{rest_path}. Optional iframe widget: {widget_url or 'none'}."
-                ),
-            }
-        ],
-        # MCP Apps-style ``_ui_resource`` extension (omitted when no widget).
-        # Clients that don't support MCP Apps see the text content above;
-        # clients that do support it iframe-mount widget_url.
-        "_dispatch": {
-            "kind": "rest_redirect",
-            "method": "POST",
-            "url": f"{base_url}{rest_path}",
-            "body_template": rest_body_template,
+    # In-process ASGI self-call: run the exact REST stack without a network
+    # round trip. A fresh inbound request through the same app means the
+    # per-URN input model, cent checks, engine dispatch, manifest + advisory,
+    # and the D73 uniform error shapes all run verbatim.
+    transport = httpx.ASGITransport(app=request.app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://mcp.internal"
+    ) as http:
+        rest_resp = await http.post(rest_path, json=rest_body)
+
+    try:
+        body = rest_resp.json()
+    except ValueError:
+        body = {"error": "non_json_rest_response", "detail": rest_resp.text[:2000]}
+
+    body_text = json.dumps(body, default=str)
+    result: dict[str, Any] = {
+        "content": [{"type": "text", "text": body_text}],
+    }
+    if rest_resp.status_code == 200:
+        result["structuredContent"] = body
+    else:
+        # 400/404/422 (and any other non-200) → MCP tool error. The text
+        # content carries the REST error body verbatim (D73 uniform shape).
+        result["isError"] = True
+
+    # Preserve the iframe-widget info for clients that render widgets.
+    if widget_url:
+        result["_dispatch"] = {
+            "kind": "widget",
             "widget_url": widget_url,
             "calc_uri": calc_uri,
             "period_uri": period_uri,
-        },
-    }
+        }
+    return result
 
 
 def _handle_resources_read(params: dict[str, Any]) -> dict[str, Any]:

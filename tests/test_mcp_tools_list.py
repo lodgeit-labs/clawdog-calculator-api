@@ -186,25 +186,37 @@ def test_tools_call_unknown_tool_returns_jsonrpc_error(
     assert "available" in body["error"]["data"]
 
 
-def test_tools_call_missing_period_uri_returns_invalid_params(
+def test_tools_call_missing_period_uri_uses_default_period(
     mcp_client: TestClient,
 ) -> None:
-    """``tools/call`` with a registered tool but missing period_uri returns
-    the JSON-RPC redirect using the calculator's default period.
+    """``tools/call`` with a registered tool but missing period_uri falls back
+    to the calculator's default period (``meta["supported_periods"][0]``) and
+    computes a real result.
 
-    Default period falls back to ``meta["supported_periods"][0]`` so the
-    call succeeds; this asserts the default-fallback path.
+    D77 (Fable [CALC] 2026-11-08): tools/call now runs the calculator in process
+    instead of returning a rest_redirect pointer. The default-period fallback
+    still applies; the engine is mocked so the call reaches 200 and the widget
+    _dispatch (if mapped) targets the default period fy2026.
     """
+    # Empty arguments → the body fails gateway validation, but the point under
+    # test is the default-period FALLBACK: tools/call still resolves the
+    # calculator and dispatches against the default period fy2026 (it does NOT
+    # return invalid_params for a missing period_uri). The widget _dispatch
+    # names the resolved default period.
     body = _jsonrpc_call(
         mcp_client,
         "tools/call",
         params={"name": "fbt-car-operating-cost", "arguments": {}},
     )
-    assert "result" in body, f"expected success-with-default; got {body}"
-    dispatch = body["result"]["_dispatch"]
-    assert dispatch["kind"] == "rest_redirect"
-    assert dispatch["calc_uri"] == "urn:sbrm:calculator:fbt:car-operating-cost"
-    assert dispatch["period_uri"] == "urn:sbrm:period:fbt:fy2026"
+    assert "result" in body, f"expected success envelope; got {body}"
+    result = body["result"]
+    # Not a missing-period invalid_params and not a tool-not-found: the call was
+    # dispatched. The widget _dispatch confirms the default period was used.
+    assert "_dispatch" in result, result
+    assert result["_dispatch"]["period_uri"] == "urn:sbrm:period:fbt:fy2026"
+    assert result["_dispatch"]["calc_uri"] == (
+        "urn:sbrm:calculator:fbt:car-operating-cost"
+    )
 
 
 def test_method_not_found_returns_jsonrpc_error(mcp_client: TestClient) -> None:
