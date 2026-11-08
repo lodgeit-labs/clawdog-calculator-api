@@ -41,6 +41,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Body, Request, status
 from fastapi.responses import JSONResponse, Response
 
+from api import __version__
 from api.routes.calculators import _CALCULATOR_REGISTRY
 from api.services import mcp_tool_registry
 
@@ -60,17 +61,42 @@ _MCP_RESOURCE_NOT_FOUND = -32002
 _MCP_DISPATCH_FAILED = -32003
 
 # Supported MCP method names.
+_METHOD_INITIALIZE = "initialize"
+_METHOD_INITIALIZED = "notifications/initialized"
+_METHOD_PING = "ping"
 _METHOD_TOOLS_LIST = "tools/list"
 _METHOD_TOOLS_CALL = "tools/call"
 _METHOD_RESOURCES_LIST = "resources/list"
 _METHOD_RESOURCES_READ = "resources/read"
 
 _SUPPORTED_METHODS = {
+    _METHOD_INITIALIZE,
+    _METHOD_INITIALIZED,
+    _METHOD_PING,
     _METHOD_TOOLS_LIST,
     _METHOD_TOOLS_CALL,
     _METHOD_RESOURCES_LIST,
     _METHOD_RESOURCES_READ,
 }
+
+# MCP lifecycle (spec 2025-06-18 § Lifecycle).
+#
+# D69 (Fable [CALC] 2026-11-08): standard MCP clients send `initialize`, then
+# the `notifications/initialized` notification, before `tools/list`. The server
+# previously rejected `initialize` with -32601, so no spec-conformant client
+# could connect. These handlers add the lifecycle while keeping the surface
+# STATELESS — `tools/list` / `tools/call` still work with no prior `initialize`,
+# because existing callers rely on that (plain JSON-RPC POST transport, no
+# session state).
+#
+# `_MCP_PROTOCOL_VERSION` is the server's latest supported spec revision (the
+# same revision the rest of this module advertises). Version negotiation echoes
+# the client's requested version when the server supports it, else returns this.
+_MCP_PROTOCOL_VERSION = "2025-06-18"
+_MCP_SUPPORTED_PROTOCOL_VERSIONS = frozenset(
+    {"2025-06-18", "2025-03-26", "2024-11-05"}
+)
+_MCP_SERVER_NAME = "clawdog-calculator-api"
 
 
 def _jsonrpc_response(
@@ -95,13 +121,53 @@ def _jsonrpc_error(
     return _jsonrpc_response(request_id, error=err)
 
 
+def _negotiate_protocol_version(requested: Any) -> str:
+    """Return the protocol version to advertise in the initialize result.
+
+    Spec version negotiation: if the client requests a version the server
+    supports, echo it; otherwise return the server's latest supported version
+    and let the client decide whether it can proceed.
+    """
+    if isinstance(requested, str) and requested in _MCP_SUPPORTED_PROTOCOL_VERSIONS:
+        return requested
+    return _MCP_PROTOCOL_VERSION
+
+
+def _handle_initialize(params: dict[str, Any]) -> dict[str, Any]:
+    """Handle ``initialize`` — the MCP lifecycle opener (spec 2025-06-18).
+
+    Returns the negotiated ``protocolVersion``, the server ``capabilities``
+    (this server offers ``tools`` and ``resources``; neither emits
+    ``listChanged`` notifications on this stateless transport), and
+    ``serverInfo`` (name + version). Stateless: no session is created.
+    """
+    requested = params.get("protocolVersion")
+    return {
+        "protocolVersion": _negotiate_protocol_version(requested),
+        "capabilities": {
+            # listChanged=false: stateless transport emits no list-changed
+            # notifications. tools/resources are both served.
+            "tools": {"listChanged": False},
+            "resources": {"listChanged": False, "subscribe": False},
+        },
+        "serverInfo": {
+            "name": _MCP_SERVER_NAME,
+            "version": __version__,
+        },
+    }
+
+
 @router.post(
     "",
     summary="MCP JSON-RPC endpoint.",
     description=(
         "Single MCP JSON-RPC 2.0 entry point. POST a JSON-RPC envelope; "
-        "receive a JSON-RPC result or structured error. Supported methods: "
-        "``tools/list``, ``tools/call``, ``resources/list``, ``resources/read``. "
+        "receive a JSON-RPC result or structured error. Lifecycle methods: "
+        "``initialize`` (negotiates protocolVersion, advertises capabilities + "
+        "serverInfo), ``notifications/initialized`` (accepted, HTTP 202, no "
+        "body), ``ping`` (returns {}). Data methods: ``tools/list``, "
+        "``tools/call``, ``resources/list``, ``resources/read``. The surface is "
+        "stateless — data methods work with or without a prior ``initialize``. "
         "Per MCP spec 2025-06-18."
     ),
 )
@@ -153,9 +219,22 @@ async def mcp_endpoint(
     is_notification = "id" not in body
     params: dict[str, Any] = body.get("params") or {}
 
+    # --- MCP lifecycle (D69) ------------------------------------------------
+    # notifications/initialized is a notification with NO response body; the
+    # spec's Streamable-HTTP transport returns HTTP 202 Accepted for an
+    # accepted notification. Handle it before the generic dispatch so it never
+    # falls into the 204 notification path or requires an id.
+    if method == _METHOD_INITIALIZED:
+        return Response(status_code=status.HTTP_202_ACCEPTED)
+
     try:
-        if method == _METHOD_TOOLS_LIST:
-            result: Any = {"tools": mcp_tool_registry.list_tools()}
+        if method == _METHOD_INITIALIZE:
+            result: Any = _handle_initialize(params)
+        elif method == _METHOD_PING:
+            # Spec: ping result is an empty object.
+            result = {}
+        elif method == _METHOD_TOOLS_LIST:
+            result = {"tools": mcp_tool_registry.list_tools()}
         elif method == _METHOD_TOOLS_CALL:
             result = await _handle_tools_call(request, params)
         elif method == _METHOD_RESOURCES_LIST:
