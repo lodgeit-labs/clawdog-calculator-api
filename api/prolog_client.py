@@ -53,6 +53,42 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+
+# D73b addendum (Fable [CALC] 2026-11-08): the engine's HTTP-error body must
+# survive transport INTACT when it is a JSON refusal, so the gateway mapper can
+# recover `refusal_class` from it. The historic `exc.response.text[:500]` cap
+# truncated longer Div 7A refusals (whose `refusal_payload.alternatives[...]`
+# pushes the body past 500 chars) mid-JSON, so `_recover_refusal_class` could
+# not parse it and the body fell to the bare-400 arm (the old shape). This also
+# caused the mid-word shortening Fable observed (probe 2's "the 1 income years
+# f" cut-off). Depreciation + HP refusals happened to fit under 500 chars, so
+# they looked correct on the same deploy.
+#
+# Fix: keep a valid-JSON body WHOLE; only cap a non-JSON body (an HTML error
+# page or a stack trace) at a generous bound so a pathological engine response
+# cannot balloon the gateway's own error payload.
+_ENGINE_ERROR_BODY_NONJSON_CAP = 8192
+
+
+def _engine_error_body(text: str) -> str:
+    """Return the engine's HTTP-error body for the gateway error envelope.
+
+    A JSON body (a structured refusal) is returned verbatim so the mapper can
+    recover `refusal_class`. A non-JSON body is capped at
+    ``_ENGINE_ERROR_BODY_NONJSON_CAP`` chars.
+    """
+    if text is None:
+        return ""
+    stripped = text.strip()
+    if stripped:
+        try:
+            json.loads(stripped)
+        except (ValueError, TypeError):
+            return text[:_ENGINE_ERROR_BODY_NONJSON_CAP]
+        return text
+    return text
+
+
 # Engine lock-down Step 1 (mut-2026-09-06-mc14 per Fable 2026-09-06 UTC).
 # On Cloud Run, every engine call carries an ID token whose audience is the
 # engine's URL. On the engine side, Cloud Run's built-in IAM check validates
@@ -680,7 +716,7 @@ class PrologClient:
                 error_code="engine_http_error",
                 detail={
                     "status_code": exc.response.status_code,
-                    "body": exc.response.text[:500],
+                    "body": _engine_error_body(exc.response.text),
                 },
                 engine=engine,
                 url=url,
