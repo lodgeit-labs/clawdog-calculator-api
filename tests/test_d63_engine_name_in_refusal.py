@@ -20,8 +20,6 @@ from __future__ import annotations
 import copy
 import json
 
-import pytest
-
 from api.lib.engine_error_mapper import (
     map_calculation_error_to_http,
     map_engine_error_to_http,
@@ -46,11 +44,19 @@ _LIVE_FBT_COHORT_DETAIL = (
 
 # The exact 400 refusal body the live gateway returned BEFORE D63 (engine is the
 # "engine" placeholder). D63 changes exactly one key: engine -> "fbt".
+# D73 (Fable [CALC] 2026-11-08): the uniform 400 envelope adds
+# `refusal_payload` alongside the legacy flat keys (`requested_fy`,
+# `supported_cohort_years` kept for compatibility). engine is still the only
+# difference between the no-module and module-threaded calls.
 _PRE_D63_FBT_BODY = {
     "refusal_class": "fbt_year_outside_cohort",
     "engine": "engine",
     "requested_fy": "fy2006",
     "supported_cohort_years": ["fy2022", "fy2030"],
+    "refusal_payload": {
+        "requested_fy": "fy2006",
+        "supported_cohort_years": ["fy2022", "fy2030"],
+    },
     "message": (
         "The acquisition date resolves to an FBT year outside the "
         "deemed-depreciation day-count cohort covered by the FY2026 rate "
@@ -134,26 +140,26 @@ def _div7a_loan_year_refusal_exc() -> PrologEngineUnavailable:
     )
 
 
-def test_div7a_loan_year_refusal_path_and_skip():
-    """Dispatch second-module check: Div 7A's loan-year refusal does NOT go
-    through map_calculation_error_to_http.
+def test_div7a_loan_year_refusal_carries_uniform_engine_envelope():
+    """D73 (Fable [CALC] 2026-11-08): Div 7A's loan-year refusal now carries the
+    uniform 400 envelope through map_engine_error_to_http.
 
-    It arrives as an engine HTTP 400 (PrologEngineUnavailable) mapped by
-    map_engine_error_to_http, whose refusal_class arm preserves the engine's
-    envelope verbatim and emits no "engine" key. We assert those facts, then
-    skip the engine=="div7a" assertion because there is no engine field to name.
+    It arrives as an engine HTTP 400 (PrologEngineUnavailable) and the mapper's
+    refusal_class arm now emits {refusal_class, refusal_payload, engine,
+    message} with the module name present — closing the pre-D73 gap where the
+    Div 7A (and depreciation) refusal body omitted the "engine" key. Legacy
+    keys (the engine's own `detail`) are kept alongside for compatibility.
     """
     exc = _div7a_loan_year_refusal_exc()
     http_exc = map_engine_error_to_http(
         exc, engine_label="div7a_engine_unavailable", engine_name="div7a"
     )
-    # Correct path + shape: 400, refusal envelope preserved.
     assert http_exc.status_code == 400
     assert http_exc.detail["refusal_class"] == "myr_year_beyond_loan_term"
-    # The refusal envelope carries no "engine" key — nothing for D63 to name.
-    assert "engine" not in http_exc.detail
-    pytest.skip(
-        "Div 7A loan-year refusal takes map_engine_error_to_http (not "
-        "map_calculation_error_to_http) and its refusal_class body carries no "
-        "'engine' key; no engine field to assert."
-    )
+    # D73: the "engine" key is now present and names the module (not the
+    # "_unavailable" transport label).
+    assert http_exc.detail["engine"] == "div7a"
+    assert not str(http_exc.detail["engine"]).endswith("_unavailable")
+    # refusal_class is at the top level of the envelope.
+    assert "refusal_class" in http_exc.detail
+    assert "refusal_payload" in http_exc.detail
