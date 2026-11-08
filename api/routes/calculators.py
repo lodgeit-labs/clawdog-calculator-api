@@ -35,6 +35,7 @@ from api.lib.calculator_metadata import (
     rounding_advisory_for,
 )
 from api.lib.engine_error_mapper import (
+    _uniform_refusal_400,
     map_calculation_error_to_http,
     map_engine_error_to_http,
 )
@@ -667,11 +668,32 @@ async def invoke_hp_schedule(body: HpScheduleInput) -> HpScheduleResponse:
             fy_end_month=body.fy_end_month,
         )
     except HpEngineError as exc:
-        raise HTTPException(
-            status_code=exc.status_code,
-            detail={
+        # D73 (Fable [CALC] 2026-11-08): uniform shapes.
+        #  * status 400 (unsupported_frequency) -> uniform refusal envelope
+        #    {refusal_class, refusal_payload, engine, message}; legacy keys
+        #    `error` + `field` + `detail` kept alongside for compatibility.
+        #  * status 422 (invalid input) -> uniform pydantic-style validation
+        #    shape with `loc: ["body", <field>]`, matching depreciation/div7a
+        #    native pydantic 422s (the convention most callers already get).
+        if exc.status_code == 422:
+            loc: list = ["body"]
+            if exc.field:
+                loc.extend(str(exc.field).split("."))
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=[{
+                    "loc": loc,
+                    "msg": exc.message,
+                    "type": exc.refusal_class,
+                }],
+            ) from exc
+        raise _uniform_refusal_400(
+            refusal_class=exc.refusal_class,
+            engine=_engine_name_for(_HP_SCHEDULE_URI),
+            message=exc.message,
+            refusal_payload={"field": exc.field} if exc.field else {},
+            legacy={
                 "error": exc.refusal_class,
-                "refusal_class": exc.refusal_class,
                 "field": exc.field,
                 "detail": exc.message,
             },
@@ -844,6 +866,16 @@ async def invoke_calculator(
                 msg = err.get("msg", "")
                 if msg.startswith("value "):
                     err["msg"] = alias + msg[len("value"):]
+        # D73 (Fable [CALC] 2026-11-08): the generic route validates the body
+        # in a sub-context (`input_model(**raw_body)`), so pydantic's loc is
+        # relative to the model and omits the "body" prefix that FastAPI's
+        # native body binding prepends (the shape depreciation/div7a/hp native
+        # 422s already carry). Prepend "body" so every module's 422 loc shares
+        # one convention. Idempotent: never double-prefix.
+        for err in errors:
+            loc = list(err.get("loc") or [])
+            if not loc or loc[0] != "body":
+                err["loc"] = ["body", *loc]
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=errors,

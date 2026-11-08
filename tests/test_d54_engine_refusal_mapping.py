@@ -194,4 +194,5 @@ def test_board_non_cent_on_request_field_maps_to_422_named_alias():
     detail = http_exc.detail
     assert isinstance(detail, list) and detail
     assert detail[0]["type"] == "non_cent_boundary"
-    assert detail[0]["loc"] == ["over12EmployeeContributions"]
+    # D73 (Fable [CALC] 2026-11-08): uniform 422 loc convention prefixes "body".
+    assert detail[0]["loc"] == ["body", "over12EmployeeContributions"]

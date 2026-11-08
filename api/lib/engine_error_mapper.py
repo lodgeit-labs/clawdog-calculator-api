@@ -205,27 +205,115 @@ def _engine_term_and_payload(parsed: Any) -> tuple[str | None, Mapping | None]:
     """
     if not isinstance(parsed, Mapping):
         return None, None
-    term = parsed.get("error") or parsed.get("refusal_class")
+    # Prefer refusal_class directly; `error` is only a fallback because a
+    # previously-wrapped gateway body carries the generic `error:
+    # "engine_bad_request"` placeholder while the REAL refusal_class is nested
+    # inside a stringified `engine_detail` (D73 Argon-body shape).
+    term = parsed.get("refusal_class") or parsed.get("error")
     payload = parsed.get("refusal_payload")
-    if term is None:
-        # Engine-transport 5xx shape: the refusal is a JSON string under a
-        # `body` key, either at the top level ({"status_code": 500,
-        # "body": "<json>"}) or nested under `detail`
-        # ({"detail": {"status_code": 500, "body": "<json>"}}).
+    # If the term is the generic wrapper placeholder (no real refusal_class at
+    # this level), dig into a stringified `engine_detail` / `body` to recover
+    # the real refusal_class. Covers:
+    #   * engine re-returns an already-gateway-wrapped body
+    #     {"error":"engine_bad_request", "engine_detail":"{...refusal_class...}"}
+    #   * the FBT serialiser 5xx whose refusal is a JSON string under `body`.
+    _GENERIC = {"engine_bad_request", "unrecognised_engine_error", None}
+    if term in _GENERIC:
         candidates = [parsed]
         inner = parsed.get("detail")
         if isinstance(inner, Mapping):
             candidates.append(inner)
         for cand in candidates:
-            body = cand.get("body") if isinstance(cand, Mapping) else None
-            if isinstance(body, str):
-                reparsed = _parse_engine_body(body)
-                if isinstance(reparsed, Mapping):
-                    term = reparsed.get("error") or reparsed.get("refusal_class")
-                    payload = reparsed.get("refusal_payload")
-                    if term is not None:
-                        break
+            if not isinstance(cand, Mapping):
+                continue
+            for key in ("engine_detail", "body"):
+                nested = cand.get(key)
+                if isinstance(nested, str):
+                    reparsed = _parse_engine_body(nested)
+                elif isinstance(nested, Mapping):
+                    reparsed = nested
+                else:
+                    continue
+                if not isinstance(reparsed, Mapping):
+                    continue
+                # Prefer refusal_class, then error; recover the real term from
+                # the nested body (the FBT serialiser 5xx carries `error`, the
+                # Argon re-wrapped body carries `refusal_class`).
+                cand_term = reparsed.get("refusal_class") or reparsed.get("error")
+                if cand_term and cand_term not in _GENERIC:
+                    term = cand_term
+                    payload = reparsed.get("refusal_payload") or payload
+                    break
+                # one more level: nested engine_detail string (double wrap).
+                deeper = reparsed.get("engine_detail")
+                if isinstance(deeper, str):
+                    deep = _parse_engine_body(deeper)
+                    if isinstance(deep, Mapping):
+                        deep_term = deep.get("refusal_class") or deep.get("error")
+                        if deep_term and deep_term not in _GENERIC:
+                            term = deep_term
+                            payload = deep.get("refusal_payload") or payload
+                            break
+            if term not in _GENERIC:
+                break
     return term, (payload if isinstance(payload, Mapping) else None)
+
+
+def _recover_refusal_class(
+    parsed: Any,
+) -> tuple[str | None, Mapping | None]:
+    """Recover a genuine ``refusal_class`` (and its payload) from a 400 body.
+
+    Unlike ``_engine_term_and_payload`` (which also accepts a bare ``error``
+    term), this ONLY returns a term that came from a ``refusal_class`` key —
+    at the top level, or nested inside a stringified ``engine_detail`` / ``body``
+    (the Argon re-wrapped shape, up to two levels deep). A bare ``error`` with
+    no ``refusal_class`` anywhere returns ``(None, None)`` so it stays in the
+    bare-400 arm (D73, Fable [CALC] 2026-11-08).
+    """
+    if not isinstance(parsed, Mapping):
+        return None, None
+    rc = parsed.get("refusal_class")
+    if rc:
+        return str(rc), (
+            parsed.get("refusal_payload")
+            if isinstance(parsed.get("refusal_payload"), Mapping)
+            else None
+        )
+    candidates = [parsed]
+    inner = parsed.get("detail")
+    if isinstance(inner, Mapping):
+        candidates.append(inner)
+    for cand in candidates:
+        if not isinstance(cand, Mapping):
+            continue
+        for key in ("engine_detail", "body"):
+            nested = cand.get(key)
+            if isinstance(nested, str):
+                reparsed = _parse_engine_body(nested)
+            elif isinstance(nested, Mapping):
+                reparsed = nested
+            else:
+                continue
+            if not isinstance(reparsed, Mapping):
+                continue
+            inner_rc = reparsed.get("refusal_class")
+            if inner_rc:
+                return str(inner_rc), (
+                    reparsed.get("refusal_payload")
+                    if isinstance(reparsed.get("refusal_payload"), Mapping)
+                    else None
+                )
+            deeper = reparsed.get("engine_detail")
+            if isinstance(deeper, str):
+                deep = _parse_engine_body(deeper)
+                if isinstance(deep, Mapping) and deep.get("refusal_class"):
+                    return str(deep["refusal_class"]), (
+                        deep.get("refusal_payload")
+                        if isinstance(deep.get("refusal_payload"), Mapping)
+                        else None
+                    )
+    return None, None
 
 
 # D62-b (Fable [CALC] 2026-09-30): the live engine does NOT emit
@@ -304,6 +392,59 @@ def _fields_named_by_payload(term: str, payload: Mapping | None) -> list[str]:
     return fields
 
 
+def _plain_engine_name(
+    exc: Any,
+    engine_name: str | None,
+    engine_label: str | None,
+) -> str:
+    """Resolve the module name for a refusal body, stripping ``_unavailable``.
+
+    Prefers the route-threaded ``engine_name`` (fbt/div7a/depreciation/hp),
+    then the historic ``engine_label``, then ``exc.engine``.
+    """
+    name = engine_name or engine_label or getattr(exc, "engine", None) or "engine"
+    if name.endswith("_unavailable"):
+        name = name[: -len("_unavailable")]
+    # Normalise a historic "<module>_engine" label to the bare module name so
+    # the uniform envelope never surfaces "div7a_engine" where the contract
+    # wants "div7a" (D73).
+    if name.endswith("_engine"):
+        name = name[: -len("_engine")]
+    return name
+
+
+def _uniform_refusal_400(
+    *,
+    refusal_class: str,
+    engine: str,
+    message: str,
+    refusal_payload: Mapping | None = None,
+    legacy: Mapping | None = None,
+) -> HTTPException:
+    """Build the D73 uniform 400 refusal envelope.
+
+    Target contract (D73, Fable [CALC] 2026-11-08): every gateway 400 carries
+    ``{refusal_class, refusal_payload, engine, message}`` at the top level of
+    FastAPI's wrapped ``detail`` dict, so ``refusal_class`` is ALWAYS at the
+    top level regardless of whether the engine sent a flat dict, a nested
+    dict, or a stringified body. ``engine`` is the module name
+    (fbt/div7a/depreciation/hp) from ``_engine_name_for``.
+
+    Legacy keys (``error``, ``field``, ``engine_detail``, ``detail``,
+    ``status_code``) are kept alongside the new ones for backward
+    compatibility — see the deprecation note in the D73 report. ``legacy``
+    is merged FIRST so the uniform keys always win on any name collision.
+    """
+    body: dict[str, Any] = {}
+    if legacy:
+        body.update(legacy)
+    body["refusal_class"] = refusal_class
+    body["refusal_payload"] = dict(refusal_payload) if refusal_payload else {}
+    body["engine"] = engine
+    body["message"] = message
+    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=body)
+
+
 def _classify_engine_error_term(
     parsed: Any,
     *,
@@ -364,26 +505,25 @@ def _classify_engine_error_term(
         engine_field = str((payload or {}).get("field") or "")
         alias = _ENGINE_FIELD_TO_REQUEST_ALIAS.get(engine_field)
         if alias is not None:
+            # D73: uniform 422 loc convention — prefix "body".
             return HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=[{
-                    "loc": [alias],
+                    "loc": ["body", alias],
                     "msg": str((payload or {}).get("reason") or
                                f"{alias} must be cent-quantised"),
                     "type": term,
                 }],
             )
-        return HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "refusal_class": "money_not_cent_quantised",
-                "engine_field": engine_field,
-                "engine": plain_engine,
-                "message": (
-                    "Money inputs must be cent-quantised; the engine could not "
-                    f"emit {engine_field} at cent scale."
-                ),
-            },
+        return _uniform_refusal_400(
+            refusal_class="money_not_cent_quantised",
+            engine=plain_engine,
+            message=(
+                "Money inputs must be cent-quantised; the engine could not "
+                f"emit {engine_field} at cent scale."
+            ),
+            refusal_payload={"engine_field": engine_field},
+            legacy={"engine_field": engine_field},
         )
 
     if term in _FIELD_NAMING_ENGINE_TERMS:
@@ -392,8 +532,9 @@ def _classify_engine_error_term(
             f"engine rejected input via {term}"
             + (f": {payload.get('field')}" if payload and payload.get("field") else "")
         )
+        # D73: uniform 422 loc convention — prefix "body".
         detail = [{
-            "loc": list(fields),
+            "loc": ["body", *[str(f) for f in fields]],
             "msg": str(msg),
             "type": term,
         }]
@@ -419,20 +560,23 @@ def _classify_engine_error_term(
             supported = ["fy2022", "fy2030"]
         supported_years = [str(y) for y in supported]
         requested_fy = p.get("fy") or p.get("year") or p.get("requested_fy")
-        return HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "refusal_class": "fbt_year_outside_cohort",
-                "engine": plain_engine,
+        return _uniform_refusal_400(
+            refusal_class="fbt_year_outside_cohort",
+            engine=plain_engine,
+            message=(
+                "The acquisition date resolves to an FBT year outside the "
+                "deemed-depreciation day-count cohort covered by the FY2026 "
+                f"rate table (supported range: {supported_years}). Supply an "
+                "acquisition date whose chained deemed-DV walk stays within "
+                "the supported cohort years."
+            ),
+            refusal_payload={
                 "requested_fy": requested_fy,
                 "supported_cohort_years": supported_years,
-                "message": (
-                    "The acquisition date resolves to an FBT year outside the "
-                    "deemed-depreciation day-count cohort covered by the FY2026 "
-                    f"rate table (supported range: {supported_years}). Supply an "
-                    "acquisition date whose chained deemed-DV walk stays within "
-                    "the supported cohort years."
-                ),
+            },
+            legacy={
+                "requested_fy": requested_fy,
+                "supported_cohort_years": supported_years,
             },
         )
 
@@ -442,11 +586,22 @@ def _classify_engine_error_term(
         parsed.get("refusal_class") or (payload is not None and "refusal_class" in str(parsed))
     ):
         sanitised = _sanitise_engine_body(parsed)
-        return HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
+        rc = parsed.get("refusal_class")
+        rp = parsed.get("refusal_payload") if isinstance(parsed, Mapping) else None
+        if not rc:
+            # refusal_class was detected only inside a stringified body; recover
+            # it so the uniform envelope can surface it at the top level.
+            inner_term, inner_payload = _engine_term_and_payload(parsed)
+            rc = inner_term or "engine_bad_request"
+            if rp is None:
+                rp = inner_payload
+        return _uniform_refusal_400(
+            refusal_class=str(rc),
+            engine=plain_engine,
+            message=f"{plain_engine} refused the request: {rc}",
+            refusal_payload=rp if isinstance(rp, Mapping) else None,
+            legacy={
                 "error": "engine_bad_request",
-                "engine": plain_engine,
                 "status_code": 400,
                 "engine_detail": sanitised,
             },
@@ -569,11 +724,17 @@ def map_engine_error_to_http(
         #
         # POP the inner `detail` key ONLY when it equals `refusal_class`.
         # Any other value stays: it's real explanatory content.
-        if (
-            status_code == 400
-            and isinstance(parsed_body, Mapping)
-            and parsed_body.get("refusal_class")
-        ):
+        # D73 (Fable [CALC] 2026-11-08): recover refusal_class whether it is at
+        # the top level OR nested inside a stringified engine_detail / body (the
+        # Argon-body shape: the engine re-returns an already-gateway-wrapped
+        # {error: engine_bad_request, engine_detail: "{...refusal_class...}"}).
+        # _engine_term_and_payload digs through those wrappers.
+        # Only a genuine `refusal_class` (top-level, or nested inside a
+        # stringified engine_detail / body) is a typed refusal that gets the
+        # uniform envelope. A bare `error` with no refusal_class anywhere (e.g.
+        # depreciation /range `malformed_input`) stays in the bare-400 arm.
+        recovered_rc, recovered_rp = _recover_refusal_class(parsed_body)
+        if status_code == 400 and recovered_rc:
             sanitised = _sanitise_engine_body(parsed_body)
             if (
                 isinstance(sanitised, Mapping)
@@ -582,9 +743,32 @@ def map_engine_error_to_http(
                 sanitised = {
                     k: v for k, v in sanitised.items() if k != "detail"
                 }
-            return HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=sanitised,
+            # Wrap the preserved refusal envelope in the uniform 400 shape so
+            # `engine` is always present and `refusal_class` is always
+            # top-level. The engine's own keys are kept as legacy (merged
+            # first; uniform keys win on collision). The legacy `engine` field
+            # is stripped so the engine body's own label (e.g. "div7a_engine")
+            # never shadows the uniform module name.
+            legacy = (
+                {k: v for k, v in sanitised.items()
+                 if k not in ("refusal_class", "refusal_payload", "engine", "message")}
+                if isinstance(sanitised, Mapping)
+                else {"engine_detail": sanitised}
+            )
+            engine_plain = _plain_engine_name(exc, engine_name, engine_label)
+            msg = None
+            if isinstance(sanitised, Mapping) and isinstance(sanitised.get("detail"), str):
+                msg = sanitised["detail"]
+            elif isinstance(recovered_rp, Mapping) and isinstance(
+                recovered_rp.get("detail"), str
+            ):
+                msg = recovered_rp["detail"]
+            return _uniform_refusal_400(
+                refusal_class=str(recovered_rc),
+                engine=engine_plain,
+                message=msg or f"{engine_plain} refused the request: {recovered_rc}",
+                refusal_payload=recovered_rp if isinstance(recovered_rp, Mapping) else None,
+                legacy=legacy,
             )
 
         # --- 1b: caller-fault 4xx (Fable Amendment 1: 400/409/413/422).
