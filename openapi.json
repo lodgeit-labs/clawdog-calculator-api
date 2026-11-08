@@ -3114,7 +3114,7 @@
     },
     "/mcp": {
       "post": {
-        "description": "Single MCP JSON-RPC 2.0 entry point. POST a JSON-RPC envelope; receive a JSON-RPC result or structured error. Supported methods: ``tools/list``, ``tools/call``, ``resources/list``, ``resources/read``. Per MCP spec 2025-06-18.",
+        "description": "Single MCP JSON-RPC 2.0 entry point. POST a JSON-RPC envelope; receive a JSON-RPC result or structured error. Lifecycle methods: ``initialize`` (negotiates protocolVersion, advertises capabilities + serverInfo), ``notifications/initialized`` (accepted, HTTP 202, no body), ``ping`` (returns {}). Data methods: ``tools/list``, ``tools/call``, ``resources/list``, ``resources/read``. The surface is stateless \u2014 data methods work with or without a prior ``initialize``. Per MCP spec 2025-06-18.",
         "operationId": "mcp_endpoint_mcp_post",
         "requestBody": {
           "content": {
