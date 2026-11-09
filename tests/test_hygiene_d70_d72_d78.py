@@ -189,7 +189,10 @@ def test_d70_engine_auth_probe_route_still_registered() -> None:
     assert "/livez" in spec["paths"], "/livez must remain published"
 
 
-# --- D72: unscoped rates route returns 200 with an empty list ----------------
+# --- D72: unscoped rates route returns 200 [] ONLY for registered calculators -
+# Fable review tightened the scope: a 200 empty list is returned only when the
+# unscoped period appears in some registered calculator's supported_periods
+# (today hp + depreciation). Any other `...:unscoped` URI keeps the 404.
 
 
 @pytest.mark.parametrize(
@@ -197,10 +200,9 @@ def test_d70_engine_auth_probe_route_still_registered() -> None:
     [
         "urn:sbrm:period:hp:unscoped",
         "urn:sbrm:period:depreciation:unscoped",
-        "urn:sbrm:period:someother:unscoped",
     ],
 )
-def test_d72_unscoped_rates_returns_200_empty_list(
+def test_d72_registered_unscoped_rates_returns_200_empty_list(
     period: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # conftest's autouse fixture pins CLAWDOG_RATE_TABLE_ROOT at a POPULATED
@@ -215,6 +217,36 @@ def test_d72_unscoped_rates_returns_200_empty_list(
     body = resp.json()
     assert body.get("entries") == [], f"{period}: expected entries: []"
     assert body.get("period_uri") == period
+
+
+@pytest.mark.parametrize(
+    "period",
+    [
+        # Unscoped, but no registered calculator supports it — keeps 404.
+        "urn:sbrm:period:fbt:unscoped",
+        "urn:sbrm:period:bogus:unscoped",
+    ],
+)
+def test_d72_unregistered_unscoped_rates_still_404(
+    period: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CLAWDOG_RATE_TABLE_ROOT", str(tmp_path / "does-not-exist"))
+    client = TestClient(app)
+    resp = client.get(f"/v1/rates/{quote(period, safe='')}")
+    assert resp.status_code == 404, resp.text
+
+
+def test_d72_registered_unscoped_set_derives_from_registry() -> None:
+    """The recognised unscoped set is derived from the calculator registry, not
+    hard-coded; today it is exactly hp + depreciation."""
+    from api.routes.rates import _registered_unscoped_periods
+
+    assert _registered_unscoped_periods() == frozenset(
+        {
+            "urn:sbrm:period:hp:unscoped",
+            "urn:sbrm:period:depreciation:unscoped",
+        }
+    )
 
 
 def test_d72_scoped_missing_root_still_404(
