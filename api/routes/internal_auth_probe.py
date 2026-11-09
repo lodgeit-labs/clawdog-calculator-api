@@ -194,6 +194,11 @@ def _mint_result_for_audience(audience: str) -> dict:
 
 @router.post(
     "/engine-auth",
+    # D70 (Fable [CALC] 2026-11-08): hidden from OpenAPI. The endpoint already
+    # returns 404 in production posture (token env var unset); removing it from
+    # the published spec stops it advertising its own existence. The route keeps
+    # working: the canary deploy gate still curls it with the probe header.
+    include_in_schema=False,
     summary="Admin probe: prove the gateway can mint ID tokens for engine audiences.",
     description=(
         "Attempts to mint an ID token for each configured engine URL (or the "
