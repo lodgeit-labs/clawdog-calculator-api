@@ -2567,6 +2567,10 @@
       },
       "HpAdvisory": {
         "properties": {
+          "disclaimer": {
+            "title": "Disclaimer",
+            "type": "string"
+          },
           "figure_type": {
             "title": "Figure Type",
             "type": "string"
@@ -2581,7 +2585,8 @@
         },
         "required": [
           "figure_type",
-          "notes"
+          "notes",
+          "disclaimer"
         ],
         "title": "HpAdvisory",
         "type": "object"
@@ -2632,6 +2637,13 @@
           "engine_version": {
             "title": "Engine Version",
             "type": "string"
+          },
+          "rate_table_uris": {
+            "items": {
+              "$ref": "#/components/schemas/ManifestRateTableEntry"
+            },
+            "title": "Rate Table Uris",
+            "type": "array"
           },
           "rounding_policy": {
             "title": "Rounding Policy",
@@ -2864,6 +2876,33 @@
           "rounding_residual"
         ],
         "title": "HpTotals",
+        "type": "object"
+      },
+      "ManifestRateTableEntry": {
+        "additionalProperties": false,
+        "description": "One entry in the manifest's ``rate_table_uris`` block (CLAWDOG/109 \u00a77.1).",
+        "properties": {
+          "content_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "hash_algorithm": {
+            "default": "sha256",
+            "title": "Hash Algorithm",
+            "type": "string"
+          },
+          "uri": {
+            "title": "Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uri",
+          "content_hash"
+        ],
+        "title": "ManifestRateTableEntry",
         "type": "object"
       },
       "ModuleListing": {

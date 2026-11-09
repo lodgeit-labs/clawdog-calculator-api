@@ -10,6 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from api.schemas.manifest import ManifestRateTableEntry
 from api.schemas.money import reject_sub_cent_string
 
 
@@ -129,11 +130,20 @@ class HpManifest(BaseModel):
     accrual_basis: str
     # D60: HP emits its rounding_policy directly (not gateway-attached).
     rounding_policy: str
+    # D78 (Fable [CALC] 2026-11-08): the contract requires rate_table_uris on
+    # every manifest; HP consumes no rate nodes, so it is present and empty.
+    # Typed to the shared manifest entry model so a populated list (if HP ever
+    # consumes a rate node) validates the same way as the other modules.
+    rate_table_uris: list[ManifestRateTableEntry] = Field(default_factory=list)
 
 
 class HpAdvisory(BaseModel):
     figure_type: str
     notes: list[str]
+    # D78 (Fable [CALC] 2026-11-08): HP now carries the basis-neutral disclaimer
+    # every module exposes (contract-suite requirement). figure_type + notes
+    # are unchanged.
+    disclaimer: str
 
 
 class HpScheduleResponse(BaseModel):
