@@ -352,6 +352,13 @@ else
     # regression and must FAIL. The required list below is the machine-readable
     # surface the hermetic CI guard (tests/test_smoke_prod_required_paths.py)
     # extracts; keep each entry on its own single-quoted line.
+    # /healthz is deliberately NOT probed by this smoke: on Cloud Run Google's
+    # edge intercepts /healthz on public URLs and returns its own HTML 404 (see
+    # api/main.py healthz/livez docstrings — the reason /livez exists), so a
+    # public /healthz probe would always fail and hold the canary. Public
+    # liveness is covered by Check 1 (/livez); the hidden /healthz route is
+    # covered hermetically by
+    # tests/test_hygiene_d70_d72_d78.py::test_d70_healthz_route_still_works.
     PATHS_OK=$(python3 -c "
 import json
 d = json.load(open('$OPENAPI_TMP'))
@@ -561,32 +568,6 @@ else:
     fi
 fi
 rm -f "$MCP_TMP"
-
-# ----------------------------------------------------------------------
-# Check 8: GET /healthz still returns HTTP 200 (D70 hidden-route liveness)
-#
-# D70 (PR #71) set include_in_schema=False on /healthz so it no longer appears
-# in openapi.json (asserted by Check 5), but the route MUST keep working — it is
-# the Cloud Run internal liveness path. This check proves the route is still
-# live even though it is hidden from the published spec.
-# ----------------------------------------------------------------------
-echo ""
-echo "--- Check 8: GET /healthz returns 200 (hidden route still live, D70) ---"
-HEALTHZ_TMP=$(mktemp)
-HTTP_STATUS=$(curl -sS -o "$HEALTHZ_TMP" -w "%{http_code}" "$API_BASE_URL/healthz" 2>&1) || {
-    echo "🟡 INFRA BROKEN: curl failed against $API_BASE_URL/healthz"
-    rm -f "$HEALTHZ_TMP"
-    exit 2
-}
-if [ "$HTTP_STATUS" != "200" ]; then
-    echo "🔴 FAIL: /healthz must return HTTP 200 (hidden but live per D70); got $HTTP_STATUS"
-    head -c 300 "$HEALTHZ_TMP"
-    FAIL_COUNT=$((FAIL_COUNT + 1))
-else
-    echo "🟢 PASS: GET /healthz returns HTTP 200 (route hidden from OpenAPI but still live)"
-    PASS_COUNT=$((PASS_COUNT + 1))
-fi
-rm -f "$HEALTHZ_TMP"
 
 # ----------------------------------------------------------------------
 # Aggregate verdict
