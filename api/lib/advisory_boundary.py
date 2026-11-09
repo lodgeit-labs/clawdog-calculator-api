@@ -228,17 +228,15 @@ ADVISORY_TEXT_AU_ACCOUNTING: str = (
 #
 # No file paths and no engine names appear in this text (D64 hygiene).
 ADVISORY_TEXT_AU_HP: str = (
-    "This is calculator output, not advice. It is an amortisation schedule: "
-    "every figure is derived arithmetically from the amount financed, the "
-    "nominal rate, the instalment, the term, the timing and the dates "
-    "supplied in this request. It consumes no statutory rate tables, and it "
-    "is neither a taxation figure nor an accounting carrying amount — a "
-    "separate computation is required for any tax return, position, or "
-    "financial statement. The stated-rate residual is reported, never forced "
-    "to zero; the lender's total amount repayable governs. Whether the "
-    "inputs supplied are appropriate is not assessed by this calculator. "
-    "Consult a registered tax agent before relying on these numbers for any "
-    "return, position, or advice provided to a third party."
+    "This is calculator output, not advice. It is an amortisation schedule "
+    "derived arithmetically from the amount financed, nominal rate, "
+    "instalment, term, timing and dates supplied in this request; it "
+    "consumes no statutory rate tables. It is neither a taxation figure nor "
+    "an accounting carrying amount, and whether the inputs suit any return, "
+    "position or financial statement is not assessed. The lender's total "
+    "amount repayable governs. Consult a qualified accountant or registered "
+    "tax agent before relying on these numbers for any return, position, "
+    "financial statement, or advice provided to a third party."
 )
 
 ADVISORY_TEXT_UK: str = (
