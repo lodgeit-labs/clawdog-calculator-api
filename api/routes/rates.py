@@ -50,6 +50,18 @@ def _rate_table_root_for(period_uri: str, taxonomy: str = DEFAULT_TAXONOMY) -> P
     return rate_table_root_for(period_uri, taxonomy)
 
 
+def _is_unscoped_period(period_uri: str) -> bool:
+    """True when the period's id segment is ``unscoped``.
+
+    period_uri shape: ``urn:sbrm:period:<module>:<period_id>``. An unscoped
+    period (e.g. ``urn:sbrm:period:hp:unscoped``) belongs to a calculator that
+    consumes no year-dependent rate nodes; a missing rate-table root for such a
+    period is expected, not an error (D72).
+    """
+    parts = period_uri.split(":")
+    return len(parts) >= 5 and parts[4] == "unscoped"
+
+
 # Fable Q2 rider mc22 2026-09-04: rate-table URIs advertised here that
 # are not consumed by any v1 compute path get a `scope` annotation
 # stating the capability + its status. Depreciation's three URIs
@@ -143,6 +155,14 @@ def list_rates(
 
     root = _rate_table_root_for(period_uri_decoded, taxonomy)
     if not root.exists():
+        # D72 (Fable [CALC] 2026-11-08): an UNSCOPED period legitimately has no
+        # rate-table directory — calculators on `...:<module>:unscoped` (hp,
+        # depreciation) consume no year-dependent rate nodes. For those the
+        # honest answer is "no entries", not an error: return 200 with an empty
+        # list. A year-scoped period whose root is genuinely missing is still a
+        # 404 (a real discovery failure).
+        if _is_unscoped_period(period_uri_decoded):
+            return {"period_uri": period_uri_decoded, "entries": []}
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"rate-table root not found for period_uri={period_uri_decoded!r}",
