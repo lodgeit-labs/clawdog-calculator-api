@@ -38,8 +38,11 @@ _INTERNAL_REF_PATTERNS = {
 _ALLOWED_TOKEN = "CLAWDOG_ENGINE_AUTH_PROBE_TOKEN"
 
 # Structural invariant guarded alongside the text change: D64 is text-only, so
-# the x-money field count must stay exactly where D65 left it.
-_EXPECTED_X_MONEY_COUNT = 75
+# the x-money field count must stay exactly where D65 left it (75) until a
+# later schema change re-anchors it. D79 (Fable, 2026-11-09) moves
+# inhouseBenefitClaimed off the three standard FBT models onto the in-house
+# models only, removing 3 standard-model x-money occurrences: 75 -> 72.
+_EXPECTED_X_MONEY_COUNT = 72
 
 
 def _scan_string_for_internal_refs(value: str) -> list[tuple[str, str]]:
@@ -184,8 +187,9 @@ def test_mcp_tool_descriptions_have_no_internal_references() -> None:
 
 
 def test_x_money_field_count_unchanged_by_d64() -> None:
-    """D64 is text-only: the x-money field count must still be 75 (D65 baseline),
-    proving no schema structure changed."""
+    """The x-money field count is pinned at 72 (D79 re-anchor: D65 baseline 75
+    minus the 3 standard-FBT inhouseBenefitClaimed occurrences moved to the
+    in-house models), proving no unexpected schema structure changed."""
     spec = json.loads(COMMITTED_SPEC.read_text(encoding="utf-8"))
     count = _count_x_money_fields(spec)
     assert count == _EXPECTED_X_MONEY_COUNT, (
