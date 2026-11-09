@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
+from api.lib.advisory_boundary import ADVISORY_TEXT_AU_HP
+
 ENGINE_VERSION = "hp-schedule-1.1.0"
 ROUNDING_POLICY = "lodgeit-rounding-1.0"
 CALCULATOR_URN = "urn:sbrm:calculator:hp:schedule"
@@ -317,10 +319,19 @@ def compute_schedule(
             "accrual_basis": ACCRUAL_BASIS,
             # D60: HP emits its rounding_policy directly (not gateway-attached).
             "rounding_policy": ROUNDING_POLICY,
+            # D78 (Fable [CALC] 2026-11-08): HP consumes no year-dependent rate
+            # nodes, so rate_table_uris is PRESENT and empty. The contract
+            # requires the key on every manifest (an empty list is valid); its
+            # absence was the HP contract-suite failure. Existing keys above are
+            # unchanged (byte-identical values + order).
+            "rate_table_uris": [],
         },
         "advisory": {
             "figure_type": "amortisation_schedule",
             "notes": advisory_notes,
+            # D78 (Fable [CALC] 2026-11-08): carry the basis-neutral disclaimer
+            # every module exposes. figure_type + notes above are unchanged.
+            "disclaimer": ADVISORY_TEXT_AU_HP,
         },
     }
     return result

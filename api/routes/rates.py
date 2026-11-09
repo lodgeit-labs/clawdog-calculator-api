@@ -50,6 +50,44 @@ def _rate_table_root_for(period_uri: str, taxonomy: str = DEFAULT_TAXONOMY) -> P
     return rate_table_root_for(period_uri, taxonomy)
 
 
+def _registered_unscoped_periods() -> frozenset[str]:
+    """The set of ``...:<module>:unscoped`` period URIs that some registered
+    calculator declares in its ``supported_periods``.
+
+    Derived live from ``api.routes.calculators._CALCULATOR_REGISTRY`` — never a
+    hard-coded list — so adding or removing a calculator automatically changes
+    which unscoped periods the D72 empty-list branch recognises. Today this is
+    ``{urn:sbrm:period:hp:unscoped, urn:sbrm:period:depreciation:unscoped}``.
+
+    Imported inside the function to keep the two routers import-order
+    independent (main.py mounts calculators before rates; this avoids any
+    module-load coupling).
+    """
+    from api.routes.calculators import _CALCULATOR_REGISTRY
+
+    out: set[str] = set()
+    for meta in _CALCULATOR_REGISTRY.values():
+        for period in meta.get("supported_periods", []):
+            if period.split(":")[-1] == "unscoped":
+                out.add(period)
+    return frozenset(out)
+
+
+def _is_registered_unscoped_period(period_uri: str) -> bool:
+    """True when ``period_uri`` is an unscoped period that a registered
+    calculator supports.
+
+    period_uri shape: ``urn:sbrm:period:<module>:<period_id>``. An unscoped
+    period of a registered calculator (e.g. ``urn:sbrm:period:hp:unscoped``)
+    belongs to a calculator that consumes no year-dependent rate nodes; a
+    missing rate-table root for such a period is expected, not an error (D72).
+    An unscoped URI that no registered calculator supports
+    (e.g. ``urn:sbrm:period:fbt:unscoped`` or ``...:bogus:unscoped``) keeps the
+    existing 404.
+    """
+    return period_uri in _registered_unscoped_periods()
+
+
 # Fable Q2 rider mc22 2026-09-04: rate-table URIs advertised here that
 # are not consumed by any v1 compute path get a `scope` annotation
 # stating the capability + its status. Depreciation's three URIs
@@ -143,6 +181,17 @@ def list_rates(
 
     root = _rate_table_root_for(period_uri_decoded, taxonomy)
     if not root.exists():
+        # D72 (Fable [CALC] 2026-11-08; scope tightened per Fable review): an
+        # unscoped period of a REGISTERED calculator legitimately has no
+        # rate-table directory — calculators on `...:<module>:unscoped` (hp,
+        # depreciation) consume no year-dependent rate nodes. For those the
+        # honest answer is "no entries", not an error: return 200 with an empty
+        # list. The recognised set is derived live from the calculator registry
+        # (supported_periods), so an unscoped URI no calculator supports
+        # (e.g. fbt:unscoped, bogus:unscoped) and any year-scoped period whose
+        # root is genuinely missing both stay 404.
+        if _is_registered_unscoped_period(period_uri_decoded):
+            return {"period_uri": period_uri_decoded, "entries": []}
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"rate-table root not found for period_uri={period_uri_decoded!r}",

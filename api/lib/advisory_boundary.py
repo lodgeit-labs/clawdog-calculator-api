@@ -215,6 +215,30 @@ ADVISORY_TEXT_AU_ACCOUNTING: str = (
     "and the tax-basis figure will not equal this one."
 )
 
+# D78 (Fable [CALC] 2026-11-08): HP (urn:sbrm:calculator:hp:schedule) is an
+# amortisation schedule, not a tax figure and not an AASB 116 accounting
+# carrying amount. Its advisory must carry a `disclaimer` like every other
+# module (contract-suite requirement), but the text must NOT claim either
+# basis: HP consumes no statutory rate tables and computes no figure that
+# enters a return or a set of financial statements. It is pure arithmetic on
+# the amounts, rate, term, timing and dates supplied in the request. This
+# string is basis-neutral by design: it does not invoke TAA/TASA (tax) nor
+# AASB 116/108 (accounting). Canonical to one byte; a change requires a fresh
+# helm-roll + coordinated deployment, same as the other advisory texts.
+#
+# No file paths and no engine names appear in this text (D64 hygiene).
+ADVISORY_TEXT_AU_HP: str = (
+    "This is calculator output, not advice. It is an amortisation schedule "
+    "derived arithmetically from the amount financed, nominal rate, "
+    "instalment, term, timing and dates supplied in this request; it "
+    "consumes no statutory rate tables. It is neither a taxation figure nor "
+    "an accounting carrying amount, and whether the inputs suit any return, "
+    "position or financial statement is not assessed. The lender's total "
+    "amount repayable governs. Consult a qualified accountant or registered "
+    "tax agent before relying on these numbers for any return, position, "
+    "financial statement, or advice provided to a third party."
+)
+
 ADVISORY_TEXT_UK: str = (
     "This is calculator output, not advice. Consult a registered tax adviser "
     "before relying on these numbers for any return, position, or advice "
@@ -418,6 +442,7 @@ __all__ = [
     "ADVISORY_TEXT_AU",
     "ADVISORY_TEXT_AU_ACCOUNTING",
     "ADVISORY_TEXT_AU_EMPTY_MANIFEST",
+    "ADVISORY_TEXT_AU_HP",
     "ADVISORY_TEXT_UK",
     "STATUTORY_BASIS_AU",
     "STATUTORY_BASIS_AU_ACCOUNTING",

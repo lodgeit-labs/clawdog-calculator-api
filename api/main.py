@@ -92,7 +92,15 @@ app.include_router(mcp_routes.router)
 app.include_router(internal_auth_probe_routes.router)
 
 
-@app.get("/healthz", tags=["system"], summary="Liveness probe (Cloud Run internal).")
+# D70 (Fable [CALC] 2026-11-08): hidden from OpenAPI (include_in_schema=False).
+# /healthz is an internal Cloud Run liveness path; the route keeps working, it
+# is simply absent from the published spec. Public operators use /livez.
+@app.get(
+    "/healthz",
+    tags=["system"],
+    summary="Liveness probe (Cloud Run internal).",
+    include_in_schema=False,
+)
 def healthz() -> dict[str, str]:
     """Return a minimal liveness response for the Cloud Run / Docker HEALTHCHECK.
 
