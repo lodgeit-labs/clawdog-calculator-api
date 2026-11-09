@@ -1305,11 +1305,6 @@
             ],
             "description": "Only consulted on the in-house variant. In-house benefit reduction claimed (AUD); clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
             "title": "Inhousebenefitclaimed",
-            "x-applies-when": {
-              "variant": [
-                "in-house"
-              ]
-            },
             "x-money": true
           },
           "otherwiseDeductiblePercentage": {
@@ -1372,35 +1367,6 @@
             ],
             "title": "Fbttype",
             "type": "string"
-          },
-          "inhouseBenefitClaimed": {
-            "anyOf": [
-              {
-                "ge": 0,
-                "oneOf": [
-                  {
-                    "multipleOf": 0.01,
-                    "type": "number"
-                  },
-                  {
-                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
-                    "type": "string"
-                  }
-                ],
-                "x-money": true
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Only consulted on the in-house variant. In-house benefit reduction claimed (AUD); clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
-            "title": "Inhousebenefitclaimed",
-            "x-applies-when": {
-              "variant": [
-                "in-house"
-              ]
-            },
-            "x-money": true
           },
           "otherwiseDeductiblePercentage": {
             "description": "Otherwise-deductible percentage [0..100] per FBTAA s.24.",
@@ -2205,11 +2171,6 @@
             ],
             "description": "Only consulted on the in-house variant. In-house benefit reduction claimed (AUD); clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
             "title": "Inhousebenefitclaimed",
-            "x-applies-when": {
-              "variant": [
-                "in-house"
-              ]
-            },
             "x-money": true
           },
           "otherwiseDeductiblePercentage": {
@@ -2271,35 +2232,6 @@
               }
             ],
             "title": "Gstinclusivevalue",
-            "x-money": true
-          },
-          "inhouseBenefitClaimed": {
-            "anyOf": [
-              {
-                "ge": 0,
-                "oneOf": [
-                  {
-                    "multipleOf": 0.01,
-                    "type": "number"
-                  },
-                  {
-                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
-                    "type": "string"
-                  }
-                ],
-                "x-money": true
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Only consulted on the in-house variant. In-house benefit reduction claimed (AUD); clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
-            "title": "Inhousebenefitclaimed",
-            "x-applies-when": {
-              "variant": [
-                "in-house"
-              ]
-            },
             "x-money": true
           },
           "otherwiseDeductiblePercentage": {
@@ -2370,11 +2302,6 @@
             ],
             "description": "Only consulted on the in-house variant. In-house benefit reduction claimed (AUD); clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
             "title": "Inhousebenefitclaimed",
-            "x-applies-when": {
-              "variant": [
-                "in-house"
-              ]
-            },
             "x-money": true
           },
           "otherwiseDeductiblePercentage": {
@@ -2437,35 +2364,6 @@
             ],
             "title": "Fbttype",
             "type": "string"
-          },
-          "inhouseBenefitClaimed": {
-            "anyOf": [
-              {
-                "ge": 0,
-                "oneOf": [
-                  {
-                    "multipleOf": 0.01,
-                    "type": "number"
-                  },
-                  {
-                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
-                    "type": "string"
-                  }
-                ],
-                "x-money": true
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Only consulted on the in-house variant. In-house benefit reduction claimed (AUD); clamped to FY2026 in-house cap (FBTAA s.62). Money: cent-quantised, JSON number or decimal string.",
-            "title": "Inhousebenefitclaimed",
-            "x-applies-when": {
-              "variant": [
-                "in-house"
-              ]
-            },
-            "x-money": true
           },
           "otherwiseDeductiblePercentage": {
             "description": "Otherwise-deductible percentage [0..100] per FBTAA s.52.",
