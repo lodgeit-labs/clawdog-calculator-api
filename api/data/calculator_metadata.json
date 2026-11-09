@@ -283,7 +283,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:depreciation:at",
-      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rules 3, 5 and 6 — money at 2 dp, ties away from zero; on /range/ closing_wdv = opening_wdv − range_dep exact to the cent and consecutive ranges telescope. Rule 7 does not apply.",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rules 3, 5 and 6 — money at 2 dp, ties away from zero; on /range/ closing_wdv = opening_wdv + cost_additions − range_dep exact to the cent, where cost_additions is cost recognised within the range, and consecutive ranges telescope. Rule 7 does not apply.",
       "label": "Depreciation: carrying amount at a date",
       "module": "urn:sbrm:module:depreciation",
       "benefit_type": null,
@@ -293,7 +293,7 @@
     },
     {
       "calc_uri": "urn:sbrm:calculator:depreciation:range",
-      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rules 3, 5 and 6 — money at 2 dp, ties away from zero; on /range/ closing_wdv = opening_wdv − range_dep exact to the cent and consecutive ranges telescope. Rule 7 does not apply.",
+      "rounding_advisory": "Rounding: lodgeit-rounding-1.0 rules 3, 5 and 6 — money at 2 dp, ties away from zero; on /range/ closing_wdv = opening_wdv + cost_additions − range_dep exact to the cent, where cost_additions is cost recognised within the range, and consecutive ranges telescope. Rule 7 does not apply.",
       "label": "Depreciation: charge over a date range",
       "module": "urn:sbrm:module:depreciation",
       "benefit_type": null,
