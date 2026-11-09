@@ -42,7 +42,14 @@ _ALLOWED_TOKEN = "CLAWDOG_ENGINE_AUTH_PROBE_TOKEN"
 # later schema change re-anchors it. D79 (Fable, 2026-11-09) moves
 # inhouseBenefitClaimed off the three standard FBT models onto the in-house
 # models only, removing 3 standard-model x-money occurrences: 75 -> 72.
-_EXPECTED_X_MONEY_COUNT = 72
+# D84 (Fable, verified live 2026-11-09) mirrors the gateway EventInput to the
+# engine: `cost_delta` + `opening_balance_amount` (both x-money) are removed
+# and `amount` (x-money) arrives. amount is Optional (EventMoney | None, the
+# conditional requiredness is enforced by the model validator mirroring the
+# engine), so its x-money sits inside the anyOf wrapper rather than at the
+# property root; the counter below detects x-money at either depth.
+#   72 - 2 (cost_delta, opening_balance_amount) + 1 (amount) = 71.
+_EXPECTED_X_MONEY_COUNT = 71
 
 
 def _scan_string_for_internal_refs(value: str) -> list[tuple[str, str]]:
@@ -71,13 +78,28 @@ def _walk_strings(node: object, path: str):
             yield from _walk_strings(val, f"{path}[{i}]")
 
 
+def _prop_is_x_money(prop: object) -> bool:
+    """True when a property schema carries ``x-money: true`` at its root OR
+    inside an anyOf/oneOf/allOf wrapper (Optional money fields nest the
+    marker one level down, e.g. EventInput.amount = EventMoney | None)."""
+    if not isinstance(prop, dict):
+        return False
+    if prop.get("x-money") is True:
+        return True
+    for key in ("anyOf", "oneOf", "allOf"):
+        for sub in prop.get(key, []) or []:
+            if isinstance(sub, dict) and sub.get("x-money") is True:
+                return True
+    return False
+
+
 def _count_x_money_fields(spec: dict) -> int:
     schemas = spec.get("components", {}).get("schemas", {})
     return sum(
         1
         for sch in schemas.values()
         for prop in (sch.get("properties") or {}).values()
-        if isinstance(prop, dict) and prop.get("x-money") is True
+        if _prop_is_x_money(prop)
     )
 
 
@@ -187,12 +209,12 @@ def test_mcp_tool_descriptions_have_no_internal_references() -> None:
 
 
 def test_x_money_field_count_unchanged_by_d64() -> None:
-    """The x-money field count is pinned at 72 (D79 re-anchor: D65 baseline 75
-    minus the 3 standard-FBT inhouseBenefitClaimed occurrences moved to the
-    in-house models), proving no unexpected schema structure changed."""
+    """The x-money field count is pinned at 71 (D84 re-anchor: D79 baseline 72
+    minus cost_delta + opening_balance_amount on the gateway EventInput, plus
+    the engine-mirroring `amount`; 72 - 2 + 1 = 71), proving no unexpected
+    schema structure changed."""
     spec = json.loads(COMMITTED_SPEC.read_text(encoding="utf-8"))
     count = _count_x_money_fields(spec)
     assert count == _EXPECTED_X_MONEY_COUNT, (
-        f"x-money field count={count}; expected {_EXPECTED_X_MONEY_COUNT}. "
-        "D64 must not change schema structure."
+        f"x-money field count={count}; expected {_EXPECTED_X_MONEY_COUNT}."
     )

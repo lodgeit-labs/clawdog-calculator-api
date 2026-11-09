@@ -54,9 +54,20 @@ _XMONEY_REMOVED_BY_D65 = 4
 # input models only, removing 3 standard-model x-money occurrences. Gate count
 # drops 75 -> 72.
 _XMONEY_REMOVED_BY_D79 = 3
+# D84 (Fable, verified live 2026-11-09): gateway EventInput mirrors the engine.
+# cost_delta + opening_balance_amount (both x-money) are REMOVED (-2); the
+# engine-mirroring `amount` (x-money) is ADDED (+1). Net -1. amount is Optional
+# so its x-money marker nests inside the anyOf wrapper; _xmoney_properties below
+# detects x-money at root OR inside anyOf/oneOf/allOf. 72 - 2 + 1 = 71.
+_XMONEY_REMOVED_BY_D84 = 2
+_XMONEY_ADDED_BY_D84 = 1
 _EXPECTED_XMONEY_COUNT = (
-    _XMONEY_COUNT_BEFORE_D65 - _XMONEY_REMOVED_BY_D65 - _XMONEY_REMOVED_BY_D79
-)  # 72
+    _XMONEY_COUNT_BEFORE_D65
+    - _XMONEY_REMOVED_BY_D65
+    - _XMONEY_REMOVED_BY_D79
+    - _XMONEY_REMOVED_BY_D84
+    + _XMONEY_ADDED_BY_D84
+)  # 71
 
 
 def _fbt_url(calc_uri: str) -> str:
@@ -80,11 +91,26 @@ def _live_openapi() -> dict:
 # --- (i) openapi.json x-money assertions -------------------------------------
 
 
+def _prop_is_x_money(pv: object) -> bool:
+    """x-money at the property root OR inside an anyOf/oneOf/allOf wrapper
+    (Optional money fields, e.g. EventInput.amount = EventMoney | None, nest
+    the marker one level down)."""
+    if not isinstance(pv, dict):
+        return False
+    if pv.get("x-money") is True:
+        return True
+    for key in ("anyOf", "oneOf", "allOf"):
+        for sub in pv.get(key, []) or []:
+            if isinstance(sub, dict) and sub.get("x-money") is True:
+                return True
+    return False
+
+
 def _xmoney_properties(spec: dict) -> list[tuple[str, str]]:
     hits: list[tuple[str, str]] = []
     for sname, sch in spec.get("components", {}).get("schemas", {}).items():
         for pname, pv in (sch.get("properties") or {}).items():
-            if isinstance(pv, dict) and pv.get("x-money") is True:
+            if _prop_is_x_money(pv):
                 hits.append((sname, pname))
     return hits
 
@@ -131,7 +157,8 @@ def test_total_x_money_count_equals_expected():
     assert count == _EXPECTED_XMONEY_COUNT, (
         f"x-money count={count}; expected {_EXPECTED_XMONEY_COUNT} "
         f"(= {_XMONEY_COUNT_BEFORE_D65} - {_XMONEY_REMOVED_BY_D65} "
-        f"- {_XMONEY_REMOVED_BY_D79})"
+        f"- {_XMONEY_REMOVED_BY_D79} - {_XMONEY_REMOVED_BY_D84} "
+        f"+ {_XMONEY_ADDED_BY_D84})"
     )
 
 
