@@ -6,12 +6,12 @@
 # Option-C PR β sprint design (Andrew direct-voice 2026-05-28 03:14 UTC
 # + 10:34 UTC + 12:59 UTC).
 #
-# Fires 5 wire-probes against the deployed Cloud Run service URL.
+# Fires a series of wire-probes against the deployed Cloud Run service URL.
 # Each check captures a load-bearing assertion about the production
 # surface contract. The aggregate exit code follows the Standing Rule #8
 # tri-state contract:
 #
-#   exit 0  🟢 GREEN          — all 5 checks pass
+#   exit 0  🟢 GREEN          — every check passes
 #   exit 1  🔴 LOGIC DRIFT    — one or more checks fail (deploy is broken;
 #                                revert or roll forward)
 #   exit 2  🟡 INFRA BROKEN   — curl unreachable, jq/python3 missing, DNS
@@ -345,27 +345,49 @@ if [ "$HTTP_STATUS" != "200" ]; then
     echo "🔴 FAIL: expected HTTP 200, got $HTTP_STATUS"
     FAIL_COUNT=$((FAIL_COUNT + 1))
 else
+    # D70 (PR #71): /healthz and /_internal/probe/engine-auth are now hidden
+    # from openapi.json (include_in_schema=False) while the routes keep working.
+    # So /healthz is DROPPED from the required-paths list (6 paths remain), and
+    # both hidden paths are asserted ABSENT — their reappearance is the D70
+    # regression and must FAIL. The required list below is the machine-readable
+    # surface the hermetic CI guard (tests/test_smoke_prod_required_paths.py)
+    # extracts; keep each entry on its own single-quoted line.
+    # /healthz is deliberately NOT probed by this smoke: on Cloud Run Google's
+    # edge intercepts /healthz on public URLs and returns its own HTML 404 (see
+    # api/main.py healthz/livez docstrings — the reason /livez exists), so a
+    # public /healthz probe would always fail and hold the canary. Public
+    # liveness is covered by Check 1 (/livez); the hidden /healthz route is
+    # covered hermetically by
+    # tests/test_hygiene_d70_d72_d78.py::test_d70_healthz_route_still_works.
     PATHS_OK=$(python3 -c "
 import json
 d = json.load(open('$OPENAPI_TMP'))
 paths = d.get('paths', {})
 required = [
     '/livez',
-    '/healthz',
     '/v1/calculators',
     '/v1/calculators/{calc_uri}/{period_uri}',
     '/v1/calculators/depreciation/at/{period_uri}',
     '/v1/rates/{period_uri}',
     '/v1/rates/{period_uri}/{rate_id}',
 ]
+forbidden = [
+    '/healthz',
+    '/_internal/probe/engine-auth',
+]
 missing = [p for p in required if p not in paths]
-if missing:
+present_forbidden = [p for p in forbidden if p in paths]
+if missing and present_forbidden:
+    print('MISSING:' + ','.join(missing) + ' FORBIDDEN_PRESENT:' + ','.join(present_forbidden))
+elif missing:
     print('MISSING:' + ','.join(missing))
+elif present_forbidden:
+    print('FORBIDDEN_PRESENT:' + ','.join(present_forbidden))
 else:
     print('OK')
 ")
     if [ "$PATHS_OK" = "OK" ]; then
-        echo "🟢 PASS: all 7 expected paths registered"
+        echo "🟢 PASS: all 6 expected paths registered; /healthz + /_internal/probe/engine-auth absent (D70)"
         PASS_COUNT=$((PASS_COUNT + 1))
     else
         echo "🔴 FAIL: $PATHS_OK"
@@ -550,15 +572,18 @@ rm -f "$MCP_TMP"
 # ----------------------------------------------------------------------
 # Aggregate verdict
 # ----------------------------------------------------------------------
+# Total is computed as PASS + FAIL so adding/removing a check never leaves a
+# stale hard-coded count in the result/verdict lines.
+TOTAL_COUNT=$((PASS_COUNT + FAIL_COUNT))
 echo ""
 echo "============================================================"
-echo "Result: PASS=$PASS_COUNT FAIL=$FAIL_COUNT (of 7)"
+echo "Result: PASS=$PASS_COUNT FAIL=$FAIL_COUNT (of $TOTAL_COUNT)"
 echo "============================================================"
 
 if [ "$FAIL_COUNT" -eq 0 ]; then
     echo "🟢 GREEN — production-bundle gate clean"
     exit 0
 else
-    echo "🔴 LOGIC DRIFT — $FAIL_COUNT of 7 checks failed; deploy is broken or production drifted"
+    echo "🔴 LOGIC DRIFT — $FAIL_COUNT of $TOTAL_COUNT checks failed; deploy is broken or production drifted"
     exit 1
 fi
