@@ -12,6 +12,7 @@ holds under a second calculator.
 from __future__ import annotations
 
 import logging
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import unquote
@@ -1173,6 +1174,7 @@ _DEPRECIATION_RANGE_RESPONSE_FIELDS = (
     "day_count",
     "days_in_range",
     "range_dep",
+    "cost_additions",
     "opening_wdv",
     "closing_wdv",
 )
@@ -1561,30 +1563,88 @@ async def invoke_depreciation_range(
                 },
             )
 
-    # Fable D7 REVERTED mc00-2026-09-04 07:35 UTC: earlier gateway-side
-    # synthesis of cost_additions was a tautology. Rearranging the
-    # three-term identity to compute a fourth field from the other three
-    # made the identity algebraically-true for any four numbers whatever
-    # they are; the property tests then passed on arithmetic, not on
-    # correctness. Fable ruling verbatim: "a check that cannot fail is not
-    # a weaker check. It is the absence of a check, wearing the costume
-    # of one."
+    # D82 three-term identity gate (Fable D7 engine-first sequencing now
+    # LANDED: engine PR #27 emits cost_additions on /range/). The engine
+    # authors cost_additions; the gateway ASSERTS the identity against the
+    # engine-emitted value. No synthesis: an earlier gateway-side derivation
+    # (cost_additions = closing + range_dep − opening) was reverted because
+    # substituting it back into the identity produced `closing == closing`, a
+    # tautology that passed on arithmetic not correctness. Fable verbatim:
+    # "a check that cannot fail is not a weaker check. It is the absence of a
+    # check, wearing the costume of one." The four numbers are all
+    # engine-authored; the assertion compares them, so it is falsifiable.
     #
-    # Correct sequencing: the engine emits cost_additions on /range/,
-    # engine PR first, gateway then passes through + asserts identity.
-    # Sibling of :unscoped engine-first ordering. Until the engine ships
-    # the field, /range/ responses omit it — an absent field is honest;
-    # a synthesised one is a fabricated corroboration.
-    #
-    # Cross-repo tracking:
-    #   * ClawDog_Share@main handover for the next engine turn will
-    #     name this as the D7-follow-up engine PR.
-    #   * When engine ships cost_additions, this handler stays unchanged
-    #     (extra="allow" on DepreciationRangeResponse lets the field ride
-    #     through). A separate identity-assertion gate lands on the
-    #     gateway alongside the engine ship: three-term identity checked
-    #     against the engine-emitted value; mismatch -> structured 502
-    #     naming BOTH sides, no repair.
+    # On mismatch, or on a negative range_dep / cost_additions, surface a
+    # structured 502 naming BOTH sides + all four engine numbers, no repair
+    # (D7 comment pattern, sibling of the D21 trio-defence 502 above).
+    try:
+        range_dep_dec = Decimal(str(engine_response["range_dep"]))
+        cost_additions_dec = Decimal(str(engine_response["cost_additions"]))
+        opening_wdv_dec = Decimal(str(engine_response["opening_wdv"]))
+        closing_wdv_dec = Decimal(str(engine_response["closing_wdv"]))
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": "range_identity_unparseable",
+                "detail": (
+                    "engine /range/ response carried a non-numeric money field "
+                    f"({exc.__class__.__name__}): "
+                    + str(exc)
+                ),
+                "range_dep": engine_response.get("range_dep"),
+                "cost_additions": engine_response.get("cost_additions"),
+                "opening_wdv": engine_response.get("opening_wdv"),
+                "closing_wdv": engine_response.get("closing_wdv"),
+            },
+        ) from exc
+
+    if range_dep_dec < 0 or cost_additions_dec < 0:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": "range_negative_money",
+                "detail": (
+                    "engine /range/ response carried a negative money field: "
+                    f"range_dep={range_dep_dec}, "
+                    f"cost_additions={cost_additions_dec} "
+                    "(both must be >= 0.00)."
+                ),
+                "range_dep": str(range_dep_dec),
+                "cost_additions": str(cost_additions_dec),
+                "opening_wdv": str(opening_wdv_dec),
+                "closing_wdv": str(closing_wdv_dec),
+            },
+        )
+
+    expected_closing = opening_wdv_dec + cost_additions_dec - range_dep_dec
+    if closing_wdv_dec != expected_closing:
+        logger.error(
+            "range_identity_mismatch: period_uri=%s closing_wdv=%s != "
+            "opening_wdv=%s + cost_additions=%s - range_dep=%s = %s",
+            period_uri_decoded,
+            closing_wdv_dec,
+            opening_wdv_dec,
+            cost_additions_dec,
+            range_dep_dec,
+            expected_closing,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": "range_identity_mismatch",
+                "detail": (
+                    "three-term ledger identity failed: closing_wdv must equal "
+                    "opening_wdv + cost_additions - range_dep exact to the "
+                    "cent."
+                ),
+                "opening_wdv": str(opening_wdv_dec),
+                "cost_additions": str(cost_additions_dec),
+                "range_dep": str(range_dep_dec),
+                "closing_wdv": str(closing_wdv_dec),
+                "expected_closing_wdv": str(expected_closing),
+            },
+        )
 
     # Manifest fidelity (same as /at/): depreciation compute at v1 consumes
     # no rate tables; manifest emits `rate_table_uris: []`. D6 conditional

@@ -172,9 +172,13 @@ def _engine_response(
     basis: str = "accounting",
     include_cost_additions: str | None = None,
 ) -> dict:
-    """Build a mock engine response. `include_cost_additions=None` mirrors
-    the engine's current wire shape (field absent). Non-None only when
-    exercising the future-engine-emitted-shape assertion path."""
+    """Build a mock engine response mirroring the engine's LIVE wire shape
+    (engine PR #27 emits `cost_additions` on every /range/ response). The
+    default is `cost_additions="0.00"` (acquisition-outside-range, the
+    two-term-corollary shape). Pass `include_cost_additions` to override for
+    acquisition-inside-range + mutation cases. Pass the sentinel
+    `include_cost_additions="__OMIT__"` to simulate a broken engine that drops
+    the field entirely (required-field 502 path)."""
     if days_in_range is None:
         from datetime import date as _d
         days_in_range = (
@@ -187,38 +191,34 @@ def _engine_response(
         "day_count": day_count,
         "days_in_range": days_in_range,
         "range_dep": range_dep,
+        "cost_additions": "0.00",
         "opening_wdv": opening_wdv,
         "closing_wdv": closing_wdv,
         "truncated": False,
         "numeric_mode": "serving",
     }
-    if include_cost_additions is not None:
+    if include_cost_additions == "__OMIT__":
+        resp.pop("cost_additions")
+    elif include_cost_additions is not None:
         resp["cost_additions"] = include_cost_additions
     return resp
 
 
 # ============================================================================
-# Assertion class 1 — cost_additions ABSENT until engine ships.
+# Assertion class 1 — cost_additions PRESENT (engine PR #27 has shipped).
 #
-# This is the honest report of the current wire shape. Fable 07:35 UTC:
-# "an absent field is honest. A synthesised one is a fabricated
-# corroboration."
-#
-# When the engine starts emitting the field, the passthrough test flips
-# (cost_additions now present); the acquisition-inside-range assertions
-# below unskip; and the tautology-avoidance discipline is preserved
-# because the value comes from the engine and the identity holds only
-# when all four numbers are right.
+# D82 follow-up gateway PR (this one): the engine now emits cost_additions on
+# every /range/ response, so the gateway passes it through and the field is a
+# required column. The tautology-avoidance discipline is preserved because the
+# value comes from the engine and the identity holds only when all four numbers
+# are right (Fable 07:35 UTC).
 # ============================================================================
 
 
-def test_range_response_currently_omits_cost_additions(client: TestClient) -> None:
-    """Pins the current wire state. `/range/` responses do NOT carry
-    `cost_additions` because the engine does not emit it yet. When this
-    test starts failing (engine has landed the field), the follow-up
-    gateway PR is due: add the required field to the schema, add the
-    identity assertion in the route handler, unskip the three-term tests
-    below.
+def test_range_response_carries_cost_additions(client: TestClient) -> None:
+    """Pins the current wire state (engine PR #27 live). `/range/` responses
+    DO carry `cost_additions`, a 2 dp money string, always present. The
+    passthrough value is the engine-emitted one, byte-identical.
     """
     engine_resp = _engine_response(
         opening_wdv="10000.00",
@@ -226,7 +226,7 @@ def test_range_response_currently_omits_cost_additions(client: TestClient) -> No
         range_dep="169.40",
         from_date="2023-08-01",
         to_date="2023-08-31",
-    )
+    )  # default cost_additions="0.00" (acquisition outside range)
     with patch(
         "api.routes.calculators.PrologClient.depreciation_range",
         new_callable=AsyncMock,
@@ -243,13 +243,42 @@ def test_range_response_currently_omits_cost_additions(client: TestClient) -> No
         )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert "cost_additions" not in body, (
-        "cost_additions is now on the wire. Engine PR has landed; "
-        "flip the follow-up gateway PR: declare the field required on "
-        "DepreciationRangeResponse, add the three-term identity assertion "
-        "in the route handler, and unskip the acquisition-inside-range "
-        "tests in this file. Body: " + str(body)
+    assert "cost_additions" in body, (
+        "cost_additions must be present on the /range/ wire (engine PR #27). "
+        "Body: " + str(body)
     )
+    assert body["cost_additions"] == "0.00"
+
+
+def test_range_response_missing_cost_additions_is_502(client: TestClient) -> None:
+    """If the engine drops cost_additions, the required-field structural
+    defence (L#34) surfaces a 502 rather than passing a partial response."""
+    engine_resp = _engine_response(
+        opening_wdv="10000.00",
+        closing_wdv="9830.60",
+        range_dep="169.40",
+        from_date="2023-08-01",
+        to_date="2023-08-31",
+        include_cost_additions="__OMIT__",
+    )
+    with patch(
+        "api.routes.calculators.PrologClient.depreciation_range",
+        new_callable=AsyncMock,
+        return_value=engine_resp,
+    ):
+        resp = client.post(
+            _range_url(),
+            json=_range_body(
+                cost="10000.00",
+                acquisition_date="2023-07-01",
+                from_date="2023-08-01",
+                to_date="2023-08-31",
+            ),
+        )
+    assert resp.status_code == 502, resp.text
+    detail = resp.json().get("detail", {})
+    assert detail.get("error") == "engine_response_missing_field"
+    assert detail.get("field") == "cost_additions"
 
 
 # ============================================================================
@@ -336,30 +365,14 @@ def test_cell3_two_term_corollary_holds_second_fy(client: TestClient) -> None:
 # ============================================================================
 # Assertion class 3 — acquisition INSIDE range configurations.
 #
-# These test the three-term identity. They are SKIPPED until the engine
-# ships cost_additions on /range/. When it does, unskip + the follow-up
-# gateway PR that lands the identity assertion in the route handler
-# turns them into a real gate.
-#
-# Fixtures + expected values are baked in so unskipping is a single-line
-# edit per test.
+# These test the three-term identity. UNSKIPPED in this D82 follow-up gateway
+# PR now that engine PR #27 emits cost_additions on /range/ and the route
+# handler asserts the identity against the engine-emitted value. The gateway
+# does NOT derive the value; the four numbers are all engine-authored, so the
+# assertion is falsifiable (the mutated-response test below proves it).
 # ============================================================================
 
 
-_AWAITS_ENGINE_SHIP = pytest.mark.skip(
-    reason=(
-        "Awaiting engine PR that emits cost_additions on /range/. Fable "
-        "07:35 UTC ruling: gateway does not synthesise; engine authors "
-        "the field, gateway asserts identity against it. Until then, "
-        "cost_additions absent from response is honest. Unskip alongside "
-        "the follow-up gateway PR that (a) declares cost_additions on "
-        "DepreciationRangeResponse, (b) adds identity-assertion in the "
-        "route handler with structured 502 on mismatch."
-    )
-)
-
-
-@_AWAITS_ENGINE_SHIP
 def test_cell5_acquisition_inside_range_three_term_identity(
     client: TestClient,
 ) -> None:
@@ -400,7 +413,6 @@ def test_cell5_acquisition_inside_range_three_term_identity(
     assert cost_additions == Decimal("10000.00")
 
 
-@_AWAITS_ENGINE_SHIP
 def test_mutated_engine_response_triggers_identity_mismatch_502(
     client: TestClient,
 ) -> None:
@@ -444,3 +456,134 @@ def test_mutated_engine_response_triggers_identity_mismatch_502(
     assert "closing_wdv" in detail
     assert "range_dep" in detail
     assert "cost_additions" in detail
+
+
+# ============================================================================
+# Assertion class 4 — D82 full-shape passthrough + boundary 502s.
+#
+# These feed the EXACT engine /range/ response shapes from the task spec
+# (including cost_additions) and assert the gateway's behaviour end to end.
+# ============================================================================
+
+
+_NEW_ADVISORY_SENTENCE = (
+    "on /range/ closing_wdv = opening_wdv + cost_additions − range_dep exact to "
+    "the cent, where cost_additions is cost recognised within the range, and "
+    "consecutive ranges telescope."
+)
+
+
+def test_case_a_passthrough_with_manifest_and_new_advisory(
+    client: TestClient,
+) -> None:
+    """Task Case A: engine returns the full /range/ shape (cost_additions
+    10000.00, acquisition inside range). Gateway returns 200 passthrough with
+    manifest + advisory, and the NEW three-term advisory sentence is present."""
+    engine_resp = {
+        "rounding_policy": "lodgeit-rounding-1.0",
+        "basis": "accounting",
+        "from_date": "2023-05-01",
+        "to_date": "2023-08-31",
+        "day_count": "actual/actual",
+        "days_in_range": 123,
+        "range_dep": "338.80",
+        "cost_additions": "10000.00",
+        "opening_wdv": "0.00",
+        "closing_wdv": "9661.20",
+        "truncated": True,
+        "numeric_mode": "serving",
+    }
+    with patch(
+        "api.routes.calculators.PrologClient.depreciation_range",
+        new_callable=AsyncMock,
+        return_value=engine_resp,
+    ):
+        resp = client.post(
+            _range_url(),
+            json=_range_body(
+                cost="10000.00",
+                acquisition_date="2023-07-01",
+                from_date="2023-05-01",
+                to_date="2023-08-31",
+            ),
+        )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["cost_additions"] == "10000.00"
+    assert body["opening_wdv"] == "0.00"
+    assert body["closing_wdv"] == "9661.20"
+    assert body["range_dep"] == "338.80"
+    assert "manifest" in body
+    assert "advisory" in body
+    assert _NEW_ADVISORY_SENTENCE in body["advisory"]["disclaimer"], (
+        "new three-term advisory sentence missing from disclaimer: "
+        + body["advisory"]["disclaimer"]
+    )
+
+
+def test_mid_range_cost_addition_passthrough_200(client: TestClient) -> None:
+    """Task mid-range-cost-addition case: engine returns the full shape with a
+    non-zero cost_additions; three-term identity holds; 200."""
+    engine_resp = {
+        "rounding_policy": "lodgeit-rounding-1.0",
+        "basis": "accounting",
+        "from_date": "2023-05-01",
+        "to_date": "2023-12-31",
+        "day_count": "actual/actual",
+        "days_in_range": 245,
+        "range_dep": "1540.81",
+        "cost_additions": "2000.00",
+        "opening_wdv": "8334.25",
+        "closing_wdv": "8793.44",
+        "truncated": False,
+        "numeric_mode": "serving",
+    }
+    with patch(
+        "api.routes.calculators.PrologClient.depreciation_range",
+        new_callable=AsyncMock,
+        return_value=engine_resp,
+    ):
+        resp = client.post(
+            _range_url(),
+            json=_range_body(
+                cost="10000.00",
+                acquisition_date="2022-07-01",
+                from_date="2023-05-01",
+                to_date="2023-12-31",
+            ),
+        )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    opening = Decimal(body["opening_wdv"])
+    closing = Decimal(body["closing_wdv"])
+    range_dep = Decimal(body["range_dep"])
+    cost_additions = Decimal(body["cost_additions"])
+    assert closing == opening + cost_additions - range_dep
+
+
+def test_negative_range_dep_is_502(client: TestClient) -> None:
+    """A negative range_dep from the engine surfaces a structured 502."""
+    engine_resp = _engine_response(
+        opening_wdv="10000.00",
+        closing_wdv="10100.00",
+        range_dep="-100.00",
+        include_cost_additions="0.00",
+    )
+    with patch(
+        "api.routes.calculators.PrologClient.depreciation_range",
+        new_callable=AsyncMock,
+        return_value=engine_resp,
+    ):
+        resp = client.post(
+            _range_url(),
+            json=_range_body(
+                cost="10000.00",
+                acquisition_date="2022-07-01",
+                from_date="2023-05-01",
+                to_date="2023-08-31",
+            ),
+        )
+    assert resp.status_code == 502, resp.text
+    detail = resp.json().get("detail", {})
+    assert detail.get("error") == "range_negative_money"
+    assert detail.get("range_dep") == "-100.00"

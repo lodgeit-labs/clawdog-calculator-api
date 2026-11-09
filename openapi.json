@@ -439,24 +439,30 @@
       },
       "EventInput": {
         "additionalProperties": false,
-        "description": "Per-asset lifecycle event (mirrors engine's `EventInput`).\n\nEvents layer on top of `asset` at construction and let the fold\nreconstitute the WDV trajectory. Engine caps events at 10 000 items per\nrequest (F19 item 12); the gateway does not re-validate that cap here\nsince the engine's schema layer is authoritative.",
+        "description": "Per-asset lifecycle event (mirrors engine's `EventInput` field-for-field).\n\nEvents layer on top of `asset` at construction and let the fold\nreconstitute the WDV trajectory. Engine caps events at 10 000 items per\nrequest (F19 item 12); the gateway does not re-validate that cap here\nsince the engine's schema layer is authoritative.\n\n**D84 (Fable, verified live 2026-11-09).** This model previously published\n`cost_delta` + `opening_balance_amount`, which the engine's `extra=\"forbid\"`\nEventInput rejects with 422 `extra_forbidden` \u2014 so EVERY amount-carrying\nevent failed through the gateway on both /at/ and /range/ since launch. The\nfields now mirror the engine exactly (`event_type`, `event_date`, `amount`,\n`new_useful_life_years`). The conditional rules below are enforced at the\ngateway so a caller error returns the standard gateway 422 (`detail[]` with\n`type` + `loc`) rather than an engine passthrough. `amount` is forwarded to\nthe engine as a 2 dp decimal string (EventMoney serializer).",
         "properties": {
-          "cost_delta": {
+          "amount": {
             "anyOf": [
               {
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
+                "gt": 0,
+                "oneOf": [
+                  {
+                    "multipleOf": 0.01,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^[+-]?\\d+(\\.\\d{1,2})?$",
+                    "type": "string"
+                  }
+                ],
+                "x-money": true
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Cost addition amount for event_type='cost_addition'. Money: cent-quantised, JSON number or decimal string.",
-            "title": "Cost Delta",
-            "x-money": true
+            "description": "Positive money amount. REQUIRED when event_type='cost_addition' (additional cost added mid-fold) or event_type='opening_balance' (declared prior-FY closing WDV at FY-start); FORBIDDEN when event_type='useful_life_reassessment'. Money: cent-quantised, JSON number or decimal string.",
+            "title": "Amount"
           },
           "event_date": {
             "description": "Effective date of the event.",
@@ -484,25 +490,8 @@
                 "type": "null"
               }
             ],
-            "description": "Reassessed useful life for event_type='useful_life_reassessment'.",
+            "description": "Reassessed useful life in years. REQUIRED when event_type='useful_life_reassessment'; FORBIDDEN otherwise.",
             "title": "New Useful Life Years"
-          },
-          "opening_balance_amount": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Opening balance for event_type='opening_balance'. Money: cent-quantised, JSON number or decimal string.",
-            "title": "Opening Balance Amount",
-            "x-money": true
           }
         },
         "required": [

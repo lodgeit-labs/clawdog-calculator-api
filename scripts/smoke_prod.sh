@@ -284,6 +284,68 @@ fi
 rm -f "$DEP_TMP" "$DEP_HEADERS_TMP"
 
 # ----------------------------------------------------------------------
+# Check 3c: Depreciation /range/ D82 canary — acquisition inside the range.
+# Asserts the three-term identity surface: cost_additions 10000.00 recognised
+# inside the window, opening_wdv 0.00, range_dep 338.80, closing_wdv 9661.20
+# (= 0.00 + 10000.00 - 338.80). Pins the live three-term shape (D82).
+# ----------------------------------------------------------------------
+echo ""
+echo "--- Check 3c: Depreciation /range/ three-term identity (D82 canary) ---"
+RANGE_TMP=$(mktemp)
+RANGE_HEADERS_TMP=$(mktemp)
+HTTP_STATUS=$(curl -sS -D "$RANGE_HEADERS_TMP" -o "$RANGE_TMP" -w "%{http_code}" -X POST \
+    "$API_BASE_URL/v1/calculators/depreciation/range/$DEP_PERIOD_URI" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "basis": "accounting",
+      "asset": {
+        "cost": "10000.00",
+        "acquisition_date": "2023-07-01",
+        "accounting_useful_life_years": 5,
+        "accounting_method": "prime_cost"
+      },
+      "day_count": "actual/actual",
+      "from_date": "2023-05-01",
+      "to_date": "2023-08-31"
+    }' 2>&1) || {
+    echo "🟡 INFRA BROKEN: curl failed against depreciation /range/ route"
+    rm -f "$RANGE_TMP" "$RANGE_HEADERS_TMP"
+    exit 2
+}
+if [ "$HTTP_STATUS" != "200" ]; then
+    echo "🔴 FAIL: expected HTTP 200 (D82 /range/ canary), got $HTTP_STATUS"
+    head -c 500 "$RANGE_TMP"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+else
+    CHECK_RESULT=$(python3 -c "
+import json
+live = json.load(open('$RANGE_TMP'))
+expected = {
+    'opening_wdv': '0.00',
+    'cost_additions': '10000.00',
+    'range_dep': '338.80',
+    'closing_wdv': '9661.20',
+}
+fails = []
+for k, v in expected.items():
+    if k not in live:
+        fails.append(f'missing field {k!r}')
+    elif str(live[k]) != v:
+        fails.append(f'{k}={live[k]!r} expected {v!r}')
+print('OK' if not fails else 'FAIL:' + '|'.join(fails))
+")
+    if [ "$CHECK_RESULT" = "OK" ]; then
+        echo "🟢 PASS: /range/ 200 with opening_wdv 0.00, cost_additions 10000.00, range_dep 338.80, closing_wdv 9661.20 (three-term identity)"
+        PASS_COUNT=$((PASS_COUNT + 1))
+    else
+        echo "🔴 FAIL: /range/ D82 shape mismatch:"
+        echo "  $CHECK_RESULT"
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+fi
+rm -f "$RANGE_TMP" "$RANGE_HEADERS_TMP"
+
+# ----------------------------------------------------------------------
 # Check 4: FBT intentional-error returns 422 JSON (input validation regression)
 # ----------------------------------------------------------------------
 echo ""

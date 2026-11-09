@@ -227,11 +227,16 @@ def test_every_registered_calculator_response_carries_manifest_block(
                 "day_count": "actual/actual",
             }
         if calc_uri == "urn:sbrm:calculator:depreciation:range":
+            # D82: engine PR #27 emits cost_additions on every /range/ response.
+            # Acquisition outside range -> cost_additions 0.00; two-term
+            # corollary holds (9830.60 - 169.40 == 9661.20) so the gateway's
+            # three-term identity gate passes.
             return {
                 "basis": "accounting",
                 "from_date": "2023-08-01", "to_date": "2023-08-31",
                 "day_count": "actual/actual", "days_in_range": 31,
-                "range_dep": "169.40", "opening_wdv": "9830.60",
+                "range_dep": "169.40", "cost_additions": "0.00",
+                "opening_wdv": "9830.60",
                 "closing_wdv": "9661.20", "truncated": False,
                 "numeric_mode": "serving",
             }

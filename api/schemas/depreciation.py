@@ -34,11 +34,42 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    PlainSerializer,
+    WithJsonSchema,
+    model_validator,
+)
 
-from api.schemas.money import _to_cent_quantised_decimal
+from api.schemas.money import _MONEY_JSON_SCHEMA, _to_cent_quantised_decimal
 
 _MONEY_DESC = "Money: cent-quantised, JSON number or decimal string."
+
+# D84 (Fable, verified live 2026-11-09): the gateway's EventInput previously
+# published `cost_delta` and `opening_balance_amount`, which the engine's
+# `extra="forbid"` EventInput rejects with 422 `extra_forbidden`. Every
+# amount-carrying event had therefore failed through the gateway since launch
+# on both /at/ and /range/. The fix mirrors the engine field-for-field:
+# `event_type`, `event_date`, `amount`, `new_useful_life_years`.
+#
+# Event-amount money type. Validated as a cent-quantised Decimal at the gateway
+# (x-money on the OpenAPI schema, same `oneOf` number-or-string accept shape as
+# every other money field) but serialised to a 2 dp DECIMAL STRING on the wire
+# to the engine, because the task requires events be forwarded "with money as
+# decimal strings" and the engine's EventInput.amount parses a decimal string to
+# Decimal cleanly (the asset `cost` already crosses this boundary as a string).
+_EVENT_MONEY_SERIALIZER = PlainSerializer(
+    lambda d: f"{d:.2f}", return_type=str, when_used="always"
+)
+EventMoney = Annotated[
+    Decimal,
+    BeforeValidator(_to_cent_quantised_decimal),
+    _EVENT_MONEY_SERIALIZER,
+    WithJsonSchema(_MONEY_JSON_SCHEMA),
+]
 
 # ---------------------------------------------------------------------------
 # D8a defence-in-depth: basis-conditional field validation at the gateway.
@@ -323,12 +354,22 @@ class AssetCreatedInput(BaseModel):
 
 
 class EventInput(BaseModel):
-    """Per-asset lifecycle event (mirrors engine's `EventInput`).
+    """Per-asset lifecycle event (mirrors engine's `EventInput` field-for-field).
 
     Events layer on top of `asset` at construction and let the fold
     reconstitute the WDV trajectory. Engine caps events at 10 000 items per
     request (F19 item 12); the gateway does not re-validate that cap here
     since the engine's schema layer is authoritative.
+
+    **D84 (Fable, verified live 2026-11-09).** This model previously published
+    `cost_delta` + `opening_balance_amount`, which the engine's `extra="forbid"`
+    EventInput rejects with 422 `extra_forbidden` — so EVERY amount-carrying
+    event failed through the gateway on both /at/ and /range/ since launch. The
+    fields now mirror the engine exactly (`event_type`, `event_date`, `amount`,
+    `new_useful_life_years`). The conditional rules below are enforced at the
+    gateway so a caller error returns the standard gateway 422 (`detail[]` with
+    `type` + `loc`) rather than an engine passthrough. `amount` is forwarded to
+    the engine as a 2 dp decimal string (EventMoney serializer).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -347,18 +388,18 @@ class EventInput(BaseModel):
         Field(description="Effective date of the event."),
     ]
 
-    # Optional per-event fields; engine schema layer validates conditional
-    # requiredness per event_type.
-    cost_delta: Annotated[
-        Decimal | None,
-        BeforeValidator(_to_cent_quantised_decimal),
+    amount: Annotated[
+        EventMoney | None,
         Field(
             default=None,
+            gt=0,
             description=(
-                "Cost addition amount for event_type='cost_addition'. "
-                + _MONEY_DESC
+                "Positive money amount. REQUIRED when "
+                "event_type='cost_addition' (additional cost added mid-fold) "
+                "or event_type='opening_balance' (declared prior-FY closing "
+                "WDV at FY-start); FORBIDDEN when "
+                "event_type='useful_life_reassessment'. " + _MONEY_DESC
             ),
-            json_schema_extra={"x-money": True},
         ),
     ] = None
 
@@ -368,24 +409,40 @@ class EventInput(BaseModel):
             default=None,
             gt=0,
             description=(
-                "Reassessed useful life for "
-                "event_type='useful_life_reassessment'."
+                "Reassessed useful life in years. REQUIRED when "
+                "event_type='useful_life_reassessment'; FORBIDDEN otherwise."
             ),
         ),
     ] = None
 
-    opening_balance_amount: Annotated[
-        Decimal | None,
-        BeforeValidator(_to_cent_quantised_decimal),
-        Field(
-            default=None,
-            description=(
-                "Opening balance for event_type='opening_balance'. "
-                + _MONEY_DESC
-            ),
-            json_schema_extra={"x-money": True},
-        ),
-    ] = None
+    @model_validator(mode="after")
+    def _validate_event_payload(self) -> EventInput:
+        """D84: enforce the engine's conditional event rules at the gateway so
+        callers get a standard gateway 422 (not an engine passthrough). Rule
+        set mirrors depreciation-engine EventInput._validate_event_payload.
+        """
+        if self.event_type in ("cost_addition", "opening_balance"):
+            if self.amount is None:
+                raise ValueError(
+                    f"event_type='{self.event_type}' requires 'amount'"
+                )
+            if self.new_useful_life_years is not None:
+                raise ValueError(
+                    f"event_type='{self.event_type}' must not carry "
+                    "'new_useful_life_years'"
+                )
+        elif self.event_type == "useful_life_reassessment":
+            if self.new_useful_life_years is None:
+                raise ValueError(
+                    "event_type='useful_life_reassessment' requires "
+                    "'new_useful_life_years'"
+                )
+            if self.amount is not None:
+                raise ValueError(
+                    "event_type='useful_life_reassessment' must not carry "
+                    "'amount'"
+                )
+        return self
 
 
 class DepreciationAtInput(BaseModel):
@@ -799,8 +856,26 @@ class DepreciationRangeResponse(BaseModel):
                 "− range_dep`. The two-term corollary `closing_wdv = "
                 "opening_wdv − range_dep` holds ONLY when "
                 "`cost_additions == 0` (acquisition falls outside the "
-                "range window). See class docstring for the engine-first "
-                "sequencing that lands `cost_additions` on the wire."
+                "range window)."
+            ),
+        ),
+    ]
+
+    cost_additions: Annotated[
+        Decimal,
+        Field(
+            description=(
+                "D82 (engine PR #27 live): total cost recognised WITHIN the "
+                "range window — the asset's initial recognition when "
+                "`acquisition_date` falls inside [from_date, to_date], plus "
+                "any `event_type='cost_addition'` events dated inside. A 2 dp "
+                "money string, always present, always >= 0.00. Completes the "
+                "three-term ledger identity: `closing_wdv = opening_wdv + "
+                "cost_additions − range_dep` exact to the cent. The route "
+                "handler ASSERTS this identity against the engine-emitted "
+                "value (no gateway synthesis per Fable D7); a mismatch, a "
+                "negative `range_dep`, or a negative `cost_additions` surfaces "
+                "a structured 502 naming both sides."
             ),
         ),
     ]
@@ -826,7 +901,8 @@ class DepreciationRangeResponse(BaseModel):
                 "Closing balance carried OUT of the range — the value at "
                 "close of `to_date`. Ledger vocabulary. Renamed from "
                 "`wdv_at_to_date` at Andrew ruling 2026-09-03 08:32 UTC. "
-                "Invariant: `opening_wdv - range_dep == closing_wdv`."
+                "Invariant (three-term, D82): "
+                "`closing_wdv == opening_wdv + cost_additions - range_dep`."
             ),
         ),
     ]
