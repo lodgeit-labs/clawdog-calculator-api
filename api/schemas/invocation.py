@@ -598,15 +598,6 @@ class _ExpensePaymentBaseInput(BaseModel):
         0, ge=0, alias="employeeContribution",
         description="Employee contribution toward the expense (AUD); clamped at gross.",
     )
-    inhouse_benefit_claimed: Money | None = money_field(
-        None, ge=0, alias="inhouseBenefitClaimed",
-        description=(
-            "Only consulted on the in-house variant. In-house benefit "
-            "reduction claimed (AUD); clamped to FY2026 in-house cap "
-            "(FBTAA s.62)."
-        ),
-        json_schema_extra={"x-applies-when": {"variant": ["in-house"]}},
-    )
     fbt_type: Literal["Type 1", "Type 2"] = Field(
         ..., alias="fbtType",
         description=_FBT_TYPE_D19_DESCRIPTION,
@@ -642,6 +633,15 @@ class FBTExpensePaymentInHouseInput(_ExpensePaymentBaseInput):
         },
     )
 
+    inhouse_benefit_claimed: Money | None = money_field(
+        None, ge=0, alias="inhouseBenefitClaimed",
+        description=(
+            "Only consulted on the in-house variant. In-house benefit "
+            "reduction claimed (AUD); clamped to FY2026 in-house cap "
+            "(FBTAA s.62)."
+        ),
+    )
+
 
 class _PropertyBaseInput(BaseModel):
     """Shared input shape for Property (std + in-house variants).
@@ -664,15 +664,6 @@ class _PropertyBaseInput(BaseModel):
     employee_contribution: Money = money_field(
         0, ge=0, alias="employeeContribution",
         description="Employee contribution toward the property (AUD).",
-    )
-    inhouse_benefit_claimed: Money | None = money_field(
-        None, ge=0, alias="inhouseBenefitClaimed",
-        description=(
-            "Only consulted on the in-house variant. In-house benefit "
-            "reduction claimed (AUD); clamped to FY2026 in-house cap "
-            "(FBTAA s.62)."
-        ),
-        json_schema_extra={"x-applies-when": {"variant": ["in-house"]}},
     )
     fbt_type: Literal["Type 1", "Type 2"] = Field(
         ..., alias="fbtType",
@@ -705,6 +696,15 @@ class FBTPropertyInHouseInput(_PropertyBaseInput):
         json_schema_extra={
             "x-calc-uri": "urn:sbrm:calculator:fbt:property-in-house"
         },
+    )
+
+    inhouse_benefit_claimed: Money | None = money_field(
+        None, ge=0, alias="inhouseBenefitClaimed",
+        description=(
+            "Only consulted on the in-house variant. In-house benefit "
+            "reduction claimed (AUD); clamped to FY2026 in-house cap "
+            "(FBTAA s.62)."
+        ),
     )
 
 
@@ -759,15 +759,6 @@ class _ResidualBaseInput(BaseModel):
         0, ge=0, alias="employeeContribution",
         description="Employee contribution toward the residual benefit (AUD).",
     )
-    inhouse_benefit_claimed: Money | None = money_field(
-        None, ge=0, alias="inhouseBenefitClaimed",
-        description=(
-            "Only consulted on the in-house variant. In-house benefit "
-            "reduction claimed (AUD); clamped to FY2026 in-house cap "
-            "(FBTAA s.62)."
-        ),
-        json_schema_extra={"x-applies-when": {"variant": ["in-house"]}},
-    )
     fbt_type: Literal["Type 1", "Type 2"] = Field(
         ..., alias="fbtType",
         description=_FBT_TYPE_D19_DESCRIPTION,
@@ -799,6 +790,15 @@ class FBTResidualInHouseInput(_ResidualBaseInput):
         json_schema_extra={
             "x-calc-uri": "urn:sbrm:calculator:fbt:residual-in-house"
         },
+    )
+
+    inhouse_benefit_claimed: Money | None = money_field(
+        None, ge=0, alias="inhouseBenefitClaimed",
+        description=(
+            "Only consulted on the in-house variant. In-house benefit "
+            "reduction claimed (AUD); clamped to FY2026 in-house cap "
+            "(FBTAA s.62)."
+        ),
     )
 
 

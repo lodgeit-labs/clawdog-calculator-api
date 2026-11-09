@@ -48,7 +48,15 @@ _THREE_FIELDS = (
 # shifts, this test fails loudly and the number is re-anchored in the same PR.
 _XMONEY_COUNT_BEFORE_D65 = 79
 _XMONEY_REMOVED_BY_D65 = 4
-_EXPECTED_XMONEY_COUNT = _XMONEY_COUNT_BEFORE_D65 - _XMONEY_REMOVED_BY_D65  # 75
+# D79 (Fable, 2026-11-09): inhouseBenefitClaimed was inherited by the three
+# standard FBT models from the shared bases (_ExpensePaymentBaseInput,
+# _PropertyBaseInput, _ResidualBaseInput). It is moved onto the three in-house
+# input models only, removing 3 standard-model x-money occurrences. Gate count
+# drops 75 -> 72.
+_XMONEY_REMOVED_BY_D79 = 3
+_EXPECTED_XMONEY_COUNT = (
+    _XMONEY_COUNT_BEFORE_D65 - _XMONEY_REMOVED_BY_D65 - _XMONEY_REMOVED_BY_D79
+)  # 72
 
 
 def _fbt_url(calc_uri: str) -> str:
@@ -122,7 +130,8 @@ def test_total_x_money_count_equals_expected():
     count = len(_xmoney_properties(spec))
     assert count == _EXPECTED_XMONEY_COUNT, (
         f"x-money count={count}; expected {_EXPECTED_XMONEY_COUNT} "
-        f"(= {_XMONEY_COUNT_BEFORE_D65} - {_XMONEY_REMOVED_BY_D65})"
+        f"(= {_XMONEY_COUNT_BEFORE_D65} - {_XMONEY_REMOVED_BY_D65} "
+        f"- {_XMONEY_REMOVED_BY_D79})"
     )
 
 
