@@ -1368,7 +1368,7 @@ class CalculatorInvocationResponse(BaseModel):
     #     at `div7a_core/../api/main.py:69` (class CalculateResponse; every
     #     money field declared `str`). Forwarded through this gateway via the
     #     `POST /v1/calculators/div7a/at/{period_uri:path}` handler in
-    #     `api/routes/calculators.py`. Wire shape: `statutory_myr: "15497.53"`.
+    #     `api/routes/calculators.py`. Wire shape: `statutory_myr: "13801.18"`.
     #   FBT (this PR):     the 4 top-level money fields flipped from `float` to
     #     `str` below match Div7A's str-directly-on-model shape; regex
     #     constraints add defence-in-depth (rejects a float-emitting engine
