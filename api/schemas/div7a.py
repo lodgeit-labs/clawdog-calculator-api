@@ -33,7 +33,11 @@ class Div7aRepaymentIn(BaseModel):
     )
     date: str = Field(
         ...,
-        description="Repayment date (ISO YYYY-MM-DD or AU dd/mm/yyyy)",
+        description=(
+            "Repayment date (ISO YYYY-MM-DD or AU dd/mm/yyyy). Must fall "
+            "inside the income year named by the period URI (1 July to "
+            "30 June inclusive)."
+        ),
     )
     loan_id: str | None = Field(
         default="default", description="Loan identifier"
@@ -139,5 +143,18 @@ class Div7aAtInput(BaseModel):
     )
     repayments: list[Div7aRepaymentIn] = Field(
         default_factory=list,
-        description="Repayment events; daily-balance aggregation.",
+        description=(
+            "Repayment events; daily-balance aggregation. Every repayment "
+            "date must fall inside the income year named by the period URI, "
+            "1 July to 30 June inclusive: 2024-07-01 to 2025-06-30 for "
+            "urn:sbrm:period:div7a:fy2025, 2025-07-01 to 2026-06-30 for "
+            "urn:sbrm:period:div7a:fy2026. The engine aggregates repayments "
+            "over that income year only, so a repayment dated outside it "
+            "would be dropped from the calculation and inflate the shortfall "
+            "and the §109E(1) deemed dividend. Each offending repayment is "
+            "refused with HTTP 422 repayment_outside_income_year, one "
+            "detail entry per repayment, and a date in neither declared "
+            "format (ISO YYYY-MM-DD or AU dd/mm/yyyy) is refused the same "
+            "way."
+        ),
     )

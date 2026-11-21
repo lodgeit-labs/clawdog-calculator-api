@@ -40,7 +40,10 @@ from api.lib.engine_error_mapper import (
     map_calculation_error_to_http,
     map_engine_error_to_http,
 )
-from api.lib.income_year_guard import income_year_period_error
+from api.lib.income_year_guard import (
+    income_year_period_error,
+    repayment_outside_income_year_errors,
+)
 from api.lib.rate_table_resolver import (
     DEFAULT_TAXONOMY,
     RATIFIED_TAXONOMIES,
@@ -1283,6 +1286,42 @@ async def invoke_div7a_at(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=[year_error],
+        )
+
+    # --- D95 (Fable wire-repro 2026-11-21): every repayment must fall inside
+    # the period's income year.
+    #
+    # Live defect: `POST .../period:div7a:fy2025` with repayments
+    # [{"amount": 13801.18, "date": "2023-12-31"}] returned 200 with
+    # total_repayments "0.00" and shortfall "13801.18". The engine aggregates
+    # repayments over the income year and silently DROPS the rest — no refusal,
+    # no echo — so one mistyped year reads as a real shortfall and a real
+    # deemed dividend. There is no safe reading of an out-of-year repayment: it
+    # is either a typo or a repayment of a different income year, and neither
+    # belongs in this period's arithmetic.
+    #
+    # Bounds come from the period URI via the same derivation as D94 above
+    # (fyYYYY → 1 July YYYY-1 to 30 June YYYY, both inclusive), so a newly
+    # ratified period needs no table update. A date in neither declared format
+    # is refused with the same slug and a msg naming the accepted formats, so
+    # the caller is never left guessing which repayment the engine choked on.
+    # Every offender is reported in one response, one detail entry each.
+    #
+    # Placed AFTER the D94 check on purpose: when both faults are present the
+    # income_year_start_date refusal is returned first and alone. The period
+    # URI is what contradicts both, and the year-start mismatch is the fault a
+    # caller can fix without re-reading their whole repayment ledger.
+    #
+    # Both the native route and the generic /v1/calculators/{calc_uri}/...
+    # route delegate here, and MCP tools/call self-calls the REST route
+    # in-process, so all three surfaces inherit the refusal.
+    repayment_errors = repayment_outside_income_year_errors(
+        period_uri_decoded, [repayment.date for repayment in body.repayments]
+    )
+    if repayment_errors:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=repayment_errors,
         )
 
     payload: dict = body.model_dump(by_alias=False, exclude_none=True)
