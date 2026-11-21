@@ -369,8 +369,25 @@ def test_impossible_calendar_date_returns_422_as_unparseable(
 
 
 # ---------------------------------------------------------------------------
-# 7. MCP tools/call → isError with the same body.
+# 7. Both REST route shapes → the same 422; MCP tools/call → isError.
 # ---------------------------------------------------------------------------
+
+GENERIC_URL = (
+    "/v1/calculators/urn%3Asbrm%3Acalculator%3Adiv7a%3Aat/"
+    "urn%3Asbrm%3Aperiod%3Adiv7a%3Afy2025"
+)
+
+
+def test_generic_route_returns_the_same_422(
+    client: TestClient, engine: AsyncMock
+) -> None:
+    """The generic ``/v1/calculators/{calc_uri}/{period_uri}`` route delegates
+    to the same handler, so it refuses identically rather than dispatching."""
+    resp = client.post(GENERIC_URL, json=FABLE_BODY)
+    _assert_repayment_422(
+        resp, expected_indexes=[0], expected_dates=["2023-12-31"]
+    )
+    engine.assert_not_awaited()
 
 
 def test_mcp_tools_call_outside_year_returns_iserror_with_same_body(
