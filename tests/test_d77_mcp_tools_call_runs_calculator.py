@@ -106,9 +106,11 @@ def test_div7a_at_returns_structured_result(client: TestClient) -> None:
     """tools/call div7a-at ($70k, 7yr, loan 2024-06-01, iys 2024-07-01, fy2025)
     → structuredContent.statutory_myr == "13801.18".
     """
+    # Div7A_Engine's own 200 body for this input (engine main 4a6f73ab,
+    # in-process); same body as test_div7a_at_smoke.CANONICAL_ENGINE_RESPONSE.
     engine_body = {
         "period_uri": "urn:sbrm:period:div7a:fy2025",
-        "amalgamated_base": "70000.0",
+        "amalgamated_base": "70000.00",
         "benchmark_rate": "0.0877",
         "remaining_term_years": 7,
         "statutory_myr": "13801.18",
@@ -116,7 +118,9 @@ def test_div7a_at_returns_structured_result(client: TestClient) -> None:
         "shortfall": "13801.18",
         "is_complying": False,
         "deemed_dividend": "13801.18",
-        "interest_accrued": "6137.00",
+        "interest_accrued": "6139.00",
+        "rounding_policy": "lodgeit-rounding-1.0",
+        "rate_uris_consumed": ["urn:sbrm:rate:div7a:fy2025:benchmark-interest"],
     }
     with patch(
         "api.routes.calculators.PrologClient.div7a_at",

@@ -45,17 +45,25 @@ CANONICAL_INPUT = {
     "repayments": [],
 }
 
+# Div7A_Engine's own HTTP 200 body for CANONICAL_INPUT, key for key, taken
+# 2026-11-21 by running the engine app in-process (FastAPI TestClient) at
+# Div7A_Engine main 4a6f73ab (PR #15 merge), with the payload this gateway
+# forwards (Div7aAtInput.model_dump(by_alias=False, exclude_none=True)).
+# Reflects the s 109E(6) remaining-term fix (28 Sept: n = 7, MYR 13801.18)
+# and the interest_accrued fix (21 Nov: full-year daily balance, 6139.00).
 CANONICAL_ENGINE_RESPONSE = {
     "period_uri": PERIOD_URI,
-    "amalgamated_base": "70000.0",
+    "amalgamated_base": "70000.00",
     "benchmark_rate": "0.0877",
-    "remaining_term_years": 6,
-    "statutory_myr": "15497.53",
+    "remaining_term_years": 7,
+    "statutory_myr": "13801.18",
     "total_repayments": "0.00",
-    "shortfall": "15497.53",
+    "shortfall": "13801.18",
     "is_complying": False,
-    "deemed_dividend": "15497.53",
-    "interest_accrued": "6122.18",
+    "deemed_dividend": "13801.18",
+    "interest_accrued": "6139.00",
+    "rounding_policy": "lodgeit-rounding-1.0",
+    "rate_uris_consumed": ["urn:sbrm:rate:div7a:fy2025:benchmark-interest"],
 }
 
 
