@@ -316,7 +316,7 @@
         "x-calc-uri": "urn:sbrm:calculator:depreciation:range"
       },
       "Div7aAtInput": {
-        "description": "Div 7A single-income-year MYR request payload.\n\nCanonical URN: ``urn:sbrm:calculator:div7a:at`` per the constellation\nnaming convention (matches ``urn:sbrm:calculator:depreciation:at`` +\n``urn:sbrm:calculator:fbt:*``).\n\nField discipline:\n  - ``amalgamated_base``: \u00a7109E amalgamated loan base amount at start of year (AUD)\n  - ``loan_term_years``: \u00a7109N complying-loan term (7 unsecured / 25 secured)\n  - ``loan_origination_date``: date the loan was made (ISO or dd/mm/yyyy)\n  - ``income_year_start_date``: 1 July of the FY to compute (ISO or dd/mm/yyyy)\n  - ``is_first_real_myr_year``: optional; derived from origination/year if omitted\n  - ``repayments``: list; may be empty (single-annual or multiple repayments)\n\nElection group div7a (no statutory default); see GET /v1/modules.",
+        "description": "Div 7A single-income-year MYR request payload.\n\nCanonical URN: ``urn:sbrm:calculator:div7a:at`` per the constellation\nnaming convention (matches ``urn:sbrm:calculator:depreciation:at`` +\n``urn:sbrm:calculator:fbt:*``).\n\nField discipline:\n  - ``amalgamated_base``: \u00a7109E amalgamated loan base amount at start of year (AUD)\n  - ``loan_term_years``: \u00a7109N complying-loan term (7 unsecured / 25 secured)\n  - ``loan_origination_date``: date the loan was made (ISO or dd/mm/yyyy)\n  - ``income_year_start_date``: 1 July of the FY to compute (ISO or dd/mm/yyyy);\n    must be 1 July of the income year named by the period URI\n  - ``is_first_real_myr_year``: optional; derived from origination/year if omitted\n  - ``repayments``: list; may be empty (single-annual or multiple repayments)\n\nElection group div7a (no statutory default); see GET /v1/modules.",
         "properties": {
           "amalgamated_base": {
             "description": "\u00a7109E amalgamated loan base amount (AUD). Must be positive: a non-positive loan balance is not a loan and cannot receive a compliance verdict. Money: cent-quantised, JSON number or decimal string.",
@@ -334,7 +334,7 @@
             "x-money": true
           },
           "income_year_start_date": {
-            "description": "Start of the income year to compute (ISO YYYY-MM-DD or AU dd/mm/yyyy). AU income year: 1 July \u2013 30 June.",
+            "description": "Start of the income year to compute (ISO YYYY-MM-DD or AU dd/mm/yyyy). This calculator covers standard 1 July to 30 June Australian income years only, and the date must be 1 July of the income year named by the period URI: 2024-07-01 for urn:sbrm:period:div7a:fy2025, 2025-07-01 for urn:sbrm:period:div7a:fy2026. Any other date is refused with HTTP 422 income_year_period_mismatch \u2014 the period URI fixes the benchmark rate while this date fixes the remaining term and the interest-day window, so a mismatch would compute one income year's rate against another income year's arithmetic.",
             "title": "Income Year Start Date",
             "type": "string"
           },

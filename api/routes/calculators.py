@@ -40,6 +40,7 @@ from api.lib.engine_error_mapper import (
     map_calculation_error_to_http,
     map_engine_error_to_http,
 )
+from api.lib.income_year_guard import income_year_period_error
 from api.lib.rate_table_resolver import (
     DEFAULT_TAXONOMY,
     RATIFIED_TAXONOMIES,
@@ -1252,6 +1253,36 @@ async def invoke_div7a_at(
                 f"period_uri={period_uri_decoded!r} is not supported by the "
                 f"div7a calculator. Supported: {meta['supported_periods']}"
             ),
+        )
+
+    # --- D94 (Fable wire-repro 2026-11-21): income-year ↔ period consistency.
+    #
+    # The engine takes the §109N(2) benchmark rate from the period URI but the
+    # §109E(6) remaining term and the canon-620 interest-day window from the
+    # body's income_year_start_date. A mismatched pair was answered with HTTP
+    # 200: `POST .../period:div7a:fy2026` with income_year_start_date
+    # "2024-07-01" returned benchmark_rate "0.0837" (the FY2026 rate) and
+    # statutory_myr "13615.68" — the FY2026 rate applied to FY2025's remaining
+    # term. Nothing refused it.
+    #
+    # The expected start is DERIVED from the period URN (fyYYYY → 1 July
+    # YYYY-1), so no year table needs maintaining as periods are ratified.
+    # Refusing here also closes the sibling silent coercion: the engine's
+    # enclose() maps a mid-year start ("2024-08-15") back to 1 July without a
+    # word, discarding what the caller asked for. The calculator covers
+    # standard 1 July – 30 June income years; anything else is refused.
+    #
+    # Placed after the period-support check so a bad URN keeps its 404, and
+    # in this handler (not the schema) because the period lives in the path,
+    # which a pydantic model cannot see. Both the native route and the MCP
+    # tools/call path (in-process dispatch to this same handler) inherit it.
+    year_error = income_year_period_error(
+        period_uri_decoded, body.income_year_start_date
+    )
+    if year_error is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[year_error],
         )
 
     payload: dict = body.model_dump(by_alias=False, exclude_none=True)
