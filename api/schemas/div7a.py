@@ -55,7 +55,8 @@ class Div7aAtInput(BaseModel):
       - ``amalgamated_base``: §109E amalgamated loan base amount at start of year (AUD)
       - ``loan_term_years``: §109N complying-loan term (7 unsecured / 25 secured)
       - ``loan_origination_date``: date the loan was made (ISO or dd/mm/yyyy)
-      - ``income_year_start_date``: 1 July of the FY to compute (ISO or dd/mm/yyyy)
+      - ``income_year_start_date``: 1 July of the FY to compute (ISO or dd/mm/yyyy);
+        must be 1 July of the income year named by the period URI
       - ``is_first_real_myr_year``: optional; derived from origination/year if omitted
       - ``repayments``: list; may be empty (single-annual or multiple repayments)
 
@@ -115,7 +116,15 @@ class Div7aAtInput(BaseModel):
         ...,
         description=(
             "Start of the income year to compute (ISO YYYY-MM-DD or AU "
-            "dd/mm/yyyy). AU income year: 1 July – 30 June."
+            "dd/mm/yyyy). This calculator covers standard 1 July to 30 June "
+            "Australian income years only, and the date must be 1 July of "
+            "the income year named by the period URI: 2024-07-01 for "
+            "urn:sbrm:period:div7a:fy2025, 2025-07-01 for "
+            "urn:sbrm:period:div7a:fy2026. Any other date is refused with "
+            "HTTP 422 income_year_period_mismatch — the period URI fixes the "
+            "benchmark rate while this date fixes the remaining term and the "
+            "interest-day window, so a mismatch would compute one income "
+            "year's rate against another income year's arithmetic."
         ),
     )
     # The first-year rule (n_remaining = original_term - 1 in the first real

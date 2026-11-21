@@ -78,8 +78,14 @@ _PROBE2_BODY = json.dumps(_PROBE2_INNER)
 _VALID_DIV7A_INPUT = {
     "amalgamated_base": 70000,
     "loan_term_years": 7,
-    "loan_origination_date": "2024-06-01",
-    "income_year_start_date": "2023-07-01",
+    # Origination inside the tested income year, so the engine's own
+    # myr_year_not_after_loan_year refusal is the live one for this payload.
+    # The start date must match the period URI's income year (D94): fy2025 is
+    # 2024-07-01. A mismatched start ("2023-07-01" here pre-D94) is now refused
+    # at the gateway with 422 income_year_period_mismatch and never reaches the
+    # engine, which would make this test unable to exercise the 400 flattening.
+    "loan_origination_date": "2024-08-01",
+    "income_year_start_date": "2024-07-01",
     "is_first_real_myr_year": True,
     "repayments": [],
 }
